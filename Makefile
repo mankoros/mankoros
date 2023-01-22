@@ -1,0 +1,41 @@
+TARGET      := riscv64gc-unknown-none-elf
+MODE        := debug
+KERNEL_FILE := target/$(TARGET)/$(MODE)/mankoros
+BIN_FILE    := kernel.bin
+
+OBJDUMP     := rust-objdump --arch-name=riscv64
+OBJCOPY     := rust-objcopy --binary-architecture=riscv64
+
+
+CPUS		:= 4
+
+.PHONY: doc kernel build clean qemu run
+
+build: $(BIN_FILE)
+doc:
+	@cargo doc --document-private-items
+
+kernel:
+	@cargo build
+
+$(BIN_FILE): kernel
+	@$(OBJCOPY) $(KERNEL_FILE) --strip-all -O binary $@
+
+asm:
+	@$(OBJDUMP) -d $(KERNEL_FILE) | less
+
+clean:
+	@cargo clean
+
+# launch qemu
+# -kernel will give control to 0x80000000
+qemu: build
+	@qemu-system-riscv64 		\
+            -machine virt 		\
+            -nographic 			\
+            -bios default 		\
+			-smp $(CPUS) 		\
+			-kernel $(BIN_FILE)
+
+# build and run
+run: build qemu
