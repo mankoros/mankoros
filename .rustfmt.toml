@@ -1,0 +1,6 @@
+
+# Maximum width of each line, default 100
+max_width = 100
+
+#
+chain_width = 80

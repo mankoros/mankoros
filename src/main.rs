@@ -7,8 +7,12 @@
 use core::arch::asm;
 use core::panic::PanicInfo;
 
+mod sync {
+    pub mod mutex;
+}
+
 /// Assembly entry point
-/// 
+///
 /// Allocation a init stack, then call rust_main
 #[naked]
 #[no_mangle]
@@ -30,28 +34,26 @@ unsafe extern "C" fn _start() -> ! {
 }
 
 /// Rust entry point
-/// 
-/// 
+///
+///
 #[no_mangle]
 pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     // #0 core is responsible for init
     if hart_id != 0 {
         support_hart_resume(hart_id, 0);
     }
-    
+
     panic!("正常关机")
 }
 
-
 /// Other core into this function
-/// 
 ///
-extern "C" fn support_hart_resume(hart_id: usize, _param: usize) {
+///
+extern "C" fn support_hart_resume(_hart_id: usize, _param: usize) {
     loop {
         unsafe { asm!("wfi") }
     }
 }
-
 
 /// This function is called on panic.
 #[panic_handler]
