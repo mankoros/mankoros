@@ -3,7 +3,6 @@
 
 use bitflags::bitflags;
 use core::fmt::Write; // for formatted output
-use core::sync::atomic::{AtomicPtr, Ordering}; // for MMIO memory order
 
 macro_rules! wait_for {
     ($cond:expr) => {
