@@ -1,7 +1,9 @@
 # MankorOS
 
-Zesty-Core is a [RISC-V](https://riscv.org/) kernel written in [Rust](https://www.rust-lang.org/)
+> MankorOS is named after the three main contributers
+> namely man, kong and luo, so "MankorOS" is essentially "man-ko-ro-s"
 
+Zesty-Core is a [RISC-V](https://riscv.org/) kernel written in [Rust](https://www.rust-lang.org/)
 
 ## RoadMap
 - [ ] Mutex
@@ -29,8 +31,8 @@ Zesty-Core is a [RISC-V](https://riscv.org/) kernel written in [Rust](https://ww
     - [ ] syscall infra
     - [ ] POSIX
 - [ ] Filesystem
-    - VFS
-    - FAT32
+    - [ ] VFS
+    - [ ] FAT32
 - [ ] Userspace
     - [ ] user program loading
     - [ ] dynamic linking
