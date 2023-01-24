@@ -5,7 +5,6 @@
 //! Adapted from https://github.com/rcore-os/rCore/blob/master/kernel/src/sync/mutex.rs
 
 use core::cell::UnsafeCell;
-use core::fmt;
 use core::mem::MaybeUninit;
 use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
@@ -52,7 +51,7 @@ impl<T: ?Sized, S: MutexSupport> Mutex<T, S> {
         // on success load in-order, store relaxed
         // on failure relaxed
         while self.locked.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-            != Err(false)
+            != Ok(false)
         {
             let mut try_count = 0;
             // Wait until the lock looks unlocked before retrying
@@ -106,7 +105,7 @@ impl<T: ?Sized, S: MutexSupport> Mutex<T, S> {
         };
         if initialization == 1
             || self.support_init.compare_exchange(0, 1, Ordering::Acquire, Ordering::Relaxed)
-                != Err(0)
+                != Ok(0)
         {
             // Wait for another thread to initialize
             while self.support_init.load(Ordering::Acquire) == 1 {

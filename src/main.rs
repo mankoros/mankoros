@@ -2,14 +2,17 @@
 #![no_main] // disable all Rust-level entry points
 #![feature(naked_functions)]
 #![feature(asm_const)]
-#![allow(unaligned_references)]
+#![feature(panic_info_message)]
 
-use core::arch::asm;
 use core::panic::PanicInfo;
+use lazy_static::lazy_static;
 
-mod sync {
-    pub mod mutex;
-}
+mod driver;
+mod sync;
+mod utils;
+
+use driver::uart::Uart;
+use sync::SpinLock;
 
 /// Assembly entry point
 ///
@@ -18,7 +21,8 @@ mod sync {
 #[no_mangle]
 #[link_section = ".text.entry"]
 unsafe extern "C" fn _start() -> ! {
-    const STACK_SIZE: usize = 4096;
+    // 32K large init stack
+    const STACK_SIZE: usize = 32 * 1024;
 
     #[link_section = ".bss.stack"]
     static mut STACK: [u8; STACK_SIZE] = [0u8; STACK_SIZE];
@@ -33,30 +37,40 @@ unsafe extern "C" fn _start() -> ! {
     )
 }
 
+// Static memory
+
+// Init uart, called uart0
+lazy_static! {
+    pub static ref UART0: SpinLock<Uart> = {
+        let mut port = unsafe { Uart::new(0x1000_0000) };
+        port.init();
+        SpinLock::new(port)
+    };
+}
+
 /// Rust entry point
 ///
 ///
 #[no_mangle]
 pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
-    // #0 core is responsible for init
-    if hart_id != 0 {
-        support_hart_resume(hart_id, 0);
-    }
+    println!("Hart {} booting up", hart_id);
 
-    panic!("正常关机")
-}
+    // Shutdown
+    sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
 
-/// Other core into this function
-///
-///
-extern "C" fn support_hart_resume(_hart_id: usize, _param: usize) {
-    loop {
-        unsafe { asm!("wfi") }
-    }
+    unreachable!();
 }
 
 /// This function is called on panic.
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
+fn panic(info: &PanicInfo) -> ! {
+    match info.message() {
+        Some(s) => {
+            println!("Panic: {}", s);
+        }
+        None => {
+            println!("Unknown panic: {:?}", info);
+        }
+    }
     loop {}
 }

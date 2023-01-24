@@ -11,10 +11,10 @@ CPUS		:= 4
 
 .PHONY: doc kernel build clean qemu run
 
-build: $(BIN_FILE)
+build: kernel $(BIN_FILE)
+
 doc:
 	@cargo doc --document-private-items
-
 kernel:
 	@cargo build
 
@@ -26,6 +26,7 @@ asm:
 
 clean:
 	@cargo clean
+	@rm -rf $(BIN_FILE)
 
 # launch qemu
 # -kernel will give control to 0x80000000
@@ -36,6 +37,15 @@ qemu: build
             -bios default 		\
 			-smp $(CPUS) 		\
 			-kernel $(BIN_FILE)
+
+debug: build
+	@qemu-system-riscv64 		\
+            -machine virt 		\
+            -nographic 			\
+            -bios default 		\
+			-smp $(CPUS) 		\
+			-kernel $(BIN_FILE) \
+			-s -S
 
 # build and run
 run: build qemu
