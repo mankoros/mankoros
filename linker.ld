@@ -41,13 +41,14 @@ SECTIONS
     }
     . = ALIGN(4K);
 
-    bss_start = .;
     .bss : {
         *(.bss.stack)
-        sbss = .;
+        /* Actual BSS start after stack */
+        bss_start = .;
         *(.bss .bss.*)
         *(.sbss .sbss.*)
     }
+    bss_end = .;
 
     . = ALIGN(4K);
     kernel_end = .;

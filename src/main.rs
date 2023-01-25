@@ -62,6 +62,8 @@ const BOOT_MSG: &str = r"
 ///
 #[no_mangle]
 pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
+    // Clear BSS before anything else
+    clear_bss();
     // Print boot message
     println!("{}", BOOT_MSG);
     // Print current boot hart
@@ -73,16 +75,36 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     unreachable!();
 }
 
+/// Clear BSS segment at start up
+///
+///
+fn clear_bss() {
+    // linker.ld symbols
+    extern "C" {
+        fn bss_start();
+        fn bss_end();
+    }
+    (bss_start as usize..bss_end as usize)
+        .for_each(|a| unsafe { (a as *mut u8).write_volatile(0) });
+}
+
 /// This function is called on panic.
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    match info.message() {
-        Some(s) => {
-            println!("Panic: {}", s);
-        }
-        None => {
+    if let Some(location) = info.location() {
+        println!(
+            "Panic at {}:{}, msg: {}",
+            location.file(),
+            location.line(),
+            info.message().unwrap()
+        );
+    } else {
+        if let Some(msg) = info.message() {
+            println!("Panicked: {}", msg);
+        } else {
             println!("Unknown panic: {:?}", info);
         }
     }
+
     loop {}
 }
