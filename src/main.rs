@@ -7,6 +7,7 @@
 use core::panic::PanicInfo;
 use lazy_static::lazy_static;
 
+mod boot;
 mod driver;
 mod sync;
 mod utils;
@@ -48,44 +49,26 @@ lazy_static! {
     };
 }
 
-const BOOT_MSG: &str = r"
- __  __             _               ___  ____  
-|  \/  | __ _ _ __ | | _____  _ __ / _ \/ ___| 
-| |\/| |/ _` | '_ \| |/ / _ \| '__| | | \___ \ 
-| |  | | (_| | | | |   < (_) | |  | |_| |___) |
-|_|  |_|\__,_|_| |_|_|\_\___/|_|   \___/|____/ 
-
-";
-
 /// Rust entry point
 ///
 ///
 #[no_mangle]
 pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     // Clear BSS before anything else
-    clear_bss();
+    boot::clear_bss();
     // Print boot message
-    println!("{}", BOOT_MSG);
+    boot::print_boot_msg();
     // Print current boot hart
-    println!("Hart {} booting up", hart_id);
+    println!("Hart {} init booting up", hart_id);
+
+    // Get hart info
+    let hart_cnt = boot::get_hart_status();
+    println!("Total harts: {}", hart_cnt);
 
     // Shutdown
     sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
 
     unreachable!();
-}
-
-/// Clear BSS segment at start up
-///
-///
-fn clear_bss() {
-    // linker.ld symbols
-    extern "C" {
-        fn bss_start();
-        fn bss_end();
-    }
-    (bss_start as usize..bss_end as usize)
-        .for_each(|a| unsafe { (a as *mut u8).write_volatile(0) });
 }
 
 /// This function is called on panic.
