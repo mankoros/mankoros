@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2021"
 authors = [
     "Easton Man <manyang.me@outlook.com>",
-    "Origami404 <Origami404@foxmail.com>"
+    "Origami404 <Origami404@foxmail.com>",
+    "Sora Shu <sorashu@outlook.com>"
 ]
 
 [profile.dev]
