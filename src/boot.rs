@@ -1,4 +1,3 @@
-use crate::panic;
 /// Copyright (c) 2023 Easton Man
 ///
 /// Boot time things

@@ -9,10 +9,12 @@ use lazy_static::lazy_static;
 
 mod boot;
 mod driver;
+mod logging;
 mod sync;
 mod utils;
 
 use driver::uart::Uart;
+use log::{error, info, warn};
 use sync::SpinLock;
 
 /// Assembly entry point
@@ -23,7 +25,7 @@ use sync::SpinLock;
 #[link_section = ".text.entry"]
 unsafe extern "C" fn _start() -> ! {
     // 32K large init stack
-    const STACK_SIZE: usize = 32 * 1024;
+    const STACK_SIZE: usize = 320 * 1024;
 
     #[link_section = ".bss.stack"]
     static mut STACK: [u8; STACK_SIZE] = [0u8; STACK_SIZE];
@@ -60,6 +62,13 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     boot::print_boot_msg();
     // Print current boot hart
     println!("Hart {} init booting up", hart_id);
+
+    // Initial logging support
+    logging::init();
+
+    info!("info");
+    warn!("warn");
+    error!("error");
 
     // Get hart info
     let hart_cnt = boot::get_hart_status();
