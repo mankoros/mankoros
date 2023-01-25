@@ -12,6 +12,10 @@ MankorOS is a [RISC-V](https://riscv.org/) kernel written in [Rust](https://www.
 - [ ] Console
     - [x] UART driver (2023-01-24)
     - [x] print! and panic! macro (2023-01-24)
+    - [ ] logging system
+        - [ ] debug!, info!, and error!
+        - [ ] colorful output
+        - [ ] log level support
     - [ ] initialize using device tree
     - [ ] UART input
 - [ ] Interrupt
