@@ -26,7 +26,7 @@ MankorOS is a [RISC-V](https://riscv.org/) kernel written in [Rust](https://www.
         - [ ] global TICK and HZ
 - [ ] Memory management
     - [ ] device tree parsing
-    - [ ] physical memory management
+    - [x] physical memory management (2023-01-26 EastonMan)
     - [ ] enable paging
     - [x] global allocator (2023-01-26 Origami404)
     - [ ] auto growing kernel heap
