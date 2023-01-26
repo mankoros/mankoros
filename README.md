@@ -7,15 +7,15 @@ MankorOS is a [RISC-V](https://riscv.org/) kernel written in [Rust](https://www.
 
 ## RoadMap
 - [ ] Mutex
-    - [x] simple spinlock (2023-01-24)
+    - [x] simple spinlock (2023-01-24 EastonMan)
     - [ ] disable interrupt
 - [ ] Console
-    - [x] UART driver (2023-01-24)
-    - [x] print! and panic! macro (2023-01-24)
+    - [x] UART driver (2023-01-24 EastonMan)
+    - [x] print! and panic! macro (2023-01-24 EastonMan)
     - [ ] logging system
-        - [x] info!, warn! and error! (2023-01-25)
-        - [x] colorful output (2023-01-25)
-        - [x] log level support (2023-01-25)
+        - [x] info!, warn! and error! (2023-01-25 EastonMan)
+        - [x] colorful output (2023-01-25 EastonMan)
+        - [x] log level support (2023-01-25 EastonMan)
         - [ ] timestamp
     - [ ] initialize using device tree
     - [ ] UART input
@@ -28,7 +28,8 @@ MankorOS is a [RISC-V](https://riscv.org/) kernel written in [Rust](https://www.
     - [ ] device tree parsing
     - [ ] physical memory management
     - [ ] enable paging
-    - [ ] global allocator
+    - [x] global allocator (2023-01-26 Origami404)
+    - [ ] auto growing kernel heap
 - [ ] Process
     - [ ] process infra
     - [ ] scheduler
