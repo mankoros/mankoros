@@ -20,7 +20,7 @@ mod sync;
 mod utils;
 
 use driver::uart::Uart;
-use log::{error, info, warn};
+use log::info;
 use memory::frame;
 use memory::heap_allocator::init_heap;
 use sync::SpinLock;

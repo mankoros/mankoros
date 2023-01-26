@@ -1,5 +1,5 @@
 TARGET      := riscv64gc-unknown-none-elf
-MODE        := release
+MODE        := debug
 KERNEL_FILE := target/$(TARGET)/$(MODE)/mankoros
 BIN_FILE    := kernel.bin
 
