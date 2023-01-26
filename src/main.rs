@@ -3,6 +3,10 @@
 #![feature(naked_functions)]
 #![feature(asm_const)]
 #![feature(panic_info_message)]
+#![feature(alloc_error_handler)]
+
+#[macro_use]
+extern crate alloc;
 
 use core::panic::PanicInfo;
 use lazy_static::lazy_static;
@@ -10,11 +14,13 @@ use lazy_static::lazy_static;
 mod boot;
 mod driver;
 mod logging;
+mod memory;
 mod sync;
 mod utils;
 
 use driver::uart::Uart;
 use log::{error, info, warn};
+use memory::heap_allocator::init_heap;
 use sync::SpinLock;
 
 /// Assembly entry point
@@ -65,6 +71,9 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
 
     // Initial logging support
     logging::init();
+
+    // Initial memory system
+    init_heap();
 
     info!("info");
     warn!("warn");
