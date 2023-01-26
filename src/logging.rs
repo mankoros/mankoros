@@ -7,7 +7,7 @@ use core::fmt;
 
 use log::{self, Level, LevelFilter, Log, Metadata, Record};
 
-// Currently only error, warn and info is used
+// Currently only error, warn, info and debug is used
 // Any lower level is ignored
 const LOG_LEVEL: &str = "info";
 
@@ -18,6 +18,7 @@ pub fn init() {
         "error" => LevelFilter::Error,
         "warn" => LevelFilter::Warn,
         "info" => LevelFilter::Info,
+        "debug" => LevelFilter::Debug,
         _ => LevelFilter::Off,
     })
 }

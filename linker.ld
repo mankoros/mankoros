@@ -41,6 +41,7 @@ SECTIONS
     }
     . = ALIGN(4K);
 
+    init_kstack_start = .;
     .bss : {
         *(.bss.stack)
         /* Actual BSS start after stack */

@@ -12,6 +12,7 @@ use core::panic::PanicInfo;
 use lazy_static::lazy_static;
 
 mod boot;
+mod consts;
 mod driver;
 mod logging;
 mod memory;
@@ -20,8 +21,11 @@ mod utils;
 
 use driver::uart::Uart;
 use log::{error, info, warn};
+use memory::frame;
 use memory::heap_allocator::init_heap;
 use sync::SpinLock;
+
+use consts::memlayout;
 
 /// Assembly entry point
 ///
@@ -31,7 +35,7 @@ use sync::SpinLock;
 #[link_section = ".text.entry"]
 unsafe extern "C" fn _start() -> ! {
     // 32K large init stack
-    const STACK_SIZE: usize = 320 * 1024;
+    const STACK_SIZE: usize = 32 * 1024;
 
     #[link_section = ".bss.stack"]
     static mut STACK: [u8; STACK_SIZE] = [0u8; STACK_SIZE];
@@ -71,17 +75,22 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
 
     // Initial logging support
     logging::init();
+    // Print boot memory layour
+    memlayout::print_memlayout();
 
     // Initial memory system
+    frame::init();
     init_heap();
 
-    info!("info");
-    warn!("warn");
-    error!("error");
+    // Test the physical frame allocator
+    let first_frame = frame::alloc_frame().unwrap();
+    let kernel_end = memlayout::kernel_end as usize;
+    assert!(first_frame == kernel_end);
+    info!("First available frame: 0x{:x}", first_frame);
 
     // Get hart info
     let hart_cnt = boot::get_hart_status();
-    println!("Total harts: {}", hart_cnt);
+    info!("Total harts: {}", hart_cnt);
 
     // Shutdown
     sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
