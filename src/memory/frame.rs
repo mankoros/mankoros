@@ -7,14 +7,9 @@
 use bitmap_allocator::BitAlloc;
 
 use crate::consts::memlayout;
+use crate::consts::{MAX_PHYSICAL_FRAMES, PAGE_SIZE};
 use crate::sync::SpinLock;
 use log::*;
-
-const PAGE_SIZE: usize = 1usize << 12;
-
-const MAX_PHYSICAL_MEMORY: usize = 1024 * 1024 * 1024; // use 1G for now
-
-const MAX_PHYSICAL_FRAMES: usize = MAX_PHYSICAL_MEMORY / PAGE_SIZE;
 
 // Support 64GiB (?)
 pub type FrameAllocator = bitmap_allocator::BitAlloc16M;
