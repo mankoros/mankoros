@@ -7,6 +7,7 @@ use log::info;
 extern "C" {
     pub fn kernel_start();
     pub fn text_start();
+    pub fn text_end();
     pub fn rodata_start();
     pub fn data_start();
     pub fn init_kstack_start();

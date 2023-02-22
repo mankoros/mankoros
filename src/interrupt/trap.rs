@@ -27,6 +27,6 @@ pub fn init() {
 pub fn rust_trap_handler() -> ! {
     let cause = scause::read().cause();
     let epc = sepc::read();
-    println!("trap: cause: {:?}, epc: 0x{:#x}", cause, epc);
+    info!("trap: cause: {:?}, epc: 0x{:#x}", cause, epc);
     panic!("trap handled!");
 }

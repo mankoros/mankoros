@@ -52,5 +52,12 @@ SECTIONS
     bss_end = .;
 
     . = ALIGN(4K);
+    /* Inserting these two lines */
+    __eh_frame = .;
+    /* before .eh_frame rule */
+    .eh_frame : { 
+        *(.eh_frame.*) 
+    }
+    . = ALIGN(4K);
     kernel_end = .;
 }

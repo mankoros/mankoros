@@ -5,6 +5,7 @@ BIN_FILE    := kernel.bin
 
 OBJDUMP     := rust-objdump --arch-name=riscv64
 OBJCOPY     := rust-objcopy --binary-architecture=riscv64
+ADDR2LINE 	:= riscv64-linux-gnu-addr2line
 
 CPUS		:= 4
 MEM_SIZE	:= 1G
@@ -27,8 +28,16 @@ doc:
 kernel:
 	@cargo build $(CARGO_BUILD_ARGS)
 
+ifeq ($(ADDR),)
+addr2line:
+	@echo "Usage: make addr2line ADDR=<addr>"
+else 
+addr2line:
+	$(ADDR2LINE) -e $(KERNEL_FILE) $(ADDR)
+endif
+
 $(BIN_FILE): kernel
-	@$(OBJCOPY) $(KERNEL_FILE) --strip-all -O binary $@
+	@$(OBJCOPY) $(KERNEL_FILE) -O binary $@
 
 asm:
 	@$(OBJDUMP) -d $(KERNEL_FILE) | less

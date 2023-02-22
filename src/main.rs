@@ -8,8 +8,10 @@
 extern crate alloc;
 
 use core::panic::PanicInfo;
+use core::sync::atomic::{AtomicBool, AtomicUsize};
 use lazy_static::lazy_static;
 
+mod backtrace;
 mod boot;
 mod consts;
 mod driver;
@@ -20,7 +22,7 @@ mod sync;
 mod utils;
 
 use driver::uart::Uart;
-use log::info;
+use log::{error, info};
 use memory::frame;
 use memory::heap_allocator::init_heap;
 use riscv::asm;
@@ -106,11 +108,13 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     unreachable!();
 }
 
+static PANIC_COUNT: AtomicUsize = AtomicUsize::new(0);
+
 /// This function is called on panic.
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     if let Some(location) = info.location() {
-        println!(
+        error!(
             "Panic at {}:{}, msg: {}",
             location.file(),
             location.line(),
@@ -118,11 +122,18 @@ fn panic(info: &PanicInfo) -> ! {
         );
     } else {
         if let Some(msg) = info.message() {
-            println!("Panicked: {}", msg);
+            error!("Panicked: {}", msg);
         } else {
-            println!("Unknown panic: {:?}", info);
+            error!("Unknown panic: {:?}", info);
         }
     }
+
+    if PANIC_COUNT.fetch_add(1, core::sync::atomic::Ordering::SeqCst) >= 1 {
+        error!("Panicked while processing panic. Very Wrong!");
+        loop {}
+    }
+
+    backtrace::backtrace();
 
     loop {}
 }

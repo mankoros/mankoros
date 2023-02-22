@@ -159,7 +159,7 @@ _to_kernel:
 
 .section .text
     .globl __smode_traps
-    .align 4 # RISC-V requires stvec is 4 bytes aligned
+    .balign 4 # RISC-V requires stvec is 4 bytes aligned
 __smode_traps:
     SAVE_ALL
     mv a0, sp
