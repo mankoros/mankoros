@@ -7,6 +7,7 @@ OBJDUMP     := rust-objdump --arch-name=riscv64
 OBJCOPY     := rust-objcopy --binary-architecture=riscv64
 
 CPUS		:= 4
+MEM_SIZE	:= 1G
 
 MAX_BUILD_JOBS	:= 8
 
@@ -43,6 +44,7 @@ qemu: build
             -machine virt 		\
             -nographic 			\
             -bios default 		\
+			-m $(MEM_SIZE)		\
 			-smp $(CPUS) 		\
 			-kernel $(BIN_FILE)
 
@@ -51,6 +53,7 @@ debug: build
             -machine virt 		\
             -nographic 			\
             -bios default 		\
+			-m $(MEM_SIZE)		\
 			-smp $(CPUS) 		\
 			-kernel $(BIN_FILE) \
 			-s -S
