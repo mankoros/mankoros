@@ -13,6 +13,7 @@ use lazy_static::lazy_static;
 mod boot;
 mod consts;
 mod driver;
+mod interrupt;
 mod logging;
 mod memory;
 mod sync;
@@ -22,6 +23,7 @@ use driver::uart::Uart;
 use log::info;
 use memory::frame;
 use memory::heap_allocator::init_heap;
+use riscv::asm;
 use sync::SpinLock;
 
 use consts::memlayout;
@@ -90,6 +92,13 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     // Get hart info
     let hart_cnt = boot::get_hart_status();
     info!("Total harts: {}", hart_cnt);
+
+    // Initialize interrupt controller
+    interrupt::trap::init();
+
+    unsafe {
+        asm::ebreak();
+    }
 
     // Shutdown
     sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
