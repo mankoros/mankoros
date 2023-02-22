@@ -8,7 +8,7 @@
 extern crate alloc;
 
 use core::panic::PanicInfo;
-use core::sync::atomic::{AtomicBool, AtomicUsize};
+use core::sync::atomic::AtomicUsize;
 use lazy_static::lazy_static;
 
 mod backtrace;
@@ -25,7 +25,6 @@ use driver::uart::Uart;
 use log::{error, info};
 use memory::frame;
 use memory::heap_allocator::init_heap;
-use riscv::asm;
 use sync::SpinLock;
 
 use consts::memlayout;
@@ -44,7 +43,10 @@ unsafe extern "C" fn _start() -> ! {
     static mut STACK: [u8; STACK_SIZE] = [0u8; STACK_SIZE];
 
     core::arch::asm!(
-        "   la  sp, {stack} + {stack_size}
+        "
+            la  sp, {stack} + {stack_size}
+            sd  x0, -16(sp)
+            sd  x0, -8(sp)
             j   rust_main
         ",
         stack_size = const STACK_SIZE,
@@ -98,9 +100,14 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     // Initialize interrupt controller
     interrupt::trap::init();
 
+    // Initialize timer
+    interrupt::timer::init();
+
     unsafe {
-        asm::ebreak();
+        riscv::asm::ebreak();
     }
+
+    loop {}
 
     // Shutdown
     sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
