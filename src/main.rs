@@ -80,6 +80,7 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
 
     // Initial logging support
     logging::init();
+    info!("Logging initialised");
     // Print boot memory layour
     memlayout::print_memlayout();
 
