@@ -5,4 +5,5 @@ target = "riscv64gc-unknown-none-elf"
 rustflags = [
     "-Clink-arg=-Tlinker.ld", 
     "-Cforce-frame-pointers=yes",
+    "-Cforce-unwind-tables",
 ]

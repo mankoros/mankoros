@@ -52,12 +52,18 @@ SECTIONS
     bss_end = .;
 
     . = ALIGN(4K);
-    /* Inserting these two lines */
     __eh_frame = .;
-    /* before .eh_frame rule */
     .eh_frame : { 
         *(.eh_frame.*) 
     }
+    .eh_frame_hdr : {
+        *(.eh_frame_hdr.*)
+    }
     . = ALIGN(4K);
     kernel_end = .;
+
+    __eh_frame_hdr_start = ADDR(.eh_frame_hdr);
+    __eh_frame_hdr_end = ADDR(.eh_frame_hdr) + SIZEOF(.eh_frame_hdr);
+    __eh_frame_start = ADDR(.eh_frame);
+    __eh_frame_end = ADDR(.eh_frame) + SIZEOF(.eh_frame);
 }

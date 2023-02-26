@@ -5,7 +5,10 @@ BIN_FILE    := kernel.bin
 
 OBJDUMP     := rust-objdump --arch-name=riscv64
 OBJCOPY     := rust-objcopy --binary-architecture=riscv64
-ADDR2LINE 	:= riscv64-linux-gnu-addr2line
+ADDR2LINE 	:= llvm-addr2line
+
+TARGET_CC	:= clang
+TARGET_CXX	:= clang++
 
 CPUS		:= 4
 MEM_SIZE	:= 1G
@@ -20,6 +23,7 @@ CARGO_BUILD_ARGS += --release
 endif
 
 .PHONY: doc kernel build clean qemu run
+.EXPORT_ALL_VARIABLES:
 
 build: kernel $(BIN_FILE)
 
