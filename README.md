@@ -20,10 +20,11 @@ MankorOS is a [RISC-V](https://riscv.org/) kernel written in [Rust](https://www.
     - [ ] initialize using device tree
     - [ ] UART input
 - [ ] Interrupt
-    - [ ] interrupt infra
-    - [ ] interrupt handler
-    - [ ] timer interrupt
-        - [ ] global TICK and HZ
+    - [x] interrupt infra (2023-02-22 EastonMan)
+    - [x] interrupt handler (2023-02-22 EastonMan)
+    - [x] timer interrupt
+        - [x] global TICK (2023-02-22 EastonMan)
+        - [ ] configurable HZ value
 - [ ] Memory management
     - [ ] device tree parsing
     - [x] physical memory management (2023-01-26 EastonMan)
