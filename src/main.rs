@@ -20,6 +20,7 @@ mod logging;
 mod memory;
 mod sync;
 mod utils;
+mod syscall;
 
 use driver::uart::Uart;
 use log::{error, info};
