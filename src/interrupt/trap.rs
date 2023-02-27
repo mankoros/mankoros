@@ -5,6 +5,8 @@ use riscv::register::{
     sscratch, sstatus, stvec,
 };
 
+use crate::syscall;
+
 use super::{context, timer};
 use log::info;
 
@@ -31,12 +33,29 @@ fn breakpoint_handler(trapframe: &mut context::TrapFrame) {
     trapframe.sepc += 2;
 }
 
+fn syscall_handler(trapframe: &mut context::TrapFrame) {
+    info!("Syscall hit");
+    trapframe.sepc += 4;
+    trapframe.x[10] = syscall::syscall(
+        trapframe.x[17],
+        [
+            trapframe.x[10],
+            trapframe.x[11],
+            trapframe.x[12],
+            trapframe.x[13],
+            trapframe.x[14],
+            trapframe.x[15],
+        ],
+    ) as usize;
+}
+
 // Main S-Mode trap handler
 #[no_mangle]
 pub fn rust_trap_handler(trapframe: &mut context::TrapFrame) {
     // Dispatch to the appropriate handler
     match trapframe.scause.cause() {
         Trap::Exception(Exception::Breakpoint) => breakpoint_handler(trapframe),
+        Trap::Exception(Exception::UserEnvCall) => syscall_handler(trapframe),
         Trap::Interrupt(Interrupt::SupervisorTimer) => timer::timer_handler(),
         _ => {
             panic!(
