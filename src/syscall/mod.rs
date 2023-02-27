@@ -1,6 +1,11 @@
+mod fs;
+
+use fs::*;
+
 /// 分派系统调用
 pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
     match syscall_id {
+        SYSCALL_WRITE => sys_write(args[0], args[1] as *const u8, args[2]),
         _ => panic!("Unknown syscall_id: {}", syscall_id),
     }
 }
