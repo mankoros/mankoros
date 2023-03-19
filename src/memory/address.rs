@@ -1,7 +1,8 @@
 //! Address type infrastructure
 //!
 
-use core::ops::Add;
+use core::fmt;
+use core::ops::{Add, AddAssign, Sub, SubAssign};
 
 use crate::consts;
 
@@ -33,6 +34,13 @@ impl PhysAddr {
     }
     pub fn page_offset(&self) -> usize {
         self.0 & consts::PAGE_MASK
+    }
+
+    pub fn as_ptr(&self) -> *const u8 {
+        self.0 as *const u8
+    }
+    pub fn as_mut_ptr(&self) -> *mut u8 {
+        self.0 as *mut u8
     }
 }
 impl From<PhysAddr> for usize {
@@ -74,5 +82,117 @@ impl From<PhysAddr> for PhysPageNum {
     fn from(v: PhysAddr) -> Self {
         assert_eq!(v.page_offset(), 0);
         v.page_num_down()
+    }
+}
+
+// impl for VirtAddr
+impl From<usize> for VirtAddr {
+    fn from(v: usize) -> Self {
+        Self(v)
+    }
+}
+
+impl From<VirtAddr> for usize {
+    fn from(v: VirtAddr) -> Self {
+        v.0
+    }
+}
+
+// + - operators
+impl const Add<usize> for PhysAddr {
+    type Output = Self;
+    #[inline]
+    fn add(self, rhs: usize) -> Self {
+        Self(self.0 + rhs)
+    }
+}
+
+impl const AddAssign<usize> for PhysAddr {
+    #[inline]
+    fn add_assign(&mut self, rhs: usize) {
+        *self = *self + rhs;
+    }
+}
+
+impl const Sub<usize> for PhysAddr {
+    type Output = Self;
+    #[inline]
+    fn sub(self, rhs: usize) -> Self {
+        Self(self.0 - rhs)
+    }
+}
+
+impl const SubAssign<usize> for PhysAddr {
+    #[inline]
+    fn sub_assign(&mut self, rhs: usize) {
+        *self = *self - rhs;
+    }
+}
+
+impl const Add<usize> for VirtAddr {
+    type Output = Self;
+    #[inline]
+    fn add(self, rhs: usize) -> Self {
+        Self(self.0 + rhs)
+    }
+}
+
+impl const AddAssign<usize> for VirtAddr {
+    #[inline]
+    fn add_assign(&mut self, rhs: usize) {
+        *self = *self + rhs;
+    }
+}
+
+impl const Sub<usize> for VirtAddr {
+    type Output = Self;
+    #[inline]
+    fn sub(self, rhs: usize) -> Self {
+        Self(self.0 - rhs)
+    }
+}
+
+impl SubAssign<usize> for VirtAddr {
+    #[inline]
+    fn sub_assign(&mut self, rhs: usize) {
+        *self = *self - rhs;
+    }
+}
+
+// Debug formatter print
+impl fmt::Debug for PhysAddr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_fmt(format_args!("PA:{:#x}", self.0))
+    }
+}
+
+impl fmt::Debug for VirtAddr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_fmt(format_args!("VA:{:#x}", self.0))
+    }
+}
+
+impl fmt::LowerHex for PhysAddr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_fmt(format_args!("PA:{:#x}", self.0))
+    }
+}
+
+impl fmt::UpperHex for PhysAddr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_fmt(format_args!("PA:{:#X}", self.0))
+    }
+}
+
+impl fmt::LowerHex for VirtAddr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_fmt(format_args!("VA:{:#x}", self.0))
+    }
+}
+
+impl fmt::UpperHex for VirtAddr {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_fmt(format_args!("VA:{:#X}", self.0))
     }
 }

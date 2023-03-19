@@ -4,6 +4,8 @@
 #![feature(asm_const)]
 #![feature(panic_info_message)]
 #![feature(alloc_error_handler)]
+#![feature(const_trait_impl)]
+#![feature(const_mut_refs)]
 
 extern crate alloc;
 
