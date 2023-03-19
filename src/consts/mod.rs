@@ -14,4 +14,10 @@ pub const PA_WIDTH_SV39: usize = 56;
 
 pub const PPN_WIDTH_SV39: usize = PA_WIDTH_SV39 - PAGE_SIZE_BITS;
 
-pub const PPN_MASK_SV39: usize = ((1usize << 54) - 1) & !PAGE_MASK;
+pub const PADDR_PPN_MASK_SV39: usize = ((1usize << 56) - 1) & !PAGE_MASK;
+
+pub const PTE_FLAGS_BITS: usize = 10;
+
+pub const PTE_FLAGS_MASK: usize = (1usize << PTE_FLAGS_BITS) - 1;
+
+pub const PTE_PPN_MASK_SV39: usize = ((1usize << 54) - 1) & !PTE_FLAGS_MASK;

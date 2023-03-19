@@ -12,6 +12,7 @@ use crate::{
     },
 };
 
+use alloc::{vec, vec::Vec};
 use log::trace;
 
 use super::pte::{self, PTEFlags, PageTableEntry};
@@ -37,18 +38,18 @@ fn p1_index(vaddr: VirtAddr) -> usize {
 
 pub struct PageTable {
     root_paddr: PhysAddr,
+    intrm_tables: Vec<PhysAddr>,
 }
 
 impl PageTable {
-    pub fn new(root_paddr: PhysAddr) -> Self {
+    pub fn new() -> Self {
         // Allocate 1 page for the root page table
         let mut root_paddr: PhysAddr = Self::alloc_table();
 
-        // Fill with zeros
-        unsafe {
-            core::ptr::write_bytes(root_paddr.as_mut_ptr(), 0, consts::PAGE_SIZE as usize);
+        PageTable {
+            root_paddr,
+            intrm_tables: vec![root_paddr],
         }
-        PageTable { root_paddr }
     }
 
     pub const fn root_paddr(&self) -> PhysAddr {
@@ -110,7 +111,12 @@ impl PageTable {
 impl PageTable {
     // Allocates a page for a table
     fn alloc_table() -> PhysAddr {
-        frame::alloc_frame().expect("failed to allocate page").into()
+        let paddr = frame::alloc_frame().expect("failed to allocate page");
+        // Fill with zeros
+        unsafe {
+            core::ptr::write_bytes(paddr as *mut u8, 0, consts::PAGE_SIZE as usize);
+        }
+        paddr.into()
     }
     fn table_of<'a>(&self, paddr: PhysAddr) -> &'a [PageTableEntry] {
         let ptr = paddr.as_ptr() as _;
@@ -138,7 +144,9 @@ impl PageTable {
     ) -> &'a mut [PageTableEntry] {
         if !pte.is_valid() {
             let paddr = Self::alloc_table();
-            !todo!();
+            self.intrm_tables.push(paddr.into());
+            *pte = PageTableEntry::new(paddr, PTEFlags::V);
+            self.table_of_mut(paddr)
         } else {
             self.next_table_mut(pte)
         }
@@ -162,5 +170,13 @@ impl PageTable {
         let p1 = self.next_table_mut_or_create(p2e);
         let p1e = &mut p1[p1_index(vaddr)];
         p1e
+    }
+}
+
+impl Drop for PageTable {
+    fn drop(&mut self) {
+        for frame in &self.intrm_tables {
+            frame::dealloc_frame((*frame).into());
+        }
     }
 }

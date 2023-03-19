@@ -5,6 +5,9 @@
 // https://gitlab.eduxiji.net/DarkAngelEX/oskernel2022-ftlos/-/blob/master/code/kernel/src/memory/page_table/mod.rs
 
 use bitflags::bitflags;
+use log::{debug, trace};
+
+use core::fmt;
 
 use crate::consts;
 use crate::memory::address::{PhysAddr, PhysPageNum};
@@ -23,6 +26,7 @@ bitflags! {
         const A = 1 << 6; // access, set to 1 after r/w/x
         const D = 1 << 7; // dirty, set to 1 after write
         const SHARED = 1 << 8; // copy-on-write
+        const RSW2 = 1 << 9; // software reserved 2
     }
 }
 
@@ -54,7 +58,7 @@ impl PageTableEntry {
     // Create a new PageTableEntry with the given physical address and permissions
     pub fn new(paddr: PhysAddr, perm: PTEFlags) -> Self {
         PageTableEntry {
-            bits: (usize::from(paddr.round_down()) >> 2) & consts::PPN_MASK_SV39
+            bits: ((usize::from(paddr.round_down()) >> 2) & consts::PTE_PPN_MASK_SV39)
                 | perm.bits as usize,
         }
     }
@@ -68,7 +72,7 @@ impl PageTableEntry {
 
     // Get the physical page number from the PageTableEntry
     pub fn ppn(&self) -> PhysPageNum {
-        PhysPageNum::from((self.bits & consts::PPN_MASK_SV39) >> 10)
+        PhysPageNum::from((self.bits & consts::PTE_PPN_MASK_SV39) >> 10)
     }
 
     // Get the physical address from the PageTableEntry
@@ -78,7 +82,9 @@ impl PageTableEntry {
 
     // Get the flags from the PageTableEntry
     pub fn flags(&self) -> PTEFlags {
-        PTEFlags::from_bits(self.bits as u16).unwrap()
+        // Hardcoded form
+        PTEFlags::from_bits((self.bits & consts::PTE_FLAGS_MASK) as u16)
+            .expect("Convert PageTableEntry to PTEFlags failed")
     }
 
     // Check if the PageTableEntry is valid
@@ -219,5 +225,15 @@ impl PageTableEntry {
         debug_assert!(self.is_valid() && self.is_directory());
         frame::dealloc_frame(self.paddr().into());
         *self = Self::EMPTY;
+    }
+}
+
+impl fmt::Debug for PageTableEntry {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut f = f.debug_struct("PageTableEntry");
+        f.field("raw", &self.bits)
+            .field("paddr", &self.paddr())
+            .field("flags", &self.flags())
+            .finish()
     }
 }

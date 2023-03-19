@@ -26,7 +26,7 @@ impl GlobalFrameAlloc {
             .lock()
             .alloc()
             .map(|id| id * PAGE_SIZE + memlayout::PHYMEM_START);
-        debug!("Allocate frame: {:x?}", ret);
+        trace!("Allocate frame: {:x?}", ret);
         ret
     }
     fn alloc_contiguous(&self, size: usize, align_log2: usize) -> Option<usize> {
@@ -35,11 +35,11 @@ impl GlobalFrameAlloc {
             .lock()
             .alloc_contiguous(size, align_log2)
             .map(|id| id * PAGE_SIZE + memlayout::PHYMEM_START);
-        debug!("Allocate frame: {:x?}", ret);
+        trace!("Allocate frame: {:x?}", ret);
         ret
     }
     fn dealloc(&self, target: usize) {
-        debug!("Deallocate frame: {:x}", target);
+        trace!("Deallocate frame: {:x}", target);
         FRAME_ALLOCATOR.lock().dealloc((target - memlayout::PHYMEM_START) / PAGE_SIZE);
     }
 }

@@ -62,7 +62,7 @@ unsafe extern "C" fn _start() -> ! {
 // Init uart, called uart0
 lazy_static! {
     pub static ref UART0: SpinLock<Uart> = {
-        let mut port = unsafe { Uart::new(0x1000_0000) };
+        let mut port = unsafe { Uart::new(memlayout::UART0_BASE) };
         port.init();
         SpinLock::new(port)
     };
@@ -95,6 +95,7 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     let kernel_end = memlayout::kernel_end as usize;
     assert!(first_frame == kernel_end);
     info!("First available frame: 0x{:x}", first_frame);
+    frame::dealloc_frame(first_frame);
 
     // Get hart info
     let hart_cnt = boot::get_hart_status();
@@ -108,6 +109,31 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
 
     unsafe {
         riscv::asm::ebreak();
+    }
+
+    // Enable paging
+    let mut kernal_page_table = memory::pagetable::pagetable::PageTable::new();
+    kernal_page_table.map_region(
+        (memlayout::kernel_start as usize).into(),
+        (memlayout::kernel_start as usize).into(),
+        memlayout::kernel_end as usize - memlayout::kernel_start as usize,
+        memory::pagetable::pte::PTEFlags::V
+            | memory::pagetable::pte::PTEFlags::R
+            | memory::pagetable::pte::PTEFlags::W
+            | memory::pagetable::pte::PTEFlags::X,
+    );
+
+    kernal_page_table.map_page(
+        memlayout::UART0_BASE.into(),
+        memlayout::UART0_BASE.into(),
+        memory::pagetable::pte::PTEFlags::V
+            | memory::pagetable::pte::PTEFlags::R
+            | memory::pagetable::pte::PTEFlags::W,
+    );
+
+    riscv::register::satp::write(kernal_page_table.root_paddr().into());
+    unsafe {
+        riscv::asm::sfence_vma_all();
     }
 
     loop {}
