@@ -23,6 +23,8 @@ mod memory;
 mod sync;
 mod syscall;
 mod utils;
+#[macro_use]
+mod xdebug;
 
 use driver::uart::Uart;
 use log::{error, info};
@@ -170,7 +172,7 @@ fn panic(info: &PanicInfo) -> ! {
         loop {}
     }
 
-    backtrace::backtrace();
+    xdebug::backtrace();
 
     loop {}
 }

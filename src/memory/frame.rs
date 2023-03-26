@@ -4,6 +4,8 @@
 //!
 //!
 //!
+use crate::here;
+
 use bitmap_allocator::BitAlloc;
 
 use crate::consts::memlayout;
@@ -23,7 +25,7 @@ impl GlobalFrameAlloc {
     fn alloc(&self) -> Option<usize> {
         // get the real address of the alloc frame
         let ret = FRAME_ALLOCATOR
-            .lock()
+            .lock(here!())
             .alloc()
             .map(|id| id * PAGE_SIZE + memlayout::PHYMEM_START);
         trace!("Allocate frame: {:x?}", ret);
@@ -32,7 +34,7 @@ impl GlobalFrameAlloc {
     fn alloc_contiguous(&self, size: usize, align_log2: usize) -> Option<usize> {
         // get the real address of the alloc frame
         let ret = FRAME_ALLOCATOR
-            .lock()
+            .lock(here!())
             .alloc_contiguous(size, align_log2)
             .map(|id| id * PAGE_SIZE + memlayout::PHYMEM_START);
         trace!("Allocate frame: {:x?}", ret);
@@ -40,17 +42,19 @@ impl GlobalFrameAlloc {
     }
     fn dealloc(&self, target: usize) {
         trace!("Deallocate frame: {:x}", target);
-        FRAME_ALLOCATOR.lock().dealloc((target - memlayout::PHYMEM_START) / PAGE_SIZE);
+        FRAME_ALLOCATOR
+            .lock(here!())
+            .dealloc((target - memlayout::PHYMEM_START) / PAGE_SIZE);
     }
 }
 
 pub fn init() {
     // Insert frames into allocator
-    FRAME_ALLOCATOR.lock().insert(0..MAX_PHYSICAL_FRAMES);
+    FRAME_ALLOCATOR.lock(here!()).insert(0..MAX_PHYSICAL_FRAMES);
     // Remove kernel occupied
     let kernel_end = memlayout::kernel_end as usize;
     let kernel_end = (kernel_end - memlayout::PHYMEM_START) / PAGE_SIZE;
-    FRAME_ALLOCATOR.lock().remove(0..kernel_end);
+    FRAME_ALLOCATOR.lock(here!()).remove(0..kernel_end);
 }
 
 pub fn alloc_frame() -> Option<usize> {

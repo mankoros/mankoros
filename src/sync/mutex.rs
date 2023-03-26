@@ -46,7 +46,7 @@ impl<T, S: MutexSupport> Mutex<T, S> {
 }
 
 impl<T: ?Sized, S: MutexSupport> Mutex<T, S> {
-    fn obtain_lock(&self) {
+    fn obtain_lock(&self, place: &str) {
         // Swap true in if old is false
         // on success load in-order, store relaxed
         // on failure relaxed
@@ -61,7 +61,7 @@ impl<T: ?Sized, S: MutexSupport> Mutex<T, S> {
                 try_count += 1;
                 if try_count == 0x100000 {
                     // Dead lock detected!
-                    panic!("dead lock detected!");
+                    panic!("dead lock detected! place: {}", place);
                 }
             }
         }
@@ -85,13 +85,13 @@ impl<T: ?Sized, S: MutexSupport> Mutex<T, S> {
     /// }
     ///
     /// ```
-    pub fn lock(&self) -> MutexGuard<T, S> {
+    pub fn lock(&self, place: &str) -> MutexGuard<T, S> {
         let support_guard = S::before_lock();
 
         // Ensure support is initialized
         self.ensure_support();
 
-        self.obtain_lock();
+        self.obtain_lock(place);
         MutexGuard {
             mutex: self,
             support_guard,

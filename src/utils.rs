@@ -1,5 +1,7 @@
 use core::fmt;
 
+use crate::here;
+
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => ($crate::utils::_print(format_args!($($arg)*)));
@@ -14,5 +16,5 @@ macro_rules! println {
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
-    crate::UART0.lock().write_fmt(args).unwrap();
+    crate::UART0.lock(here!()).write_fmt(args).unwrap();
 }
