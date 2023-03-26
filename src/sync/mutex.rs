@@ -8,6 +8,7 @@ use core::cell::UnsafeCell;
 use core::mem::MaybeUninit;
 use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use riscv::register::sstatus;
 
 /// A mutual exclusion primitive useful for protecting shared data
 ///
@@ -161,40 +162,51 @@ pub trait MutexSupport {
 
 /// Spin & no-interrupt lock
 #[derive(Debug)]
-pub struct Spin;
+pub struct SpinNoIrq;
+
+#[inline]
+pub unsafe fn enable_sie() {
+    sstatus::set_sie();
+}
+
+pub unsafe fn restore_sie(sie_before: bool) {
+    if sie_before {
+        enable_sie()
+    }
+}
+
+pub unsafe fn disable_and_store_sie() -> bool {
+    let e = sstatus::read().sie();
+    sstatus::clear_sie();
+    e
+}
 
 /// Contains sie before disable interrupt, will auto restore it when dropping
-pub struct FlagsGuard(usize);
+pub struct FlagsGuard(bool);
 
 impl Drop for FlagsGuard {
     fn drop(&mut self) {
-        unsafe { todo!("restore sie to allow interrupt") };
+        unsafe { restore_sie(self.0) };
     }
 }
 
 impl FlagsGuard {
     pub fn no_irq_region() -> Self {
-        Self(unsafe {
-            todo!("set sie to disable interrupt and store old sie");
-            0
-        })
+        Self(unsafe { disable_and_store_sie() })
     }
 }
 
-impl MutexSupport for Spin {
+impl MutexSupport for SpinNoIrq {
     type GuardData = FlagsGuard;
     fn new() -> Self {
-        Spin
+        SpinNoIrq
     }
     fn cpu_relax(&self) {
         // No relax, continue spinning
         core::hint::spin_loop();
     }
     fn before_lock() -> Self::GuardData {
-        FlagsGuard(unsafe {
-            todo!("set sie to disable interrupt and store old sie");
-            0
-        })
+        FlagsGuard(unsafe { disable_and_store_sie() })
     }
     fn after_unlock(&self) {}
 }

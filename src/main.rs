@@ -6,6 +6,7 @@
 #![feature(alloc_error_handler)]
 #![feature(const_trait_impl)]
 #![feature(const_mut_refs)]
+#![feature(sync_unsafe_cell)]
 #![allow(dead_code)]
 extern crate alloc;
 
@@ -13,13 +14,13 @@ use core::panic::PanicInfo;
 use core::sync::atomic::AtomicUsize;
 use lazy_static::lazy_static;
 
-mod backtrace;
 mod boot;
 mod consts;
 mod driver;
 mod interrupt;
 mod logging;
 mod memory;
+mod process;
 mod sync;
 mod syscall;
 mod utils;
@@ -30,7 +31,7 @@ use driver::uart::Uart;
 use log::{error, info};
 use memory::frame;
 use memory::heap_allocator::init_heap;
-use sync::SpinLock;
+use sync::SpinNoIrqLock;
 
 use consts::memlayout;
 
@@ -64,10 +65,10 @@ unsafe extern "C" fn _start() -> ! {
 
 // Init uart, called uart0
 lazy_static! {
-    pub static ref UART0: SpinLock<Uart> = {
+    pub static ref UART0: SpinNoIrqLock<Uart> = {
         let mut port = unsafe { Uart::new(memlayout::UART0_BASE) };
         port.init();
-        SpinLock::new(port)
+        SpinNoIrqLock::new(port)
     };
 }
 

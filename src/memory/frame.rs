@@ -10,13 +10,14 @@ use bitmap_allocator::BitAlloc;
 
 use crate::consts::memlayout;
 use crate::consts::{MAX_PHYSICAL_FRAMES, PAGE_SIZE};
-use crate::sync::SpinLock;
+use crate::sync::SpinNoIrqLock;
 use log::*;
 
 // Support 64GiB (?)
 pub type FrameAllocator = bitmap_allocator::BitAlloc16M;
 
-pub static FRAME_ALLOCATOR: SpinLock<FrameAllocator> = SpinLock::new(FrameAllocator::DEFAULT);
+pub static FRAME_ALLOCATOR: SpinNoIrqLock<FrameAllocator> =
+    SpinNoIrqLock::new(FrameAllocator::DEFAULT);
 
 #[derive(Debug, Clone, Copy)]
 pub struct GlobalFrameAlloc;
