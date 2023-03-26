@@ -48,7 +48,7 @@ pub fn init() {
     // Insert frames into allocator
     FRAME_ALLOCATOR.lock().insert(0..MAX_PHYSICAL_FRAMES);
     // Remove kernel occupied
-    let kernel_end = unsafe { memlayout::kernel_end as usize };
+    let kernel_end = memlayout::kernel_end as usize;
     let kernel_end = (kernel_end - memlayout::PHYMEM_START) / PAGE_SIZE;
     FRAME_ALLOCATOR.lock().remove(0..kernel_end);
 }

@@ -6,7 +6,7 @@
 #![feature(alloc_error_handler)]
 #![feature(const_trait_impl)]
 #![feature(const_mut_refs)]
-
+#![allow(dead_code)]
 extern crate alloc;
 
 use core::panic::PanicInfo;
@@ -21,8 +21,8 @@ mod interrupt;
 mod logging;
 mod memory;
 mod sync;
-mod utils;
 mod syscall;
+mod utils;
 
 use driver::uart::Uart;
 use log::{error, info};

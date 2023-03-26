@@ -168,16 +168,14 @@ pub struct FlagsGuard(usize);
 
 impl Drop for FlagsGuard {
     fn drop(&mut self) {
-        unsafe {
-            // TODO: restore sie to allow interrupt
-        };
+        unsafe { todo!("restore sie to allow interrupt") };
     }
 }
 
 impl FlagsGuard {
     pub fn no_irq_region() -> Self {
         Self(unsafe {
-            // TODO: set sie to disable interrupt and store old sie
+            todo!("set sie to disable interrupt and store old sie");
             0
         })
     }
@@ -194,7 +192,7 @@ impl MutexSupport for Spin {
     }
     fn before_lock() -> Self::GuardData {
         FlagsGuard(unsafe {
-            // TODO: set sie to disable interrupt and store old sie
+            todo!("set sie to disable interrupt and store old sie");
             0
         })
     }

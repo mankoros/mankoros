@@ -5,7 +5,6 @@
 // https://gitlab.eduxiji.net/DarkAngelEX/oskernel2022-ftlos/-/blob/master/code/kernel/src/memory/page_table/mod.rs
 
 use bitflags::bitflags;
-use log::{debug, trace};
 
 use core::fmt;
 

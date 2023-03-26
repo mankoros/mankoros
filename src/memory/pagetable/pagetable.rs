@@ -44,7 +44,7 @@ pub struct PageTable {
 impl PageTable {
     pub fn new() -> Self {
         // Allocate 1 page for the root page table
-        let mut root_paddr: PhysAddr = Self::alloc_table();
+        let root_paddr: PhysAddr = Self::alloc_table();
 
         PageTable {
             root_paddr,
