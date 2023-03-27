@@ -20,7 +20,6 @@ mod driver;
 mod interrupt;
 mod logging;
 mod memory;
-mod process;
 mod sync;
 mod syscall;
 mod utils;
