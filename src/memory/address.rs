@@ -12,10 +12,10 @@ pub struct PhysAddr(pub usize);
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct VirtAddr(pub usize);
 
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct PhysPageNum(pub usize);
 
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct VirtPageNum(pub usize);
 
 // impl for PhysAddr
@@ -88,7 +88,7 @@ impl From<PhysAddr> for PhysPageNum {
 // impl for VirtAddr
 impl From<usize> for VirtAddr {
     fn from(v: usize) -> Self {
-        Self(v)
+        Self(v & ((1 << consts::VA_WIDTH_SV39) - 1))
     }
 }
 

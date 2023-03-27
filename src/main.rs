@@ -10,8 +10,9 @@
 #![allow(dead_code)]
 extern crate alloc;
 
+use core::mem;
 use core::panic::PanicInfo;
-use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use lazy_static::lazy_static;
 
 mod boot;
@@ -28,11 +29,13 @@ mod xdebug;
 mod tools;
 
 use driver::uart::Uart;
-use log::{error, info};
+use log::{error, info, trace};
 use memory::frame;
 use memory::heap_allocator::init_heap;
+use riscv::register::satp;
 use sync::SpinNoIrqLock;
 
+use consts::address_space;
 use consts::memlayout;
 
 /// Assembly entry point
@@ -65,12 +68,19 @@ unsafe extern "C" fn _start() -> ! {
 
 // Init uart, called uart0
 lazy_static! {
-    pub static ref UART0: SpinNoIrqLock<Uart> = {
+    pub static ref EARLY_UART: SpinNoIrqLock<Uart> = {
         let mut port = unsafe { Uart::new(memlayout::UART0_BASE) };
         port.init();
         SpinNoIrqLock::new(port)
     };
+    pub static ref UART0: SpinNoIrqLock<Uart> = {
+        let mut port =
+            unsafe { Uart::new(memlayout::UART0_BASE + address_space::K_SEG_HARDWARE_BEG) };
+        port.init();
+        SpinNoIrqLock::new(port)
+    };
 }
+static KERNAL_REMAPPED: AtomicBool = AtomicBool::new(false);
 
 /// Rust entry point
 ///
@@ -111,12 +121,24 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     // Initialize timer
     interrupt::timer::init();
 
+    // Test ebreak
     unsafe {
         riscv::asm::ebreak();
     }
 
-    // Enable paging
+    remap_kernel();
+
+    loop {}
+
+    // Shutdown
+    sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
+
+    unreachable!();
+}
+
+fn remap_kernel() {
     let mut kernal_page_table = memory::pagetable::pagetable::PageTable::new();
+    // Map current position
     kernal_page_table.map_region(
         (memlayout::kernel_start as usize).into(),
         (memlayout::kernel_start as usize).into(),
@@ -125,24 +147,64 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
             | memory::pagetable::pte::PTEFlags::W
             | memory::pagetable::pte::PTEFlags::X,
     );
+    // Map new position
+    kernal_page_table.map_region(
+        (memlayout::kernel_start as usize + address_space::K_SEG_VIRT_MEM_BEG).into(),
+        (memlayout::kernel_start as usize).into(),
+        memlayout::kernel_end as usize - memlayout::kernel_start as usize,
+        memory::pagetable::pte::PTEFlags::R
+            | memory::pagetable::pte::PTEFlags::W
+            | memory::pagetable::pte::PTEFlags::X,
+    );
 
+    // Map devices
     kernal_page_table.map_page(
-        memlayout::UART0_BASE.into(),
+        (memlayout::UART0_BASE + address_space::K_SEG_HARDWARE_BEG).into(),
         memlayout::UART0_BASE.into(),
         memory::pagetable::pte::PTEFlags::R | memory::pagetable::pte::PTEFlags::W,
     );
 
-    riscv::register::satp::write(kernal_page_table.root_paddr().into());
+    // Enable paging
     unsafe {
+        riscv::register::satp::set(
+            satp::Mode::Sv39,
+            0,
+            kernal_page_table.root_paddr().page_num_down().into(),
+        );
         riscv::asm::sfence_vma_all();
     }
 
-    loop {}
+    // Jump to new position
+    kernel_jump();
 
-    // Shutdown
-    sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
+    // Set KERNEL_REMAPPED
+    KERNAL_REMAPPED.store(true, Ordering::SeqCst);
 
-    unreachable!();
+    // Unmap old position
+    // TODO: This can only be done after the phymem is remapped
+    // kernal_page_table.unmap_region(
+    //     (memlayout::kernel_start as usize).into(),
+    //     memlayout::kernel_end as usize - memlayout::kernel_start as usize,
+    // );
+
+    // Avoid drop
+    mem::forget(kernal_page_table);
+}
+
+#[naked]
+#[no_mangle]
+fn kernel_jump() {
+    unsafe {
+        core::arch::asm!(
+            "
+            li      t1, {offset}
+            add     ra, t1, ra
+            ret
+        ",
+            offset = const address_space::K_SEG_VIRT_MEM_BEG,
+            options(noreturn),
+        );
+    }
 }
 
 static PANIC_COUNT: AtomicUsize = AtomicUsize::new(0);

@@ -59,7 +59,7 @@ impl PageTable {
     // map_page maps a physical page to a virtual address
     // PTE::V is guaranteed to be set, so no need to set PTE::V
     pub fn map_page(&mut self, vaddr: VirtAddr, paddr: PhysAddr, flags: PTEFlags) {
-        let new_pte = pte::PageTableEntry::new(paddr, flags);
+        let new_pte = pte::PageTableEntry::new(paddr, PTEFlags::V | flags);
         // Get entry by vaddr
         let entry = self.get_entry_mut_or_create(vaddr);
         debug_assert!(!entry.is_valid(), "Remapping a valid page table entry");

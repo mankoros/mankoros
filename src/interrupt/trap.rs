@@ -59,8 +59,10 @@ pub fn rust_trap_handler(trapframe: &mut context::TrapFrame) {
         Trap::Interrupt(Interrupt::SupervisorTimer) => timer::timer_handler(),
         _ => {
             panic!(
-                "Unhandled S-Mode Trap, SCAUSE: {:?}",
-                trapframe.scause.cause()
+                "Unhandled S-Mode Trap, SEPC: 0x{:x}, SCAUSE: {:?}, STVAL: 0x{:x}",
+                trapframe.sepc,
+                trapframe.scause.cause(),
+                trapframe.stval,
             )
         }
     }

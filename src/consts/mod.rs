@@ -11,6 +11,8 @@ pub const MAX_PHYSICAL_MEMORY: usize = 1024 * 1024 * 1024; // use 1G for now
 
 pub const MAX_PHYSICAL_FRAMES: usize = MAX_PHYSICAL_MEMORY / PAGE_SIZE;
 
+pub const VA_WIDTH_SV39: usize = 39;
+
 pub const PA_WIDTH_SV39: usize = 56;
 
 pub const PPN_WIDTH_SV39: usize = PA_WIDTH_SV39 - PAGE_SIZE_BITS;

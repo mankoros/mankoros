@@ -43,8 +43,8 @@ endif
 $(BIN_FILE): kernel
 	@$(OBJCOPY) $(KERNEL_FILE) -O binary $@
 
-asm:
-	@$(OBJDUMP) -d $(KERNEL_FILE) | less
+asm: build
+	@$(OBJDUMP) -d $(KERNEL_FILE) > asm
 
 clean:
 	@cargo clean
