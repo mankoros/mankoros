@@ -56,6 +56,8 @@ impl PageTable {
         self.root_paddr
     }
 
+    // map_page maps a physical page to a virtual address
+    // PTE::V is guaranteed to be set, so no need to set PTE::V
     pub fn map_page(&mut self, vaddr: VirtAddr, paddr: PhysAddr, flags: PTEFlags) {
         let new_pte = pte::PageTableEntry::new(paddr, flags);
         // Get entry by vaddr
@@ -69,6 +71,8 @@ impl PageTable {
         entry.clear();
     }
 
+    // map_region map a memory region from vaddr to paddr
+    // PTE::V is guaranteed to be set, so no need to set PTE::V
     pub fn map_region(&mut self, vaddr: VirtAddr, paddr: PhysAddr, size: usize, flags: PTEFlags) {
         trace!(
             "map_region({:#x}): [{:#x}, {:#x}) -> [{:#x}, {:#x}) ({:#?})",
@@ -110,6 +114,7 @@ impl PageTable {
 // Private impl
 impl PageTable {
     // Allocates a page for a table
+    // the allocated page will be zeroed to ensure every PTE is not valid
     fn alloc_table() -> PhysAddr {
         let paddr = frame::alloc_frame().expect("failed to allocate page");
         // Fill with zeros

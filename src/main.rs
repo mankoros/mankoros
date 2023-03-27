@@ -121,8 +121,7 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
         (memlayout::kernel_start as usize).into(),
         (memlayout::kernel_start as usize).into(),
         memlayout::kernel_end as usize - memlayout::kernel_start as usize,
-        memory::pagetable::pte::PTEFlags::V
-            | memory::pagetable::pte::PTEFlags::R
+        memory::pagetable::pte::PTEFlags::R
             | memory::pagetable::pte::PTEFlags::W
             | memory::pagetable::pte::PTEFlags::X,
     );
@@ -130,9 +129,7 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     kernal_page_table.map_page(
         memlayout::UART0_BASE.into(),
         memlayout::UART0_BASE.into(),
-        memory::pagetable::pte::PTEFlags::V
-            | memory::pagetable::pte::PTEFlags::R
-            | memory::pagetable::pte::PTEFlags::W,
+        memory::pagetable::pte::PTEFlags::R | memory::pagetable::pte::PTEFlags::W,
     );
 
     riscv::register::satp::write(kernal_page_table.root_paddr().into());
