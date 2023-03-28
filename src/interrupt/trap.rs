@@ -5,7 +5,7 @@ use riscv::register::{
     sscratch, sstatus, stvec,
 };
 
-use crate::syscall;
+use crate::{memory, syscall};
 
 use super::{context, timer};
 use log::info;
@@ -16,15 +16,17 @@ pub fn init() {
     extern "C" {
         fn __smode_traps();
     }
+    info!("Try enabling trap vector at 0x{:x}", __smode_traps as usize);
+    let trap_vaddr = memory::phys_to_virt(__smode_traps as usize);
     // Ensure interrupts are disabled.
     unsafe {
         sscratch::write(0);
-        stvec::write(__smode_traps as usize, stvec::TrapMode::Direct);
+        stvec::write(trap_vaddr, stvec::TrapMode::Direct);
         // Allow Timer interrupt
         sstatus::set_sie();
     }
 
-    info!("Interrupts enabled");
+    info!("Interrupts enabled at STVEC: 0x{:x}", trap_vaddr);
 }
 
 // Software break point handler

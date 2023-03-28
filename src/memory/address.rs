@@ -3,8 +3,29 @@
 
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
+use core::sync::atomic::Ordering;
 
 use crate::consts;
+use crate::KERNAL_REMAPPED;
+
+// Kernel Phy to Virt function
+// Whenever kernel wants to access to a physical address
+// it should use this function to translate physical address
+// into virtual address.
+#[inline]
+pub fn phys_to_virt(addr: usize) -> usize {
+    // Return if the address is obviously in HIGH address space
+    if addr >= consts::address_space::K_SEG_BEG {
+        return addr;
+    }
+
+    let kernel_remapped = KERNAL_REMAPPED.load(Ordering::Relaxed);
+    if kernel_remapped {
+        addr - consts::PHYMEM_START + consts::address_space::K_SEG_PHY_MEM_BEG
+    } else {
+        addr
+    }
+}
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct PhysAddr(pub usize);

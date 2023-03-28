@@ -15,8 +15,6 @@ extern "C" {
     pub fn kernel_end();
 }
 
-pub const PHYMEM_START: usize = 0x8000_0000;
-
 pub const UART0_BASE: usize = 0x1000_0000;
 
 pub fn print_memlayout() {

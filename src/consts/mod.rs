@@ -7,6 +7,8 @@ pub const PAGE_SIZE: usize = 1usize << PAGE_SIZE_BITS;
 
 pub const PAGE_MASK: usize = PAGE_SIZE - 1;
 
+pub const PHYMEM_START: usize = 0x8000_0000;
+
 pub const MAX_PHYSICAL_MEMORY: usize = 1024 * 1024 * 1024; // use 1G for now
 
 pub const MAX_PHYSICAL_FRAMES: usize = MAX_PHYSICAL_MEMORY / PAGE_SIZE;

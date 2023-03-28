@@ -32,6 +32,7 @@ use driver::uart::Uart;
 use log::{error, info, trace};
 use memory::frame;
 use memory::heap_allocator::init_heap;
+use memory::pagetable::pte::PTEFlags;
 use riscv::register::satp;
 use sync::SpinNoIrqLock;
 
@@ -143,25 +144,28 @@ fn remap_kernel() {
         (memlayout::kernel_start as usize).into(),
         (memlayout::kernel_start as usize).into(),
         memlayout::kernel_end as usize - memlayout::kernel_start as usize,
-        memory::pagetable::pte::PTEFlags::R
-            | memory::pagetable::pte::PTEFlags::W
-            | memory::pagetable::pte::PTEFlags::X,
+        PTEFlags::R | PTEFlags::W | PTEFlags::X,
     );
     // Map new position
     kernal_page_table.map_region(
         (memlayout::kernel_start as usize + address_space::K_SEG_VIRT_MEM_BEG).into(),
         (memlayout::kernel_start as usize).into(),
         memlayout::kernel_end as usize - memlayout::kernel_start as usize,
-        memory::pagetable::pte::PTEFlags::R
-            | memory::pagetable::pte::PTEFlags::W
-            | memory::pagetable::pte::PTEFlags::X,
+        PTEFlags::R | PTEFlags::W | PTEFlags::X,
+    );
+    // Map physical memory
+    kernal_page_table.map_region(
+        address_space::K_SEG_PHY_MEM_BEG.into(),
+        consts::PHYMEM_START.into(),
+        consts::MAX_PHYSICAL_MEMORY,
+        PTEFlags::R | PTEFlags::W,
     );
 
     // Map devices
     kernal_page_table.map_page(
         (memlayout::UART0_BASE + address_space::K_SEG_HARDWARE_BEG).into(),
         memlayout::UART0_BASE.into(),
-        memory::pagetable::pte::PTEFlags::R | memory::pagetable::pte::PTEFlags::W,
+        PTEFlags::R | PTEFlags::W,
     );
 
     // Enable paging
@@ -180,12 +184,17 @@ fn remap_kernel() {
     // Set KERNEL_REMAPPED
     KERNAL_REMAPPED.store(true, Ordering::SeqCst);
 
+    // Set new S-Mode trap vector
+    // TODO: This should be done after disabling interrupts
+    interrupt::trap::init();
+
+    loop {}
+
     // Unmap old position
-    // TODO: This can only be done after the phymem is remapped
-    // kernal_page_table.unmap_region(
-    //     (memlayout::kernel_start as usize).into(),
-    //     memlayout::kernel_end as usize - memlayout::kernel_start as usize,
-    // );
+    kernal_page_table.unmap_region(
+        (memlayout::kernel_start as usize).into(),
+        memlayout::kernel_end as usize - memlayout::kernel_start as usize,
+    );
 
     // Avoid drop
     mem::forget(kernal_page_table);
@@ -199,6 +208,7 @@ fn kernel_jump() {
             "
             li      t1, {offset}
             add     ra, t1, ra
+            add     sp, t1, sp
             ret
         ",
             offset = const address_space::K_SEG_VIRT_MEM_BEG,
