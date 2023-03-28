@@ -163,7 +163,7 @@ _to_kernel:
 __smode_traps:
     SAVE_ALL
     mv a0, sp
-    jal rust_trap_handler
+    call rust_trap_handler
 
     .globl __smode_trapret
 __smode_trapret:

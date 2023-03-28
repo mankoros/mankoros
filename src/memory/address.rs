@@ -19,7 +19,7 @@ pub fn phys_to_virt(addr: usize) -> usize {
         return addr;
     }
 
-    let kernel_remapped = KERNAL_REMAPPED.load(Ordering::Relaxed);
+    let kernel_remapped = KERNAL_REMAPPED.load(Ordering::SeqCst);
     if kernel_remapped {
         addr - consts::PHYMEM_START + consts::address_space::K_SEG_PHY_MEM_BEG
     } else {

@@ -5,10 +5,12 @@
 // Adapted from rCore https://github.com/rcore-os/rCore/blob/13ad2d19058901e6401a978d4e20acf7f5610666/kernel/src/logging.rs
 // And AcreOS/modules/axlog/src/lib.rs
 
-use core::fmt;
 use core::str::FromStr;
+use core::{fmt, sync::atomic::AtomicBool};
 
 use log::{self, Level, LevelFilter, Log, Metadata, Record};
+
+use crate::{consts, memory};
 
 macro_rules! with_color {
     ($color_code:expr, $($arg:tt)*) => {{
@@ -41,13 +43,17 @@ fn __print_impl(args: fmt::Arguments) {
     crate::print!("{}", args);
 }
 
+pub static LOG_INITIALIZED: AtomicBool = AtomicBool::new(false);
+
 // Currently only error, warn, info and debug is used
 // Any lower level is ignored
 const LOG_LEVEL: &str = "info";
 
 pub fn init() {
-    static LOGGER: SimpleLogger = SimpleLogger;
-    log::set_logger(&LOGGER).unwrap();
+    static mut LOGGER: SimpleLogger = SimpleLogger;
+    unsafe {
+        log::set_logger(&LOGGER).unwrap();
+    }
     set_max_level(LOG_LEVEL);
 }
 
@@ -92,4 +98,33 @@ impl Log for SimpleLogger {
         ));
     }
     fn flush(&self) {}
+}
+
+#[macro_export]
+macro_rules! log {
+    ($lvl:expr, $($arg:tt)+) => {
+        // let initialised = $crate::logging::LOG_INITIALIZED.load(core::sync::atomic::Ordering::Relaxed);
+        let initialised = false;
+        if !initialised {
+            let lvl = $lvl;
+            if lvl <= log::max_level() {
+                $crate::println!($($arg)+);
+            }
+        } else {
+            log::log!($lvl, $($arg)+);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! info {
+    ($($arg:tt)+) => ($crate::log!(log::Level::Info, $($arg)+))
+}
+#[macro_export]
+macro_rules! trace {
+    ($($arg:tt)+) => ($crate::log!(log::Level::Trace, $($arg)+))
+}
+#[macro_export]
+macro_rules! error {
+    ($($arg:tt)+) => ($crate::log!(log::Level::Error, $($arg)+))
 }

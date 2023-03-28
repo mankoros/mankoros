@@ -12,8 +12,8 @@ use crate::{
     },
 };
 
+use crate::trace;
 use alloc::{vec, vec::Vec};
-use log::trace;
 
 use super::pte::{self, PTEFlags, PageTableEntry};
 

@@ -1,8 +1,9 @@
 //! Memory layout for the system.
 //!
 //!
+//!
 
-use log::info;
+use crate::info;
 
 extern "C" {
     pub fn kernel_start();

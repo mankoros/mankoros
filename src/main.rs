@@ -19,6 +19,7 @@ mod boot;
 mod consts;
 mod driver;
 mod interrupt;
+#[macro_use]
 mod logging;
 mod memory;
 mod sync;
@@ -29,7 +30,6 @@ mod xdebug;
 mod tools;
 
 use driver::uart::Uart;
-use log::{error, info, trace};
 use memory::frame;
 use memory::heap_allocator::init_heap;
 use memory::pagetable::pte::PTEFlags;
@@ -95,9 +95,9 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     // Print current boot hart
     println!("Hart {} init booting up", hart_id);
 
-    // Initial logging support
-    logging::init();
-    info!("Logging initialised");
+    // Initial early logging support
+    logging::set_max_level("trace");
+    info!("Early logging initialised");
     // Print boot memory layour
     memlayout::print_memlayout();
 
@@ -115,10 +115,17 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     // Get hart info
     let hart_cnt = boot::get_hart_status();
     info!("Total harts: {}", hart_cnt);
+    debug_assert!(hart_id < hart_cnt as usize); // Very wrong if this assert fails
+
+    // Remap the kernel
+    remap_kernel();
 
     // Initialize interrupt controller
     interrupt::trap::init();
 
+    logging::init();
+
+    info!("Kernel remapped");
     // Initialize timer
     interrupt::timer::init();
 
@@ -127,14 +134,7 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
         riscv::asm::ebreak();
     }
 
-    remap_kernel();
-
     loop {}
-
-    // Shutdown
-    sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
-
-    unreachable!();
 }
 
 fn remap_kernel() {
@@ -163,6 +163,11 @@ fn remap_kernel() {
 
     // Map devices
     kernal_page_table.map_page(
+        (memlayout::UART0_BASE).into(),
+        memlayout::UART0_BASE.into(),
+        PTEFlags::R | PTEFlags::W,
+    );
+    kernal_page_table.map_page(
         (memlayout::UART0_BASE + address_space::K_SEG_HARDWARE_BEG).into(),
         memlayout::UART0_BASE.into(),
         PTEFlags::R | PTEFlags::W,
@@ -178,24 +183,47 @@ fn remap_kernel() {
         riscv::asm::sfence_vma_all();
     }
 
+    /// Returns the current frame pointer or stack base pointer
+    #[inline(always)]
+    pub fn fp() -> usize {
+        let ptr: usize;
+        unsafe {
+            core::arch::asm!("mv {}, s0", out(reg) ptr);
+        }
+        ptr
+    }
+
+    // Recursively modify the return address
+    let mut current_fp = fp();
+    unsafe {
+        loop {
+            let next_fp = *(current_fp as *const usize).offset(-2);
+            *(current_fp as *mut usize).offset(-1) += address_space::K_SEG_VIRT_MEM_BEG;
+            trace!("RA: 0x{:#x}", *(current_fp as *mut usize).offset(-1));
+            *(current_fp as *mut usize).offset(-2) += address_space::K_SEG_VIRT_MEM_BEG;
+            trace!("FP: 0x{:#x}", *(current_fp as *mut usize).offset(-2));
+            current_fp = next_fp;
+            if current_fp == 0 || current_fp % consts::PAGE_SIZE == 0 {
+                *(current_fp as *mut usize).offset(-1) += address_space::K_SEG_VIRT_MEM_BEG;
+                trace!("RA: 0x{:#x}", *(current_fp as *mut usize).offset(-1));
+                break;
+            }
+        }
+    }
+
     // Jump to new position
     kernel_jump();
 
     // Set KERNEL_REMAPPED
     KERNAL_REMAPPED.store(true, Ordering::SeqCst);
 
-    // Set new S-Mode trap vector
-    // TODO: This should be done after disabling interrupts
-    interrupt::trap::init();
-
-    loop {}
-
     // Unmap old position
     kernal_page_table.unmap_region(
-        (memlayout::kernel_start as usize).into(),
+        (memlayout::kernel_start as usize - address_space::K_SEG_VIRT_MEM_BEG).into(),
         memlayout::kernel_end as usize - memlayout::kernel_start as usize,
     );
 
+    panic!("");
     // Avoid drop
     mem::forget(kernal_page_table);
 }
@@ -203,12 +231,16 @@ fn remap_kernel() {
 #[naked]
 #[no_mangle]
 fn kernel_jump() {
+    // Modify the return address
+    // the stack pointer
+    // and the frame pointer
     unsafe {
         core::arch::asm!(
             "
             li      t1, {offset}
             add     ra, t1, ra
             add     sp, t1, sp
+            add     s0, t1, s0
             ret
         ",
             offset = const address_space::K_SEG_VIRT_MEM_BEG,

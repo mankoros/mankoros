@@ -5,7 +5,7 @@ use riscv::register::{
     sscratch, sstatus, stvec,
 };
 
-use crate::{memory, syscall};
+use crate::{consts::address_space, memory, syscall};
 
 use super::{context, timer};
 use log::info;
@@ -17,7 +17,7 @@ pub fn init() {
         fn __smode_traps();
     }
     info!("Try enabling trap vector at 0x{:x}", __smode_traps as usize);
-    let trap_vaddr = memory::phys_to_virt(__smode_traps as usize);
+    let trap_vaddr = __smode_traps as usize;
     // Ensure interrupts are disabled.
     unsafe {
         sscratch::write(0);

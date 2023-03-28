@@ -1,7 +1,7 @@
-use crate::consts::memlayout::{text_end, text_start};
+use crate::consts;
+use crate::error;
 use core::arch::asm;
 use core::mem::size_of;
-use log::error;
 
 /// Returns the current frame pointer or stack base pointer
 #[inline(always)]
@@ -32,19 +32,25 @@ pub fn backtrace() {
         error!("");
         error!("=============== BEGIN BACKTRACE ================");
 
-        while current_pc >= text_start as usize
-            && current_pc <= text_end as usize
-            && current_fp != 0
-        {
+        loop {
             error!(
                 "#{:02} PC: {:#018X} FP: {:#018X}",
                 stack_num,
-                current_pc - size_of::<usize>(),
+                current_pc - 4,
                 current_fp
             );
             stack_num = stack_num + 1;
             current_fp = *(current_fp as *const usize).offset(-2);
             current_pc = *(current_fp as *const usize).offset(-1);
+            if current_fp == 0 || current_fp % consts::PAGE_SIZE == 0 {
+                error!(
+                    "#{:02} PC: {:#018X} FP: {:#018X}",
+                    stack_num,
+                    current_pc - size_of::<usize>(),
+                    current_fp
+                );
+                break;
+            }
         }
 
         error!("=============== END BACKTRACE ================");

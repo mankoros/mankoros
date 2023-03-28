@@ -6,4 +6,5 @@ rustflags = [
     "-Clink-arg=-Tlinker.ld", 
     "-Cforce-frame-pointers=yes",
     "-Cforce-unwind-tables",
+    "-Crelocation-model=static"
 ]
