@@ -26,6 +26,7 @@ mod syscall;
 mod utils;
 #[macro_use]
 mod xdebug;
+mod process;
 mod tools;
 
 use driver::uart::Uart;
