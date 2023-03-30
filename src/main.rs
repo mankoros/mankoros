@@ -7,6 +7,8 @@
 #![feature(const_trait_impl)]
 #![feature(const_mut_refs)]
 #![feature(sync_unsafe_cell)]
+#![feature(allocator_api)]
+#![feature(new_uninit)]
 #![allow(dead_code)]
 extern crate alloc;
 

@@ -1,6 +1,9 @@
 use core::sync::atomic::AtomicI32;
 
-use alloc::{collections::BTreeMap, format, string::String, sync::Arc, sync::Weak, vec::Vec};
+use alloc::{
+    alloc::Global, boxed::Box, collections::BTreeMap, format, string::String, sync::Arc,
+    sync::Weak, vec::Vec,
+};
 
 use crate::{here, sync::SpinNoIrqLock};
 
@@ -134,6 +137,8 @@ pub struct AliveThreadInfo {
     process: Arc<ProcessInfo>,
     // 线程所占据的栈空间的 ID, 不可变, 线程死掉对应的栈就要释放给进程管理器
     stack_id: StackID,
+    // 在用户和内核态之间切换时用到的上下文
+    uk_conext: Box<UKContext, Global>,
 }
 
 // ================ 地址空间 =================
