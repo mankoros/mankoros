@@ -1,6 +1,6 @@
 use core::sync::atomic::AtomicI32;
 
-use alloc::{collections::BTreeMap, format, rc::Weak, string::String, sync::Arc, vec::Vec};
+use alloc::{collections::BTreeMap, format, string::String, sync::Arc, sync::Weak, vec::Vec};
 
 use crate::{here, sync::SpinNoIrqLock};
 
@@ -10,8 +10,8 @@ use super::{
     user_space::{StackID, UserSpace},
 };
 
-/// 资源分配单位信息块
-/// 其实就是进程信息块
+/// 资源分配单位信息块 (其实就是进程信息块)
+/// 应该交给 Arc 维护, 只要当前系统中存在对它的引用, 它就不能被释放
 pub struct ProcessInfo {
     // 进程就算是死了, 其它人可能也需要拿着 pid 去查找它的状态
     // 这里的数据必须等到这个进程完全没人要了, 才能释放
@@ -26,21 +26,12 @@ pub struct ProcessInfo {
 }
 
 impl ProcessInfo {
-    pub fn with_mut_alive<T>(&mut self, f: impl FnOnce(&mut AliveProcessInfo) -> T) -> Option<T> {
+    pub fn with_mut_alive<T>(&self, f: impl FnOnce(&mut AliveProcessInfo) -> T) -> Option<T> {
         self.alive.lock(here!()).as_mut().map(f)
-    }
-
-    pub fn with_mut_thread<T>(
-        &mut self,
-        tid: Tid,
-        f: impl FnOnce(&mut ThreadInfo) -> T,
-    ) -> Option<T> {
-        self.with_mut_alive(|alive| alive.threads.get_mut(&tid).map(f)).flatten()
     }
 
     pub fn new_empty_process() -> Arc<Self> {
         let pid_handler = alloc_pid();
-        let pid = pid_handler.pid();
         let alive = SpinNoIrqLock::new(Some(AliveProcessInfo {
             parent: None,
             children: Vec::new(),
@@ -54,59 +45,60 @@ impl ProcessInfo {
         })
     }
 
-    // pub fn exec_with_bytes(self: Arc<Self>, elf_data: &[u8], args: Vec<String>, envp: Vec<String>) {
-    //     let elf = parse_elf(elf_data);
+    pub fn exec_with_bytes(self: Arc<Self>, elf_data: &[u8], args: Vec<String>, envp: Vec<String>) {
+        let elf = parse_elf(elf_data);
 
-    //     // 把 elf 的 segment 映射到用户空间
-    //     self.with_mut_alive(|alive| {
-    //         map_elf_segment(&elf, &mut alive.user_space.page_table);
-    //     });
+        // 把 elf 的 segment 映射到用户空间
+        self.with_mut_alive(|alive| {
+            map_elf_segment(&elf, &mut alive.user_space.page_table);
+        });
 
-    //     // 开一个小小的堆
-    //     self.with_mut_alive(|alive| {
-    //         alive.user_space.alloc_heap(1);
-    //     });
+        // 开一个小小的堆
+        self.with_mut_alive(|alive| {
+            alive.user_space.alloc_heap(1);
+        });
 
-    //     // 初始化新的线程
-    //     let tid_handler = self.create_empty_thread();
+        // 初始化新的线程
+        let thread = self.create_empty_thread();
 
-    //     // 将参数, auxv 和环境变量放到栈上
-    //     // 为线程初始化上下文
-    //     // 将线程打包为 Future
-    //     // 将打包好的 Future 丢入调度器中
-    // }
+        // 将参数, auxv 和环境变量放到栈上
+        // 为线程初始化上下文
+        // 将线程打包为 Future
+        // 将打包好的 Future 丢入调度器中
+    }
 
-    // pub fn create_empty_thread(self: Arc<Self>) -> TidHandler {
-    //     // 分配新的 TID
-    //     let tid_handler = alloc_tid();
-    //     let tid = tid_handler.tid();
+    pub fn create_empty_thread(self: &Arc<Self>) -> Arc<ThreadInfo> {
+        // 分配新的 TID
+        let tid_handler = alloc_tid();
+        let tid = tid_handler.tid();
 
-    //     // 分配新的栈
-    //     let stack_id = self
-    //         .with_mut_alive(|alive| alive.user_space.alloc_stack())
-    //         .expect(format!("alloc stack failed, pid: {}", self.pid.pid_usize()).as_str());
+        // 分配新的栈
+        let stack_id = self
+            .with_mut_alive(|alive| alive.user_space.alloc_stack())
+            .expect(format!("alloc stack failed, pid: {}", self.pid.pid_usize()).as_str());
 
-    //     // 构建初始 Thread 结构体
-    //     let thread = ThreadInfo {
-    //         tid: tid_handler,
-    //         alive: SpinNoIrqLock::new(Some(AliveThreadInfo {
-    //             process: self,
-    //             stack_id,
-    //         })),
-    //     };
+        // 构建初始 Thread 结构体
+        let thread = Arc::new(ThreadInfo {
+            tid: tid_handler,
+            alive: SpinNoIrqLock::new(Some(AliveThreadInfo {
+                process: self.clone(),
+                stack_id,
+            })),
+        });
 
-    //     // 把新的线程加入到进程的线程列表中
-    //     self.with_mut_alive(|alive| {
-    //         alive.threads.insert(tid, thread);
-    //     });
+        // 把新的线程加入到进程的线程列表中
+        self.with_mut_alive(|alive| {
+            alive.threads.insert(tid, Arc::downgrade(&thread));
+        });
 
-    //     tid_handler
-    // }
+        thread
+    }
 
     // pub fn create_init_thread(&mut self) -> Arc<ThreadInfo> {}
 }
 
 // 这个结构目前有 pre 进程的大锁保护, 内部的信息暂时都不用加锁
+// 这个结构整体都是可变的, 并且所有权永远排他地属于一个进程
 pub struct AliveProcessInfo {
     // === 进程树数据 ===
     // 进程可能没有父进程 (init), 所以要 Option
@@ -121,16 +113,16 @@ pub struct AliveProcessInfo {
     children: Vec<Arc<ProcessInfo>>,
 
     // 进程所持有的线程
-    // 进程活着, 线程的信息就不能被释放, 所以直接 Thread
-    // 线程去世之后, 这个 map 就要更新以删除线程, 而线程可能并发去世, 所以要加锁
-    threads: BTreeMap<Tid, ThreadInfo>,
+    // 进程活着, 线程的信息就不能被释放, 但是由于活着的线程中存在对进程的引用,
+    // 而进程如果活着又会占有这个, 所以这里必须使用 Weak 防止循环引用
+    threads: BTreeMap<Tid, Weak<ThreadInfo>>,
     // === 进程地址空间数据 ===
     user_space: UserSpace,
     // TODO: FD Table
 }
 
 // ================ 线程 =================
-
+// 这个结构需要使用 Arc 处理所有权
 pub struct ThreadInfo {
     tid: TidHandler,
     alive: SpinNoIrqLock<Option<AliveThreadInfo>>,
