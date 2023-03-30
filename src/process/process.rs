@@ -1,42 +1,14 @@
-use core::{mem, sync::atomic::AtomicI32};
+use core::sync::atomic::AtomicI32;
 
-use alloc::{boxed::Box, collections::BTreeMap, format, rc::Weak, sync::Arc, vec::Vec};
+use alloc::{collections::BTreeMap, format, rc::Weak, string::String, sync::Arc, vec::Vec};
 
-use crate::{
-    consts::{address_space::U_SEG_STACK_BEG, PAGE_SIZE_BITS},
-    here,
-    memory::{
-        address::{PhysAddr, VirtAddr},
-        frame::{alloc_frame, alloc_frame_contiguous, dealloc_frame, FRAME_ALLOCATOR},
-        pagetable::{pagetable::PageTable, pte::PTEFlags},
-    },
-    sync::{mutex::Mutex, SpinNoIrqLock},
-    tools::handler_pool::UsizePool,
+use crate::{here, sync::SpinNoIrqLock};
+
+use super::{
+    elf_loader::{map_elf_segment, parse_elf},
+    pid_tid::{alloc_pid, alloc_tid, PidHandler, Tid, TidHandler},
+    user_space::{StackID, UserSpace},
 };
-
-static PID_USIZE_POOL: SpinNoIrqLock<UsizePool> = SpinNoIrqLock::new(UsizePool::new());
-
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Pid(usize);
-pub struct PidHandler(Pid);
-impl PidHandler {
-    pub fn pid(&self) -> Pid {
-        self.0
-    }
-
-    pub fn pid_usize(&self) -> usize {
-        self.pid().0
-    }
-}
-impl Drop for PidHandler {
-    fn drop(&mut self) {
-        PID_USIZE_POOL.lock(here!()).release(self.pid_usize());
-    }
-}
-pub fn alloc_pid() -> PidHandler {
-    let pid_usize = PID_USIZE_POOL.lock(here!()).get();
-    PidHandler(Pid(pid_usize))
-}
 
 /// 资源分配单位信息块
 /// 其实就是进程信息块
@@ -57,6 +29,81 @@ impl ProcessInfo {
     pub fn with_mut_alive<T>(&mut self, f: impl FnOnce(&mut AliveProcessInfo) -> T) -> Option<T> {
         self.alive.lock(here!()).as_mut().map(f)
     }
+
+    pub fn with_mut_thread<T>(
+        &mut self,
+        tid: Tid,
+        f: impl FnOnce(&mut ThreadInfo) -> T,
+    ) -> Option<T> {
+        self.with_mut_alive(|alive| alive.threads.get_mut(&tid).map(f)).flatten()
+    }
+
+    pub fn new_empty_process() -> Arc<Self> {
+        let pid_handler = alloc_pid();
+        let pid = pid_handler.pid();
+        let alive = SpinNoIrqLock::new(Some(AliveProcessInfo {
+            parent: None,
+            children: Vec::new(),
+            threads: BTreeMap::new(),
+            user_space: UserSpace::new(),
+        }));
+        Arc::new(ProcessInfo {
+            pid: pid_handler,
+            exit_code: AtomicI32::new(0),
+            alive,
+        })
+    }
+
+    // pub fn exec_with_bytes(self: Arc<Self>, elf_data: &[u8], args: Vec<String>, envp: Vec<String>) {
+    //     let elf = parse_elf(elf_data);
+
+    //     // 把 elf 的 segment 映射到用户空间
+    //     self.with_mut_alive(|alive| {
+    //         map_elf_segment(&elf, &mut alive.user_space.page_table);
+    //     });
+
+    //     // 开一个小小的堆
+    //     self.with_mut_alive(|alive| {
+    //         alive.user_space.alloc_heap(1);
+    //     });
+
+    //     // 初始化新的线程
+    //     let tid_handler = self.create_empty_thread();
+
+    //     // 将参数, auxv 和环境变量放到栈上
+    //     // 为线程初始化上下文
+    //     // 将线程打包为 Future
+    //     // 将打包好的 Future 丢入调度器中
+    // }
+
+    // pub fn create_empty_thread(self: Arc<Self>) -> TidHandler {
+    //     // 分配新的 TID
+    //     let tid_handler = alloc_tid();
+    //     let tid = tid_handler.tid();
+
+    //     // 分配新的栈
+    //     let stack_id = self
+    //         .with_mut_alive(|alive| alive.user_space.alloc_stack())
+    //         .expect(format!("alloc stack failed, pid: {}", self.pid.pid_usize()).as_str());
+
+    //     // 构建初始 Thread 结构体
+    //     let thread = ThreadInfo {
+    //         tid: tid_handler,
+    //         alive: SpinNoIrqLock::new(Some(AliveThreadInfo {
+    //             process: self,
+    //             stack_id,
+    //         })),
+    //     };
+
+    //     // 把新的线程加入到进程的线程列表中
+    //     self.with_mut_alive(|alive| {
+    //         alive.threads.insert(tid, thread);
+    //     });
+
+    //     tid_handler
+    // }
+
+    // pub fn create_init_thread(&mut self) -> Arc<ThreadInfo> {}
 }
 
 // 这个结构目前有 pre 进程的大锁保护, 内部的信息暂时都不用加锁
@@ -77,24 +124,15 @@ pub struct AliveProcessInfo {
     // 进程活着, 线程的信息就不能被释放, 所以直接 Thread
     // 线程去世之后, 这个 map 就要更新以删除线程, 而线程可能并发去世, 所以要加锁
     threads: BTreeMap<Tid, ThreadInfo>,
-    // 管理 TID 的池子, 因为有可能并发创造 thread, 所以要加锁
-    tid_usize_pool: UsizePool,
     // === 进程地址空间数据 ===
     user_space: UserSpace,
     // TODO: FD Table
 }
 
-impl AliveProcessInfo {
-    pub fn create_init_thread(&mut self) -> ThreadInfo {
-        todo!()
-    }
-}
-
 // ================ 线程 =================
 
-pub struct Tid(usize);
 pub struct ThreadInfo {
-    tid: Tid,
+    tid: TidHandler,
     alive: SpinNoIrqLock<Option<AliveThreadInfo>>,
 }
 
@@ -106,71 +144,4 @@ pub struct AliveThreadInfo {
     stack_id: StackID,
 }
 
-impl Drop for AliveThreadInfo {
-    // 线程去世以后需要做的事情
-    fn drop(&mut self) {
-        self.process.with_mut_alive(|alive| {
-            // 释放栈空间和栈号
-            alive.user_space.dealloc_stack(self.stack_id);
-        });
-    }
-}
-
 // ================ 地址空间 =================
-pub const THREAD_STACK_SIZE: usize = 4 * 1024 * 1024;
-/// 一个线程的地址空间的相关信息, 在 AliveProcessInfo 里受到进程大锁保护, 不需要加锁
-pub struct UserSpace {
-    // 根页表
-    page_table: PageTable,
-    // 栈管理器
-    stack_id_pool: UsizePool,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct StackID(usize);
-
-impl StackID {
-    pub fn addr(&self) -> VirtAddr {
-        VirtAddr(self.0 * THREAD_STACK_SIZE + U_SEG_STACK_BEG)
-    }
-}
-
-impl UserSpace {
-    pub fn new() -> Self {
-        let page_table = PageTable::new();
-        let stack_id_pool = UsizePool::new();
-        Self {
-            page_table,
-            stack_id_pool,
-        }
-    }
-
-    /// 为线程分配一个栈空间, pid 为调试需要
-    pub fn alloc_stack(&mut self) -> StackID {
-        // 获得当前可用的一块地址空间用于放该线程的栈
-        let stack_id_usize = self.stack_id_pool.get();
-        let stack_id = StackID(stack_id_usize);
-
-        // 分配一个栈这么多的连续的物理页
-        let stack_frames = alloc_frame_contiguous(THREAD_STACK_SIZE, PAGE_SIZE_BITS)
-            .expect(format!("alloc stack failed, (stack_id: {:?})", stack_id_usize).as_str());
-
-        // 把物理页映射到对应的虚拟地址去
-        self.page_table.map_region(
-            stack_id.addr(),
-            PhysAddr(stack_frames),
-            THREAD_STACK_SIZE,
-            PTEFlags::V | PTEFlags::R | PTEFlags::W | PTEFlags::U,
-        );
-
-        // 返回栈 id
-        stack_id
-    }
-
-    pub fn dealloc_stack(&mut self, stack_id: StackID) {
-        // 释放栈空间
-        self.page_table.unmap_region(stack_id.addr(), THREAD_STACK_SIZE);
-        // 释放栈号
-        self.stack_id_pool.release(stack_id.0);
-    }
-}
