@@ -51,11 +51,21 @@ pub const AT_HWCAP2: usize = 26;
 /// filename of program
 pub const AT_EXECFN: usize = 31;
 
-struct AuxElement {
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct AuxElement {
     pub aux_type: usize,
     pub aux_value: usize,
 }
-struct AuxVector {
+
+impl AuxElement {
+    pub const NULL: AuxElement = AuxElement {
+        aux_type: AT_NULL,
+        aux_value: 0,
+    };
+}
+
+pub struct AuxVector {
     vec: Vec<AuxElement>,
 }
 
@@ -103,5 +113,15 @@ impl AuxVector {
         // rest entries are not nesscary for now
 
         AuxVector { vec: auxv }
+    }
+}
+
+// make AuxVector iterable
+impl IntoIterator for AuxVector {
+    type Item = AuxElement;
+    type IntoIter = alloc::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.vec.into_iter()
     }
 }
