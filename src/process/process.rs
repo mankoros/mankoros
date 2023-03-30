@@ -4,11 +4,14 @@ use alloc::{
     alloc::Global, boxed::Box, collections::BTreeMap, format, string::String, sync::Arc,
     sync::Weak, vec::Vec,
 };
+use riscv::register::sstatus;
 
 use crate::{here, sync::SpinNoIrqLock};
 
 use super::{
-    elf_loader::{map_elf_segment, parse_elf},
+    aux_vector::AuxVector,
+    context::UKContext,
+    elf_loader::{get_entry_point, map_elf_segment, parse_elf},
     pid_tid::{alloc_pid, alloc_tid, PidHandler, Tid, TidHandler},
     user_space::{StackID, UserSpace},
 };
@@ -29,7 +32,17 @@ pub struct ProcessInfo {
 }
 
 impl ProcessInfo {
-    pub fn with_mut_alive<T>(&self, f: impl FnOnce(&mut AliveProcessInfo) -> T) -> Option<T> {
+    pub fn with_alive<T>(&self, f: impl FnOnce(&mut AliveProcessInfo) -> T) -> T {
+        self.with_alive_or_dead(f).expect(
+            format!(
+                "process {} is dead when trying to access alive",
+                self.pid.pid_usize()
+            )
+            .as_str(),
+        )
+    }
+
+    pub fn with_alive_or_dead<T>(&self, f: impl FnOnce(&mut AliveProcessInfo) -> T) -> Option<T> {
         self.alive.lock(here!()).as_mut().map(f)
     }
 
@@ -48,26 +61,39 @@ impl ProcessInfo {
         })
     }
 
-    pub fn exec_with_bytes(self: Arc<Self>, elf_data: &[u8], args: Vec<String>, envp: Vec<String>) {
+    // TODO: exec 应该是 "对已有 thread 进行替换的", 这里更加偏向于 "创建一个新的 thread + 加载程序的混合体", 找时间要拆开
+    pub fn init_thread(self: Arc<Self>, elf_data: &[u8], args: Vec<String>, envp: Vec<String>) {
         let elf = parse_elf(elf_data);
 
         // 把 elf 的 segment 映射到用户空间
-        self.with_mut_alive(|alive| {
-            map_elf_segment(&elf, &mut alive.user_space.page_table);
-        });
+        let begin_addr = self
+            .with_alive(|alive| map_elf_segment(&elf, &mut alive.user_space.page_table))
+            .expect("map elf failed");
 
         // 开一个小小的堆
-        self.with_mut_alive(|alive| {
+        self.with_alive(|alive| {
             alive.user_space.alloc_heap(1);
         });
 
-        // 初始化新的线程
+        // 创一个新的空线程
         let thread = self.create_empty_thread();
 
         // 将参数, auxv 和环境变量放到栈上
+        let auxv = AuxVector::from_elf(&elf, begin_addr);
+        let stack_id = thread.with_alive(|alive| alive.stack_id);
+        let (sp, argc, argv, envp) = stack_id.init_stack(args, envp, auxv);
+
         // 为线程初始化上下文
+        let sepc = get_entry_point(&elf).0;
+        thread.with_alive(|alive| {
+            alive.uk_conext.init_user(sp, sepc, sstatus::read(), argc, argv, envp)
+        });
+
+        // TODO: 思考什么时候切页表
         // 将线程打包为 Future
+
         // 将打包好的 Future 丢入调度器中
+        // userloop::spawn(future);
     }
 
     pub fn create_empty_thread(self: &Arc<Self>) -> Arc<ThreadInfo> {
@@ -76,9 +102,7 @@ impl ProcessInfo {
         let tid = tid_handler.tid();
 
         // 分配新的栈
-        let stack_id = self
-            .with_mut_alive(|alive| alive.user_space.alloc_stack())
-            .expect(format!("alloc stack failed, pid: {}", self.pid.pid_usize()).as_str());
+        let stack_id = self.with_alive(|alive| alive.user_space.alloc_stack());
 
         // 构建初始 Thread 结构体
         let thread = Arc::new(ThreadInfo {
@@ -86,18 +110,17 @@ impl ProcessInfo {
             alive: SpinNoIrqLock::new(Some(AliveThreadInfo {
                 process: self.clone(),
                 stack_id,
+                uk_conext: unsafe { UKContext::new_uninit() },
             })),
         });
 
         // 把新的线程加入到进程的线程列表中
-        self.with_mut_alive(|alive| {
+        self.with_alive(|alive| {
             alive.threads.insert(tid, Arc::downgrade(&thread));
         });
 
         thread
     }
-
-    // pub fn create_init_thread(&mut self) -> Arc<ThreadInfo> {}
 }
 
 // 这个结构目前有 pre 进程的大锁保护, 内部的信息暂时都不用加锁
@@ -129,6 +152,22 @@ pub struct AliveProcessInfo {
 pub struct ThreadInfo {
     tid: TidHandler,
     alive: SpinNoIrqLock<Option<AliveThreadInfo>>,
+}
+
+impl ThreadInfo {
+    pub fn with_alive<T>(&self, f: impl FnOnce(&mut AliveThreadInfo) -> T) -> T {
+        self.with_alive_or_dead(f).expect(
+            format!(
+                "thread {} is dead when trying to access alive",
+                self.tid.tid_usize()
+            )
+            .as_str(),
+        )
+    }
+
+    pub fn with_alive_or_dead<T>(&self, f: impl FnOnce(&mut AliveThreadInfo) -> T) -> Option<T> {
+        self.alive.lock(here!()).as_mut().map(f)
+    }
 }
 
 // 这个结构目前有 pre 进程的大锁保护, 内部的信息暂时都不用加锁
