@@ -24,6 +24,7 @@ bitmap-allocator = { git = "https://github.com/rcore-os/bitmap-allocator", versi
 humansize = { version = "2.1.3", features = ["no_alloc"] } # For better size printing
 riscv = "0.10.1"
 xmas-elf = "0.8.0"
+async-task = { version = "4.4.0", default-features = false }
 
 [dependencies.lazy_static]
 # For runtime initializing static vars
