@@ -1,4 +1,4 @@
-use core::sync::atomic::AtomicI32;
+use core::{cell::SyncUnsafeCell, sync::atomic::AtomicI32};
 
 use alloc::{
     alloc::Global, boxed::Box, collections::BTreeMap, format, string::String, sync::Arc,
@@ -12,7 +12,7 @@ use super::{
     aux_vector::AuxVector,
     context::UKContext,
     elf_loader::{get_entry_point, map_elf_segment, parse_elf},
-    pid_tid::{alloc_pid, alloc_tid, PidHandler, Tid, TidHandler},
+    pid_tid::{alloc_pid, alloc_tid, Pid, PidHandler, Tid, TidHandler},
     user_space::{StackID, UserSpace},
 };
 
@@ -32,6 +32,10 @@ pub struct ProcessInfo {
 }
 
 impl ProcessInfo {
+    pub fn pid(&self) -> Pid {
+        self.pid.pid()
+    }
+
     pub fn with_alive<T>(&self, f: impl FnOnce(&mut AliveProcessInfo) -> T) -> T {
         self.with_alive_or_dead(f).expect(
             format!(
@@ -80,14 +84,12 @@ impl ProcessInfo {
 
         // 将参数, auxv 和环境变量放到栈上
         let auxv = AuxVector::from_elf(&elf, begin_addr);
-        let stack_id = thread.with_alive(|alive| alive.stack_id);
+        let stack_id = thread.stack_id();
         let (sp, argc, argv, envp) = stack_id.init_stack(args, envp, auxv);
 
         // 为线程初始化上下文
         let sepc = get_entry_point(&elf).0;
-        thread.with_alive(|alive| {
-            alive.uk_conext.init_user(sp, sepc, sstatus::read(), argc, argv, envp)
-        });
+        thread.context().init_user(sp, sepc, sstatus::read(), argc, argv, envp);
 
         // TODO: 思考什么时候切页表
         // 将线程打包为 Future
@@ -107,11 +109,11 @@ impl ProcessInfo {
         // 构建初始 Thread 结构体
         let thread = Arc::new(ThreadInfo {
             tid: tid_handler,
-            alive: SpinNoIrqLock::new(Some(AliveThreadInfo {
-                process: self.clone(),
+            process: self.clone(),
+            inner: SyncUnsafeCell::new(ThreadInfoInner {
                 stack_id,
                 uk_conext: unsafe { UKContext::new_uninit() },
-            })),
+            }),
         });
 
         // 把新的线程加入到进程的线程列表中
@@ -150,34 +152,28 @@ pub struct AliveProcessInfo {
 // ================ 线程 =================
 // 这个结构需要使用 Arc 处理所有权
 pub struct ThreadInfo {
-    tid: TidHandler,
-    alive: SpinNoIrqLock<Option<AliveThreadInfo>>,
+    pub tid: TidHandler,
+    // 线程信息还存在, 进程信息就得存在
+    pub process: Arc<ProcessInfo>,
+    // 进程不可能会死 (死了就应该直接清除所有信息了)
+    // 这里只是包一层可变
+    inner: SyncUnsafeCell<ThreadInfoInner>,
 }
 
 impl ThreadInfo {
-    pub fn with_alive<T>(&self, f: impl FnOnce(&mut AliveThreadInfo) -> T) -> T {
-        self.with_alive_or_dead(f).expect(
-            format!(
-                "thread {} is dead when trying to access alive",
-                self.tid.tid_usize()
-            )
-            .as_str(),
-        )
+    pub fn context(&self) -> &mut UKContext {
+        unsafe { &mut (&mut *self.inner.get()).uk_conext }
     }
 
-    pub fn with_alive_or_dead<T>(&self, f: impl FnOnce(&mut AliveThreadInfo) -> T) -> Option<T> {
-        self.alive.lock(here!()).as_mut().map(f)
+    pub fn stack_id(&self) -> StackID {
+        unsafe { (&*self.inner.get()).stack_id }
     }
 }
 
-// 这个结构目前有 pre 进程的大锁保护, 内部的信息暂时都不用加锁
-pub struct AliveThreadInfo {
-    // 线程活着, 进程就不能死
-    process: Arc<ProcessInfo>,
+// 这里的东西大部分都是不变的, 不用加锁
+pub struct ThreadInfoInner {
     // 线程所占据的栈空间的 ID, 不可变, 线程死掉对应的栈就要释放给进程管理器
     stack_id: StackID,
     // 在用户和内核态之间切换时用到的上下文
     uk_conext: Box<UKContext, Global>,
 }
-
-// ================ 地址空间 =================
