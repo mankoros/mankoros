@@ -5,6 +5,11 @@ static TID_USIZE_POOL: SpinNoIrqLock<UsizePool> = SpinNoIrqLock::new(UsizePool::
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Pid(usize);
+impl Pid {
+    pub fn is_init(&self) -> bool {
+        self.0 == 0
+    }
+}
 
 pub struct PidHandler(Pid);
 impl PidHandler {
