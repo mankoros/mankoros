@@ -33,16 +33,16 @@ use log::{error, info, trace};
 use memory::frame;
 use memory::heap;
 use memory::pagetable::pte::PTEFlags;
-use riscv::register::satp;
 use sync::SpinNoIrqLock;
 
 use consts::address_space;
 use consts::memlayout;
 
-use crate::memory::address::virt_text_to_phys;
 use crate::memory::pagetable;
 
 // Static memory
+
+pub static DEVICE_REMAPPED: AtomicBool = AtomicBool::new(false);
 
 // Init uart, called uart0
 lazy_static! {
@@ -110,6 +110,17 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
         memlayout::UART0_BASE.into(),
         PTEFlags::R | PTEFlags::W,
     );
+    info!("Console switching...");
+    DEVICE_REMAPPED.store(true, Ordering::SeqCst);
+    info!("Console switched to UART0");
+
+    // Remove low memory mappings
+    pagetable::pagetable::unmap_boot_seg();
+    unsafe {
+        riscv::asm::sfence_vma_all();
+    }
+    info!("Boot emory unmapped");
+
     // Avoid drop
     mem::forget(kernal_page_table);
 

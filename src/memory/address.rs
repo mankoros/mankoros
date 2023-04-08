@@ -19,7 +19,7 @@ pub fn phys_to_virt(addr: usize) -> usize {
         warn!("Physical address 0x{:x} is in high address space", addr);
         return addr;
     }
-    trace!("Physical address 0x{:x}", addr);
+    trace!("Kernel physical address 0x{:x} to virtual addr", addr);
 
     addr - consts::PHYMEM_START + consts::address_space::K_SEG_PHY_MEM_BEG
 }

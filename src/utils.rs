@@ -1,7 +1,7 @@
 use core::fmt;
 use core::sync::atomic::Ordering;
 
-use crate::here;
+use crate::{here, DEVICE_REMAPPED};
 
 #[macro_export]
 macro_rules! print {
@@ -17,5 +17,10 @@ macro_rules! println {
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
-    crate::EARLY_UART.lock(here!()).write_fmt(args).unwrap();
+    let remapped = DEVICE_REMAPPED.load(Ordering::SeqCst);
+    if remapped {
+        crate::UART0.lock(here!()).write_fmt(args).unwrap();
+    } else {
+        crate::EARLY_UART.lock(here!()).write_fmt(args).unwrap();
+    }
 }

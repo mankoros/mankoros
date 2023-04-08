@@ -72,9 +72,13 @@ core::arch::global_asm!(
 extern "C" {
     fn _boot_page_table_sv39();
 }
+/// Return the physical address of the boot page table
+/// usually 0x80xxxxxx
 pub fn boot_pagetable() -> &'static mut [usize] {
     unsafe { core::slice::from_raw_parts_mut(boot_pagetable_paddr() as _, ENTRY_COUNT) }
 }
+/// Return the physical address of the boot page table
+/// usually 0x80xxxxxx
 pub fn boot_pagetable_paddr() -> usize {
     virt_text_to_phys(_boot_page_table_sv39 as usize)
 }

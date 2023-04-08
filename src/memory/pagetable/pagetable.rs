@@ -7,7 +7,7 @@
 use crate::{
     boot,
     consts::{
-        self, address_space::K_SEG_PHY_MEM_BEG, MAX_PHYSICAL_MEMORY, PAGE_SIZE, PHYMEM_START,
+        self, address_space::K_SEG_PHY_MEM_BEG, HUGE_PAGE_SIZE, MAX_PHYSICAL_MEMORY, PHYMEM_START,
     },
     memory,
     memory::{
@@ -46,11 +46,19 @@ pub fn map_kernel_phys_seg() {
     let boot_pagetable = boot::boot_pagetable();
 
     // Map kernel physical memory
-    for i in (0..MAX_PHYSICAL_MEMORY).step_by(PAGE_SIZE) {
+    for i in (0..MAX_PHYSICAL_MEMORY).step_by(HUGE_PAGE_SIZE) {
         let paddr: usize = i + PHYMEM_START;
         let vaddr = VirtAddr::from(i + K_SEG_PHY_MEM_BEG);
+        trace!("p3 index: {}", p3_index(vaddr));
         boot_pagetable[p3_index(vaddr)] = (paddr >> 2) | 0xcf;
     }
+}
+
+/// Unmap the lower segment used for booting
+pub fn unmap_boot_seg() {
+    let boot_pagetable = boot::boot_pagetable();
+    boot_pagetable[0] = 0;
+    boot_pagetable[2] = 0;
 }
 
 pub struct PageTable {
