@@ -5,7 +5,11 @@
 //!
 
 use crate::{
-    consts, memory,
+    boot,
+    consts::{
+        self, address_space::K_SEG_PHY_MEM_BEG, MAX_PHYSICAL_MEMORY, PAGE_SIZE, PHYMEM_START,
+    },
+    memory,
     memory::{
         address::{PhysAddr, VirtAddr},
         frame,
@@ -18,7 +22,7 @@ use log::trace;
 use super::pte::{self, PTEFlags, PageTableEntry};
 
 // Entries count in each page table level
-const ENTRY_COUNT: usize = 512;
+pub const ENTRY_COUNT: usize = 512;
 
 fn p4_index(vaddr: VirtAddr) -> usize {
     (usize::from(vaddr) >> (12 + 27)) & (ENTRY_COUNT - 1)
@@ -36,6 +40,19 @@ fn p1_index(vaddr: VirtAddr) -> usize {
     (usize::from(vaddr) >> 12) & (ENTRY_COUNT - 1)
 }
 
+/// Map kernel physical memory segment into virtual address space.
+///
+pub fn map_kernel_phys_seg() {
+    let boot_pagetable = boot::boot_pagetable();
+
+    // Map kernel physical memory
+    for i in (0..MAX_PHYSICAL_MEMORY).step_by(PAGE_SIZE) {
+        let paddr: usize = i + PHYMEM_START;
+        let vaddr = VirtAddr::from(i + K_SEG_PHY_MEM_BEG);
+        boot_pagetable[p3_index(vaddr)] = (paddr >> 2) | 0xcf;
+    }
+}
+
 pub struct PageTable {
     root_paddr: PhysAddr,
     intrm_tables: Vec<PhysAddr>,
@@ -49,6 +66,13 @@ impl PageTable {
         PageTable {
             root_paddr,
             intrm_tables: vec![root_paddr],
+        }
+    }
+
+    pub fn new_with_paddr(paddr: PhysAddr) -> Self {
+        PageTable {
+            root_paddr: paddr,
+            intrm_tables: vec![paddr],
         }
     }
 

@@ -28,7 +28,7 @@ pub fn print_memlayout() {
 
     let kernel_size = humansize::SizeFormatter::new(kernel_end - kernel_start, humansize::BINARY);
     // Print them
-    info!("Physical memory layout:");
+    info!("Kernel memory layout:");
     info!("");
     info!("{:20} 0x{:x}", "kernel_start:", kernel_start);
     info!("{:20} 0x{:x}", "text_start:", text_start);

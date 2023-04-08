@@ -17,10 +17,5 @@ macro_rules! println {
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
-    let kernal_remapped = crate::KERNAL_REMAPPED.load(Ordering::SeqCst);
-    if !kernal_remapped {
-        crate::EARLY_UART.lock(here!()).write_fmt(args).unwrap();
-    } else {
-        crate::UART0.lock(here!()).write_fmt(args).unwrap();
-    }
+    crate::EARLY_UART.lock(here!()).write_fmt(args).unwrap();
 }

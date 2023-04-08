@@ -1,9 +1,14 @@
-/// Copyright (c) 2023 Easton Man
+/// Copyright (c) 2023 Easton Man @Mankoros
+/// Copyright (c) 2022 Maturin OS
+///
+/// Adapted from Maturin OS
 ///
 /// Boot time things
 ///
-///
-use crate::println;
+use crate::{
+    memory::{address::virt_text_to_phys, pagetable::pagetable::ENTRY_COUNT},
+    println,
+};
 
 const BOOT_MSG: &str = r"
  __  __             _               ___  ____  
@@ -46,4 +51,93 @@ pub fn get_hart_status() -> usize {
         }
     }
     hart_cnt
+}
+
+// Boot pagetable
+core::arch::global_asm!(
+    "   .section .data
+        .align 12
+    _boot_page_table_sv39:
+        # 0x00000000_00000000 -> 0x00000000 (1G, VRWXAD) for early console
+        .quad (0x00000 << 10) | 0xcf
+        .quad 0
+        # 0x00000000_80000000 -> 0x80000000 (1G, VRWXAD)
+        .quad (0x80000 << 10) | 0xcf
+        .zero 8 * 507
+        # 0xffffffff_80000000 -> 0x80000000 (1G, VRWXAD)
+        .quad (0x80000 << 10) | 0xcf
+        .quad 0
+    "
+);
+extern "C" {
+    fn _boot_page_table_sv39();
+}
+pub fn boot_pagetable() -> &'static mut [usize] {
+    unsafe { core::slice::from_raw_parts_mut(boot_pagetable_paddr() as _, ENTRY_COUNT) }
+}
+pub fn boot_pagetable_paddr() -> usize {
+    virt_text_to_phys(_boot_page_table_sv39 as usize)
+}
+
+/// 一个核的启动栈
+#[repr(C, align(4096))]
+struct KernelStack([u8; 1024 * 1024]); // 1MiB stack
+
+/// 所有核的启动栈
+#[link_section = ".bss.stack"]
+static mut KERNEL_STACK: core::mem::MaybeUninit<[KernelStack; 8]> =
+    core::mem::MaybeUninit::uninit(); // 8 core at max
+
+/// Assembly entry point
+///
+/// call rust_main
+#[naked]
+#[link_section = ".text.entry"]
+#[export_name = "_start"]
+unsafe extern "C" fn entry(hartid: usize) -> ! {
+    core::arch::asm!(
+        "   mv   tp, a0",
+        "   call {set_stack}",
+        "   call {set_boot_pt}",
+        // jump to rust_main
+        "   la   t0, rust_main
+            li   t1, 0xffffffff00000000
+            add  t0, t0, t1
+            add  sp, sp, t1
+            jr   t0
+        ",
+        set_stack   = sym set_stack,
+        set_boot_pt = sym set_boot_pt,
+        options(noreturn),
+    )
+}
+
+/// 设置启动栈
+#[naked]
+unsafe extern "C" fn set_stack(hartid: usize) {
+    core::arch::asm!(
+        "   add  t0, a0, 1
+            slli t0, t0, 18
+            la   sp, {stack}
+            add  sp, sp, t0
+            ret
+        ",
+        stack = sym KERNEL_STACK,
+        options(noreturn),
+    )
+}
+
+/// 设置启动页表
+#[naked]
+unsafe extern "C" fn set_boot_pt(hartid: usize) {
+    core::arch::asm!(
+        "   la   t0, _boot_page_table_sv39
+            srli t0, t0, 12
+            li   t1, 8 << 60
+            or   t0, t0, t1
+            csrw satp, t0
+            ret
+        ",
+        options(noreturn),
+    )
 }

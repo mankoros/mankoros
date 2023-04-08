@@ -69,7 +69,7 @@ debug: build
 			-m $(MEM_SIZE)		\
 			-smp $(CPUS) 		\
 			-kernel $(BIN_FILE) \
-			-s -S
+			-s -d int
 
 # build and run
 run: build qemu

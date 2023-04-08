@@ -11,7 +11,7 @@ pub const K_SEG_VIRT_MEM_END: usize = 0xffff_ffd0_0000_0000;
 pub const K_SEG_FILE_BEG: usize = 0xffff_ffd0_0000_0000;
 pub const K_SEG_FILE_END: usize = 0xffff_ffe0_0000_0000;
 
-// 物理内存直接映射区域 (32 GiB)
+// 物理内存直接映射区域 (62 GiB)
 pub const K_SEG_PHY_MEM_BEG: usize = 0xffff_fff0_0000_0000;
 pub const K_SEG_PHY_MEM_END: usize = 0xffff_ffff_8000_0000;
 

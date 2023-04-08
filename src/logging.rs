@@ -43,7 +43,7 @@ fn __print_impl(args: fmt::Arguments) {
 
 // Currently only error, warn, info and debug is used
 // Any lower level is ignored
-const LOG_LEVEL: &str = "info";
+const LOG_LEVEL: &str = "trace";
 
 pub fn init() {
     static LOGGER: SimpleLogger = SimpleLogger;

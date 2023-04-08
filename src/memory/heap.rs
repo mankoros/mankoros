@@ -1,16 +1,14 @@
 use buddy_system_allocator::LockedHeap;
 
-// 128 KiB heap, with max ORDER as 32, meaning block size is 128KiB / 2^32 == 0
-// TODO: find out why it will happened
-const KERNEL_HEAP_SIZE: usize = 128 * 1024;
-const KERNEL_HEAP_ORDER: usize = 32;
+// 4 MiB kernel init heap
+const KERNEL_HEAP_SIZE: usize = 4 * 1024 * 1024;
 
 #[global_allocator]
-static HEAP_ALLOCATOR: LockedHeap<KERNEL_HEAP_ORDER> = LockedHeap::<KERNEL_HEAP_ORDER>::empty();
+static HEAP_ALLOCATOR: LockedHeap<32> = LockedHeap::<32>::empty();
 
 static mut HEAP_SPACE: [u8; KERNEL_HEAP_SIZE] = [0; KERNEL_HEAP_SIZE];
 
-pub fn init_heap() {
+pub fn init() {
     unsafe {
         HEAP_ALLOCATOR.lock().init(HEAP_SPACE.as_ptr() as usize, KERNEL_HEAP_SIZE);
     }
