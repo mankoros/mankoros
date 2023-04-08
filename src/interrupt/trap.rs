@@ -1,71 +1,42 @@
+use crate::interrupt::context::UKContext;
 use core::arch::global_asm;
-
-use riscv::register::{
-    scause::{Exception, Interrupt, Trap},
-    sscratch, sstatus, stvec,
-};
-
-use crate::{memory, syscall};
-
-use super::{context, timer};
-use log::info;
+use riscv::register::{stvec, utvec::TrapMode};
 
 global_asm!(include_str!("trap.asm"));
 
 pub fn init() {
-    extern "C" {
-        fn __smode_traps();
-    }
-    info!("Try enabling trap vector at 0x{:x}", __smode_traps as usize);
-    let trap_vaddr = memory::phys_to_virt(__smode_traps as usize);
-    // Ensure interrupts are disabled.
     unsafe {
-        sscratch::write(0);
-        stvec::write(trap_vaddr, stvec::TrapMode::Direct);
-        // Allow Timer interrupt
-        sstatus::set_sie();
+        set_kernel_trap();
+    }
+}
+
+#[inline(always)]
+pub fn run_user(cx: &mut UKContext) {
+    extern "C" {
+        #[allow(improper_ctypes)]
+        fn __entry_user(cx: *mut UKContext);
+    }
+    unsafe {
+        set_user_trap();
+        __entry_user(cx as *mut _ as *mut _);
+        set_kernel_trap();
+    }
+}
+
+#[inline(always)]
+unsafe fn set_user_trap() {
+    extern "C" {
+        fn __set_user_trap_entry();
     }
 
-    info!("Interrupts enabled at STVEC: 0x{:x}", trap_vaddr);
+    stvec::write(__set_user_trap_entry as usize, TrapMode::Direct);
 }
 
-// Software break point handler
-fn breakpoint_handler(trapframe: &mut context::TrapFrame) {
-    info!("Breakpoint hit");
-    trapframe.sepc += 2;
-}
-
-fn syscall_handler(trapframe: &mut context::TrapFrame) {
-    info!("Syscall hit");
-    trapframe.sepc += 4;
-    trapframe.x[10] = syscall::syscall(
-        trapframe.x[17],
-        [
-            trapframe.x[10],
-            trapframe.x[11],
-            trapframe.x[12],
-            trapframe.x[13],
-            trapframe.x[14],
-            trapframe.x[15],
-        ],
-    ) as usize;
-}
-
-// Main S-Mode trap handler
-#[no_mangle]
-pub fn rust_trap_handler(trapframe: &mut context::TrapFrame) {
-    // Dispatch to the appropriate handler
-    match trapframe.scause.cause() {
-        Trap::Exception(Exception::Breakpoint) => breakpoint_handler(trapframe),
-        Trap::Exception(Exception::UserEnvCall) => syscall_handler(trapframe),
-        Trap::Interrupt(Interrupt::SupervisorTimer) => timer::timer_handler(),
-        _ => {
-            panic!(
-                "Unhandled S-Mode Trap, SEPC: 0x{:x}, SCAUSE: {:?}, STVAL: 0x{:x}",
-                trapframe.sepc,
-                trapframe.scause.cause(),
-                trapframe.stval,
-            )
-        }
+#[inline(always)]
+unsafe fn set_kernel_trap() {
+    extern "C" {
+        fn __kernel_trap_vector();
     }
+
+    stvec::write(__kernel_trap_vector as usize, TrapMode::Vectored);
 }

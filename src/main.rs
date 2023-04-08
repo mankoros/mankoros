@@ -20,7 +20,6 @@ use lazy_static::lazy_static;
 mod boot;
 mod consts;
 mod driver;
-mod interrupt;
 mod logging;
 mod memory;
 mod sync;
@@ -29,6 +28,7 @@ mod utils;
 #[macro_use]
 mod xdebug;
 mod executor;
+mod interrupt;
 mod process;
 mod tools;
 

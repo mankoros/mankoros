@@ -4,7 +4,7 @@ use riscv::register::{
     sstatus, stval,
 };
 
-use crate::executor;
+use crate::{executor, interrupt::trap::run_user};
 
 use super::process::ThreadInfo;
 
@@ -41,7 +41,9 @@ async fn userloop(thread: Arc<ThreadInfo>) {
 
         match thread.process.with_alive_or_dead(|_| {}) {
             Some(_) => {
-                // TODO: run user
+                // enter user mode
+                // never return until an exception/interrupt occurs in user mode
+                run_user(context);
             }
             // 进程死掉了, 可以退出 userloop 了
             None => break,

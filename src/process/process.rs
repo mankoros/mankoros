@@ -6,11 +6,10 @@ use alloc::{
 };
 use riscv::register::sstatus;
 
-use crate::{here, sync::SpinNoIrqLock};
+use crate::{here, interrupt::context::UKContext, sync::SpinNoIrqLock};
 
 use super::{
     aux_vector::AuxVector,
-    context::UKContext,
     elf_loader::{get_entry_point, map_elf_segment, parse_elf},
     pid_tid::{alloc_pid, alloc_tid, Pid, PidHandler, Tid, TidHandler},
     user_space::{StackID, UserSpace},
