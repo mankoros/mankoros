@@ -35,4 +35,18 @@ impl UKContext {
         self.user_sepc = sepc;
         self.user_sstatus = sstatus;
     }
+
+    pub fn set_user_pc_to_next(&mut self, curr_instruction_len: usize) {
+        self.user_sepc += curr_instruction_len;
+    }
+
+    pub fn syscall_no(&self) -> usize {
+        // a7 == x17
+        self.user_rx[17]
+    }
+
+    pub fn set_user_a0(&mut self, val: usize) {
+        // a0 == x10
+        self.user_rx[10] = val;
+    }
 }

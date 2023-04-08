@@ -1,14 +1,67 @@
-mod fs;
+use crate::{
+    interrupt::context::UKContext,
+    process::process::{ProcessInfo, ThreadInfo},
+};
+use log::info;
 
-use fs::*;
+pub struct Syscall<'a> {
+    cx: &'a mut UKContext,
+    thread: &'a ThreadInfo,
+    process: &'a ProcessInfo,
+    do_exit: bool,
+}
 
-/// 分派系统调用
-pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
-    match syscall_id {
-        SYSCALL_WRITE => sys_write(args[0], args[1] as *const u8, args[2]),
-        _ => panic!("Unknown syscall_id: {}", syscall_id),
+impl<'a> Syscall<'a> {
+    pub fn new(cx: &'a mut UKContext, thread: &'a ThreadInfo, process: &'a ProcessInfo) -> Self {
+        Self {
+            cx,
+            thread,
+            process,
+            do_exit: false,
+        }
+    }
+
+    #[inline(always)]
+    pub async fn syscall(&mut self) -> bool {
+        // 用作系统调用的 ecall 指令只能是 4 byte 长的, 它没有 C 扩展版本
+        self.cx.set_user_pc_to_next(4);
+
+        let syscall_no = self.cx.syscall_no();
+        let result: SyscallResult = match syscall_no {
+            SYSCALL_DBG_1 => self.sys_dbg_1().await,
+            SYSCALL_DBG_2 => self.sys_dbg_2().await,
+            _ => panic!("Unknown syscall_id: {}", syscall_no),
+        };
+
+        // 设置返回值
+        // TODO: 设计 ENOSYS 之类的全局错误码信息供用户程序使用
+        let ret = match result {
+            Ok(ret) => ret,
+            Err(_) => -1isize as usize,
+        };
+
+        self.cx.set_user_a0(ret);
+        self.do_exit
+    }
+
+    #[inline(always)]
+    pub async fn sys_dbg_1(&mut self) -> SyscallResult {
+        info!("Syscall: dbg_1");
+        Ok(0)
+    }
+
+    #[inline(always)]
+    pub async fn sys_dbg_2(&mut self) -> SyscallResult {
+        info!("Syscall: dbg_2");
+        Ok(0)
     }
 }
+
+pub type SyscallResult = Result<usize, SyscallError>;
+
+// only for debug usage
+pub const SYSCALL_DBG_1: usize = 0;
+pub const SYSCALL_DBG_2: usize = 1;
 
 // Syscall Numbers from Oops
 pub const SYSCALL_GETCWD: usize = 17;
@@ -97,3 +150,60 @@ pub const SYSCALL_RENAMEAT2: usize = 276;
 pub const SYSCALL_MEMBARRIER: usize = 283;
 pub const SYSCALL_STOP: usize = 998;
 pub const SYSCALL_SHUTDOWN: usize = 999;
+
+#[allow(dead_code, clippy::upper_case_acronyms)]
+#[repr(isize)]
+#[derive(Debug)]
+pub enum SyscallError {
+    EUNDEF = 0,
+    EPERM = 1,
+    ENOENT = 2,
+    ESRCH = 3,
+    EINTR = 4,
+    EIO = 5,
+    ENXIO = 6,
+    E2BIG = 7,
+    ENOEXEC = 8,
+    EBADF = 9,
+    ECHILD = 10,
+    EAGAIN = 11,
+    ENOMEM = 12,
+    EACCES = 13,
+    EFAULT = 14,
+    ENOTBLK = 15,
+    EBUSY = 16,
+    EEXIST = 17,
+    EXDEV = 18,
+    ENODEV = 19,
+    ENOTDIR = 20,
+    EISDIR = 21,
+    EINVAL = 22,
+    ENFILE = 23,
+    EMFILE = 24,
+    ENOTTY = 25,
+    ETXTBSY = 26,
+    EFBIG = 27,
+    ENOSPC = 28,
+    ESPIPE = 29,
+    EROFS = 30,
+    EMLINK = 31,
+    EPIPE = 32,
+    EDOM = 33,
+    ERANGE = 34,
+    EDEADLK = 35,
+    ENAMETOOLONG = 36,
+    ENOLCK = 37,
+    ENOSYS = 38,
+    ENOTEMPTY = 39,
+    ELOOP = 40,
+    EIDRM = 43,
+    ENOTSOCK = 80,
+    ENOPROTOOPT = 92,
+    EPFNOSUPPORT = 96,
+    EAFNOSUPPORT = 97,
+    ENOBUFS = 105,
+    EISCONN = 106,
+    ENOTCONN = 107,
+    ETIMEDOUT = 110,
+    ECONNREFUSED = 111,
+}

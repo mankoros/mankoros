@@ -13,6 +13,7 @@ use super::{
     elf_loader::{get_entry_point, map_elf_segment, parse_elf},
     pid_tid::{alloc_pid, alloc_tid, Pid, PidHandler, Tid, TidHandler},
     user_space::{StackID, UserSpace},
+    userloop,
 };
 
 /// 资源分配单位信息块 (其实就是进程信息块)
@@ -94,7 +95,7 @@ impl ProcessInfo {
         // 将线程打包为 Future
 
         // 将打包好的 Future 丢入调度器中
-        // userloop::spawn(future);
+        userloop::spawn(thread);
     }
 
     pub fn create_empty_thread(self: &Arc<Self>) -> Arc<ThreadInfo> {

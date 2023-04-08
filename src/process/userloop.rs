@@ -4,9 +4,10 @@ use riscv::register::{
     sstatus, stval,
 };
 
-use crate::{executor, interrupt::trap::run_user};
+use crate::{executor, interrupt::trap::run_user, syscall::Syscall};
 
 use super::process::ThreadInfo;
+use log::error;
 
 struct AutoSIE {}
 static mut SIE_COUNT: i32 = 0;
@@ -60,12 +61,14 @@ async fn userloop(thread: Arc<ThreadInfo>) {
             scause::Trap::Exception(e) => match e {
                 Exception::UserEnvCall => {
                     // TODO: syscall
-                    // do_exit = Syscall::new(context, &thread, &thread.process).syscall().await;
+                    is_exit = Syscall::new(context, &thread, &thread.process).syscall().await;
                 }
                 Exception::InstructionPageFault
                 | Exception::LoadPageFault
                 | Exception::StorePageFault => {
                     // TODO: page fault
+                    error!("page fault here");
+                    is_exit = true;
                     // do_exit = trap_handler::page_fault(&thread, e, stval, context.user_sepc).await;
                 }
                 Exception::InstructionFault | Exception::IllegalInstruction => {
@@ -76,7 +79,7 @@ async fn userloop(thread: Arc<ThreadInfo>) {
             },
             scause::Trap::Interrupt(i) => match i {
                 Interrupt::SupervisorTimer => {
-                    // TODO: timer
+                    // TODO: timer, currently do nothing
                     // timer::tick();
                     // if !do_exit {
                     //     thread::yield_now().await;
