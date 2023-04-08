@@ -119,7 +119,7 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     unsafe {
         riscv::asm::sfence_vma_all();
     }
-    info!("Boot emory unmapped");
+    info!("Boot memory unmapped");
 
     // Avoid drop
     mem::forget(kernal_page_table);
