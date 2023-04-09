@@ -6,7 +6,7 @@ use alloc::{
 };
 use riscv::register::sstatus;
 
-use crate::{here, interrupt::context::UKContext, sync::SpinNoIrqLock};
+use crate::{here, sync::SpinNoIrqLock, trap::context::UKContext};
 
 use super::{
     aux_vector::AuxVector,

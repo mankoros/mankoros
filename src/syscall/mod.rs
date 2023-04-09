@@ -1,6 +1,6 @@
 use crate::{
-    interrupt::context::UKContext,
     process::process::{ProcessInfo, ThreadInfo},
+    trap::context::UKContext,
 };
 use log::info;
 

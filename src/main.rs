@@ -29,9 +29,9 @@ mod utils;
 #[macro_use]
 mod xdebug;
 mod executor;
-mod interrupt;
 mod process;
 mod tools;
+mod trap;
 
 use driver::uart::Uart;
 use log::{error, info};
@@ -97,15 +97,15 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     info!("Total harts: {}", hart_cnt);
 
     // Initialize interrupt controller
-    interrupt::trap::init();
+    trap::trap::init();
 
     // Initialize timer
-    interrupt::timer::init();
+    trap::timer::init();
 
     // Test ebreak
-    // unsafe {
-    //     riscv::asm::ebreak();
-    // }
+    unsafe {
+        riscv::asm::ebreak();
+    }
     let mut kernal_page_table = memory::pagetable::pagetable::PageTable::new_with_paddr(
         (boot::boot_pagetable_paddr()).into(),
     );
@@ -162,7 +162,7 @@ pub extern "C" fn alt_rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     BOOT_HART_CNT.fetch_add(1, Ordering::SeqCst);
 
     // Initialize interrupt controller
-    interrupt::trap::init();
+    trap::trap::init();
     loop {}
     unreachable!();
 }

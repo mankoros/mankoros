@@ -1,5 +1,5 @@
 use crate::arch;
-use crate::interrupt::context::UKContext;
+use crate::trap::context::UKContext;
 use core::arch::global_asm;
 use riscv::register::sstatus;
 use riscv::register::{stvec, utvec::TrapMode};

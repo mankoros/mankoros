@@ -4,7 +4,7 @@ use riscv::register::{
     sstatus, stval,
 };
 
-use crate::{executor, interrupt::trap::run_user, syscall::Syscall};
+use crate::{executor, syscall::Syscall, trap::trap::run_user};
 
 use super::process::ThreadInfo;
 use log::error;

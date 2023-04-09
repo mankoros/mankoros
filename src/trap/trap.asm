@@ -161,8 +161,45 @@ __user_trap_entry:
 
     ret
 
+.align 6
 __kernel_default_exception_entry:
-    unimp
+    // Using current stack
+    addi sp, sp, -17*8
+    sd  ra,  1*8(sp)
+    sd  t0,  2*8(sp)
+    sd  t1,  3*8(sp)
+    sd  t2,  4*8(sp)
+    sd  t3,  5*8(sp)
+    sd  t4,  6*8(sp)
+    sd  t5,  7*8(sp)
+    sd  t6,  8*8(sp)
+    sd  a0,  9*8(sp)
+    sd  a1, 10*8(sp)
+    sd  a2, 11*8(sp)
+    sd  a3, 12*8(sp)
+    sd  a4, 13*8(sp)
+    sd  a5, 14*8(sp)
+    sd  a6, 15*8(sp)
+    sd  a7, 16*8(sp)
+    call kernel_default_exception
+    ld  ra,  1*8(sp)
+    ld  t0,  2*8(sp)
+    ld  t1,  3*8(sp)
+    ld  t2,  4*8(sp)
+    ld  t3,  5*8(sp)
+    ld  t4,  6*8(sp)
+    ld  t5,  7*8(sp)
+    ld  t6,  8*8(sp)
+    ld  a0,  9*8(sp)
+    ld  a1, 10*8(sp)
+    ld  a2, 11*8(sp)
+    ld  a3, 12*8(sp)
+    ld  a4, 13*8(sp)
+    ld  a5, 14*8(sp)
+    ld  a6, 15*8(sp)
+    ld  a7, 16*8(sp)
+    addi sp, sp, 17*8
+    sret
 
 .align 6
 __kernel_default_interrupt_entry:
