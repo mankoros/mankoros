@@ -5,7 +5,11 @@
 //!
 
 use crate::{
-    consts, memory,
+    boot,
+    consts::{
+        self, address_space::K_SEG_PHY_MEM_BEG, HUGE_PAGE_SIZE, MAX_PHYSICAL_MEMORY, PHYMEM_START,
+    },
+    memory,
     memory::{
         address::{PhysAddr, VirtAddr},
         frame,
@@ -14,11 +18,12 @@ use crate::{
 
 use alloc::{vec, vec::Vec};
 use log::trace;
+use riscv::register::satp;
 
 use super::pte::{self, PTEFlags, PageTableEntry};
 
 // Entries count in each page table level
-const ENTRY_COUNT: usize = 512;
+pub const ENTRY_COUNT: usize = 512;
 
 fn p4_index(vaddr: VirtAddr) -> usize {
     (usize::from(vaddr) >> (12 + 27)) & (ENTRY_COUNT - 1)
@@ -36,6 +41,36 @@ fn p1_index(vaddr: VirtAddr) -> usize {
     (usize::from(vaddr) >> 12) & (ENTRY_COUNT - 1)
 }
 
+/// Map kernel physical memory segment into virtual address space.
+///
+pub fn map_kernel_phys_seg() {
+    let boot_pagetable = boot::boot_pagetable();
+
+    // Map kernel physical memory
+    for i in (0..MAX_PHYSICAL_MEMORY).step_by(HUGE_PAGE_SIZE) {
+        let paddr: usize = i + PHYMEM_START;
+        let vaddr = VirtAddr::from(i + K_SEG_PHY_MEM_BEG);
+        trace!("p3 index: {}", p3_index(vaddr));
+        boot_pagetable[p3_index(vaddr)] = (paddr >> 2) | 0xcf;
+    }
+}
+
+/// Unmap the lower segment used for booting
+pub fn unmap_boot_seg() {
+    let boot_pagetable = boot::boot_pagetable();
+    boot_pagetable[0] = 0;
+    boot_pagetable[2] = 0;
+}
+
+/// Switch to global kernel boot pagetable
+pub fn enable_boot_pagetable() {
+    let boot_pagetable = boot::boot_pagetable_paddr();
+    unsafe {
+        riscv::register::satp::set(satp::Mode::Sv39, 0, boot_pagetable >> 12);
+        riscv::asm::sfence_vma_all();
+    }
+}
+
 pub struct PageTable {
     root_paddr: PhysAddr,
     intrm_tables: Vec<PhysAddr>,
@@ -49,6 +84,13 @@ impl PageTable {
         PageTable {
             root_paddr,
             intrm_tables: vec![root_paddr],
+        }
+    }
+
+    pub fn new_with_paddr(paddr: PhysAddr) -> Self {
+        PageTable {
+            root_paddr: paddr,
+            intrm_tables: vec![paddr],
         }
     }
 

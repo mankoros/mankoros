@@ -8,8 +8,8 @@ OUTPUT_ARCH(riscv)
 /* Entry Point */
 ENTRY(_start)
 
-/* OpenSBI transfer control to this address */
-BASE_ADDRESS = 0x80200000;
+/* OpenSBI transfer control to 0x80200000 */
+BASE_ADDRESS = 0xFFFFFFFF80200000;
 
 SECTIONS
 {

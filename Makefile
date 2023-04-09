@@ -11,7 +11,7 @@ TARGET_CC	:= clang
 TARGET_CXX	:= clang++
 
 CPUS		:= 4
-MEM_SIZE	:= 1G
+MEM_SIZE	:= 4G
 
 MAX_BUILD_JOBS	:= 8
 
@@ -69,7 +69,7 @@ debug: build
 			-m $(MEM_SIZE)		\
 			-smp $(CPUS) 		\
 			-kernel $(BIN_FILE) \
-			-s -S
+			-s -d int
 
 # build and run
 run: build qemu

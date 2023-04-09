@@ -17,6 +17,7 @@ use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use lazy_static::lazy_static;
 
+mod arch;
 mod boot;
 mod consts;
 mod driver;
@@ -33,43 +34,23 @@ mod process;
 mod tools;
 
 use driver::uart::Uart;
-use log::{error, info, trace};
+use log::{error, info};
 use memory::frame;
-use memory::heap_allocator::init_heap;
+use memory::heap;
 use memory::pagetable::pte::PTEFlags;
-use riscv::register::satp;
 use sync::SpinNoIrqLock;
 
 use consts::address_space;
 use consts::memlayout;
 
-/// Assembly entry point
-///
-/// Allocation a init stack, then call rust_main
-#[naked]
-#[no_mangle]
-#[link_section = ".text.entry"]
-unsafe extern "C" fn _start() -> ! {
-    // 32K large init stack
-    const STACK_SIZE: usize = 32 * 1024;
+use crate::memory::address::virt_text_to_phys;
+use crate::memory::pagetable;
 
-    #[link_section = ".bss.stack"]
-    static mut STACK: [u8; STACK_SIZE] = [0u8; STACK_SIZE];
+// Global shared atomic varible
 
-    core::arch::asm!(
-        "
-            la  sp, {stack} + {stack_size}
-            sd  x0, -16(sp)
-            sd  x0, -8(sp)
-            j   rust_main
-        ",
-        stack_size = const STACK_SIZE,
-        stack      =   sym STACK,
-        options(noreturn),
-    )
-}
+pub static DEVICE_REMAPPED: AtomicBool = AtomicBool::new(false);
 
-// Static memory
+pub static BOOT_HART_CNT: AtomicUsize = AtomicUsize::new(0);
 
 // Init uart, called uart0
 lazy_static! {
@@ -85,21 +66,21 @@ lazy_static! {
         SpinNoIrqLock::new(port)
     };
 }
-static KERNAL_REMAPPED: AtomicBool = AtomicBool::new(false);
 
-/// Rust entry point
+/// Boot hart rust entry point
 ///
 ///
 #[no_mangle]
-pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
+pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) -> ! {
     // Clear BSS before anything else
     boot::clear_bss();
     // Print boot message
     boot::print_boot_msg();
     // Print current boot hart
-    println!("Hart {} init booting up", hart_id);
+    println!("Hart {} init booting up", boot_hart_id);
 
     // Initial logging support
+    println!("Logging initializing...");
     logging::init();
     info!("Logging initialised");
     // Print boot memory layour
@@ -107,14 +88,9 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
 
     // Initial memory system
     frame::init();
-    init_heap();
-
     // Test the physical frame allocator
-    let first_frame = frame::alloc_frame().unwrap();
-    let kernel_end = memlayout::kernel_end as usize;
-    assert!(first_frame == kernel_end);
-    info!("First available frame: 0x{:x}", first_frame);
-    frame::dealloc_frame(first_frame);
+    frame::test_first_frame();
+    heap::init();
 
     // Get hart info
     let hart_cnt = boot::get_hart_status();
@@ -130,8 +106,44 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     unsafe {
         riscv::asm::ebreak();
     }
+    let mut kernal_page_table = memory::pagetable::pagetable::PageTable::new_with_paddr(
+        (boot::boot_pagetable_paddr()).into(),
+    );
+    // Map physical memory
+    pagetable::pagetable::map_kernel_phys_seg();
+    info!("Physical memory mapped at {:#x}", consts::PHYMEM_START);
+    // Map devices
+    kernal_page_table.map_page(
+        (memlayout::UART0_BASE + address_space::K_SEG_HARDWARE_BEG).into(),
+        memlayout::UART0_BASE.into(),
+        PTEFlags::R | PTEFlags::W,
+    );
+    info!("Console switching...");
+    DEVICE_REMAPPED.store(true, Ordering::SeqCst);
+    info!("Console switched to UART0");
 
-    remap_kernel();
+    // Start other cores
+    let alt_rust_main_phys = virt_text_to_phys(boot::alt_entry as usize);
+    info!("Starting other cores at 0x{:x}", alt_rust_main_phys);
+    for hart_id in 0..hart_cnt {
+        if hart_id != boot_hart_id {
+            sbi_rt::hart_start(hart_id, alt_rust_main_phys, _device_tree_addr)
+                .expect("Starting hart failed");
+        }
+    }
+    BOOT_HART_CNT.fetch_add(1, Ordering::SeqCst);
+
+    // Wait for all the harts to finish booting
+    while BOOT_HART_CNT.load(Ordering::SeqCst) != hart_cnt {}
+    // Remove low memory mappings
+    pagetable::pagetable::unmap_boot_seg();
+    unsafe {
+        riscv::asm::sfence_vma_all();
+    }
+    info!("Boot memory unmapped");
+
+    // Avoid drop
+    mem::forget(kernal_page_table);
 
     loop {}
 
@@ -140,85 +152,19 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
 
     unreachable!();
 }
-
-fn remap_kernel() {
-    let mut kernal_page_table = memory::pagetable::pagetable::PageTable::new();
-    // Map current position
-    kernal_page_table.map_region(
-        (memlayout::kernel_start as usize).into(),
-        (memlayout::kernel_start as usize).into(),
-        memlayout::kernel_end as usize - memlayout::kernel_start as usize,
-        PTEFlags::R | PTEFlags::W | PTEFlags::X,
-    );
-    // Map new position
-    kernal_page_table.map_region(
-        (memlayout::kernel_start as usize + address_space::K_SEG_VIRT_MEM_BEG).into(),
-        (memlayout::kernel_start as usize).into(),
-        memlayout::kernel_end as usize - memlayout::kernel_start as usize,
-        PTEFlags::R | PTEFlags::W | PTEFlags::X,
-    );
-    // Map physical memory
-    kernal_page_table.map_region(
-        address_space::K_SEG_PHY_MEM_BEG.into(),
-        consts::PHYMEM_START.into(),
-        consts::MAX_PHYSICAL_MEMORY,
-        PTEFlags::R | PTEFlags::W,
-    );
-
-    // Map devices
-    kernal_page_table.map_page(
-        (memlayout::UART0_BASE + address_space::K_SEG_HARDWARE_BEG).into(),
-        memlayout::UART0_BASE.into(),
-        PTEFlags::R | PTEFlags::W,
-    );
-
-    // Enable paging
-    unsafe {
-        riscv::register::satp::set(
-            satp::Mode::Sv39,
-            0,
-            kernal_page_table.root_paddr().page_num_down().into(),
-        );
-        riscv::asm::sfence_vma_all();
-    }
-
-    // Jump to new position
-    kernel_jump();
-
-    // Set KERNEL_REMAPPED
-    KERNAL_REMAPPED.store(true, Ordering::SeqCst);
-
-    // Set new S-Mode trap vector
-    // TODO: This should be done after disabling interrupts
-    interrupt::trap::init();
-
-    loop {}
-
-    // Unmap old position
-    kernal_page_table.unmap_region(
-        (memlayout::kernel_start as usize).into(),
-        memlayout::kernel_end as usize - memlayout::kernel_start as usize,
-    );
-
-    // Avoid drop
-    mem::forget(kernal_page_table);
-}
-
-#[naked]
+/// Other hart rust entry point
+///
+///
 #[no_mangle]
-fn kernel_jump() {
-    unsafe {
-        core::arch::asm!(
-            "
-            li      t1, {offset}
-            add     ra, t1, ra
-            add     sp, t1, sp
-            ret
-        ",
-            offset = const address_space::K_SEG_VIRT_MEM_BEG,
-            options(noreturn),
-        );
-    }
+pub extern "C" fn alt_rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
+    pagetable::pagetable::enable_boot_pagetable();
+    info!("Hart {} started at stack: 0x{:x}", hart_id, arch::sp());
+    BOOT_HART_CNT.fetch_add(1, Ordering::SeqCst);
+
+    // Initialize interrupt controller
+    interrupt::trap::init();
+    loop {}
+    unreachable!();
 }
 
 static PANIC_COUNT: AtomicUsize = AtomicUsize::new(0);

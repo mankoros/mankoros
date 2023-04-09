@@ -1,32 +1,12 @@
+use crate::arch;
 use crate::consts::memlayout::{text_end, text_start};
-use core::arch::asm;
 use core::mem::size_of;
 use log::error;
 
-/// Returns the current frame pointer or stack base pointer
-#[inline(always)]
-pub fn fp() -> usize {
-    let ptr: usize;
-    unsafe {
-        asm!("mv {}, s0", out(reg) ptr);
-    }
-    ptr
-}
-
-/// Returns the current link register.or return address
-#[inline(always)]
-pub fn lr() -> usize {
-    let ptr: usize;
-    unsafe {
-        asm!("mv {}, ra", out(reg) ptr);
-    }
-    ptr
-}
-
 pub fn backtrace() {
     unsafe {
-        let mut current_pc = lr();
-        let mut current_fp = fp();
+        let mut current_pc = arch::lr();
+        let mut current_fp = arch::fp();
         let mut stack_num = 0;
 
         error!("");

@@ -3,10 +3,10 @@
 
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
-use core::sync::atomic::Ordering;
+
+use log::{trace, warn};
 
 use crate::consts;
-use crate::KERNAL_REMAPPED;
 
 // Kernel Phy to Virt function
 // Whenever kernel wants to access to a physical address
@@ -16,15 +16,17 @@ use crate::KERNAL_REMAPPED;
 pub fn phys_to_virt(addr: usize) -> usize {
     // Return if the address is obviously in HIGH address space
     if addr >= consts::address_space::K_SEG_BEG {
+        warn!("Physical address 0x{:x} is in high address space", addr);
         return addr;
     }
+    trace!("Kernel physical address 0x{:x} to virtual addr", addr);
 
-    let kernel_remapped = KERNAL_REMAPPED.load(Ordering::Relaxed);
-    if kernel_remapped {
-        addr - consts::PHYMEM_START + consts::address_space::K_SEG_PHY_MEM_BEG
-    } else {
-        addr
-    }
+    addr - consts::PHYMEM_START + consts::address_space::K_SEG_PHY_MEM_BEG
+}
+// Kernel Virt text to Phy address
+#[inline]
+pub fn virt_text_to_phys(addr: usize) -> usize {
+    addr - consts::address_space::K_SEG_DATA_BEG + consts::PHYMEM_START
 }
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
