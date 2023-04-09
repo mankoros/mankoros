@@ -1,5 +1,7 @@
     .section .text
-    .global __entry_user
+    .global __kernel_to_user
+    .global __user_trap_entry
+    .global __kernel_trap_vector
 
 # 常量：表示每个寄存器占的字节数，由于是64位，都是8字节
 .equ XLENB, 8
@@ -159,9 +161,56 @@ __user_trap_entry:
 
     ret
 
+__kernel_default_exception_entry:
+    unimp
+
+.align 6
+__kernel_default_interrupt_entry:
+    // Using current stack
+    addi sp, sp, -17*8
+    sd  ra,  1*8(sp)
+    sd  t0,  2*8(sp)
+    sd  t1,  3*8(sp)
+    sd  t2,  4*8(sp)
+    sd  t3,  5*8(sp)
+    sd  t4,  6*8(sp)
+    sd  t5,  7*8(sp)
+    sd  t6,  8*8(sp)
+    sd  a0,  9*8(sp)
+    sd  a1, 10*8(sp)
+    sd  a2, 11*8(sp)
+    sd  a3, 12*8(sp)
+    sd  a4, 13*8(sp)
+    sd  a5, 14*8(sp)
+    sd  a6, 15*8(sp)
+    sd  a7, 16*8(sp)
+    call kernel_default_interrupt
+    ld  ra,  1*8(sp)
+    ld  t0,  2*8(sp)
+    ld  t1,  3*8(sp)
+    ld  t2,  4*8(sp)
+    ld  t3,  5*8(sp)
+    ld  t4,  6*8(sp)
+    ld  t5,  7*8(sp)
+    ld  t6,  8*8(sp)
+    ld  a0,  9*8(sp)
+    ld  a1, 10*8(sp)
+    ld  a2, 11*8(sp)
+    ld  a3, 12*8(sp)
+    ld  a4, 13*8(sp)
+    ld  a5, 14*8(sp)
+    ld  a6, 15*8(sp)
+    ld  a7, 16*8(sp)
+    addi sp, sp, 17*8
+    sret
 
 // 实际上就是 __kernel_to_kernel, 但是为了凸显它是一个 **Vector Mode** 的
 // Trap Vector, 所以叫这个名字
 .align 8
 __kernel_trap_vector:
-    // TODO
+    j __kernel_default_exception_entry
+    .rept 16
+    .align 2
+    j __kernel_default_interrupt_entry
+    .endr
+    unimp

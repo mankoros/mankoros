@@ -1,6 +1,10 @@
+use crate::arch;
 use crate::interrupt::context::UKContext;
 use core::arch::global_asm;
+use riscv::register::sstatus;
 use riscv::register::{stvec, utvec::TrapMode};
+
+use log::info;
 
 global_asm!(include_str!("trap.asm"));
 
@@ -26,10 +30,10 @@ pub fn run_user(cx: &mut UKContext) {
 #[inline(always)]
 unsafe fn set_user_trap() {
     extern "C" {
-        fn __set_user_trap_entry();
+        fn __user_trap_entry();
     }
 
-    stvec::write(__set_user_trap_entry as usize, TrapMode::Direct);
+    stvec::write(__user_trap_entry as usize, TrapMode::Direct);
 }
 
 #[inline(always)]
@@ -37,6 +41,18 @@ unsafe fn set_kernel_trap() {
     extern "C" {
         fn __kernel_trap_vector();
     }
+    info!(
+        "Try enabling trap vector at 0x{:x}",
+        __kernel_trap_vector as usize
+    );
+    let trap_vaddr = __kernel_trap_vector as usize;
+    stvec::write(trap_vaddr, TrapMode::Vectored);
+    // Enable irq
+    sstatus::set_sie();
 
-    stvec::write(__kernel_trap_vector as usize, TrapMode::Vectored);
+    info!(
+        "Interrupts enabled for hard {} at STVEC: 0x{:x}",
+        arch::get_hart_id(),
+        trap_vaddr
+    );
 }

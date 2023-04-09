@@ -100,7 +100,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     interrupt::trap::init();
 
     // Initialize timer
-    // interrupt::timer::init();
+    interrupt::timer::init();
 
     // Test ebreak
     // unsafe {
