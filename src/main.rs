@@ -100,12 +100,12 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     interrupt::trap::init();
 
     // Initialize timer
-    interrupt::timer::init();
+    // interrupt::timer::init();
 
     // Test ebreak
-    unsafe {
-        riscv::asm::ebreak();
-    }
+    // unsafe {
+    //     riscv::asm::ebreak();
+    // }
     let mut kernal_page_table = memory::pagetable::pagetable::PageTable::new_with_paddr(
         (boot::boot_pagetable_paddr()).into(),
     );
