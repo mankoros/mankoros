@@ -18,11 +18,11 @@ pub fn init() {
 pub fn run_user(cx: &mut UKContext) {
     extern "C" {
         #[allow(improper_ctypes)]
-        fn __entry_user(cx: *mut UKContext);
+        fn __kernel_to_user(cx: *mut UKContext);
     }
     unsafe {
         set_user_trap();
-        __entry_user(cx as *mut _ as *mut _);
+        __kernel_to_user(cx as *mut _ as *mut _);
         set_kernel_trap();
     }
 }
