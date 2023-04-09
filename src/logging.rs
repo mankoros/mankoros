@@ -67,8 +67,8 @@ impl Log for SimpleLogger {
             return;
         }
         let level = record.level();
-        let line = record.line().unwrap_or(0);
-        let target = record.target();
+        let _line = record.line().unwrap_or(0);
+        let target = record.file().unwrap_or("");
         let level_color = match level {
             Level::Error => ColorCode::BrightRed,
             Level::Warn => ColorCode::BrightYellow,
@@ -85,9 +85,10 @@ impl Log for SimpleLogger {
         };
         __print_impl(with_color!(
             ColorCode::White,
-            "[{} {} {}\n",
+            "[{} {} {} {}\n",
             with_color!(level_color, "{:<5}", level),
-            with_color!(ColorCode::White, "{}:{}]", target, line),
+            with_color!(ColorCode::BrightBlue, "{:0>4}", crate::ticks()),
+            with_color!(ColorCode::White, "{:<25}]", target),
             with_color!(args_color, "{}", record.args()),
         ));
     }

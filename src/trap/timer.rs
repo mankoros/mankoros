@@ -6,11 +6,13 @@ use crate::arch;
 
 static TIME_INTERVAL: u64 = 100000; // TODO: Hard coded for now
 
-pub static mut TICKS: usize = 0;
+static mut TIMER_TICK: usize = 0;
+
+static mut TICK: usize = 0;
 
 pub fn init() {
     unsafe {
-        TICKS = 0;
+        TIMER_TICK = 0;
         sie::set_stimer();
     }
     set_next_timer_irq();
@@ -21,9 +23,10 @@ pub fn init() {
 pub fn timer_handler() {
     set_next_timer_irq();
     unsafe {
-        TICKS += 1;
-        if TICKS >= 100 {
-            TICKS = 0;
+        TIMER_TICK += 1;
+        if TIMER_TICK >= 100 {
+            TIMER_TICK = 0;
+            TICK += 1;
             info!("Timer IRQ fired at hart {}", arch::get_hart_id());
         }
     }
@@ -37,5 +40,5 @@ pub fn set_next_timer_irq() {
 
 // Read global ticks
 pub fn ticks() -> usize {
-    unsafe { TICKS }
+    unsafe { TICK }
 }

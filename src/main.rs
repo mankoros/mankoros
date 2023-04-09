@@ -46,6 +46,8 @@ use consts::memlayout;
 use crate::memory::address::virt_text_to_phys;
 use crate::memory::pagetable;
 
+use trap::ticks;
+
 // Global shared atomic varible
 
 pub static DEVICE_REMAPPED: AtomicBool = AtomicBool::new(false);
