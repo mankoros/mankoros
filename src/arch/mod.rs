@@ -1,11 +1,9 @@
-use core::arch::asm;
-
 /// Returns the current frame pointer or stack base pointer
 #[inline(always)]
 pub fn fp() -> usize {
     let ptr: usize;
     unsafe {
-        asm!("mv {}, s0", out(reg) ptr);
+        core::arch::asm!("mv {}, s0", out(reg) ptr);
     }
     ptr
 }
@@ -15,7 +13,7 @@ pub fn fp() -> usize {
 pub fn lr() -> usize {
     let ptr: usize;
     unsafe {
-        asm!("mv {}, ra", out(reg) ptr);
+        core::arch::asm!("mv {}, ra", out(reg) ptr);
     }
     ptr
 }
@@ -25,7 +23,15 @@ pub fn lr() -> usize {
 pub fn sp() -> usize {
     let ptr: usize;
     unsafe {
-        asm!("mv {}, sp", out(reg) ptr);
+        core::arch::asm!("mv {}, sp", out(reg) ptr);
     }
     ptr
+}
+
+/// Hard ID is stored in tp register
+#[inline]
+pub fn get_hart_id() -> usize {
+    let hart_id;
+    unsafe { core::arch::asm!("mv {0}, tp", out(reg) hart_id) };
+    hart_id
 }

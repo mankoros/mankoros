@@ -5,7 +5,8 @@ use riscv::register::{
     sscratch, sstatus, stvec,
 };
 
-use crate::{memory, syscall};
+use crate::arch;
+use crate::syscall;
 
 use super::{context, timer};
 use log::info;
@@ -26,7 +27,11 @@ pub fn init() {
         sstatus::set_sie();
     }
 
-    info!("Interrupts enabled at STVEC: 0x{:x}", trap_vaddr);
+    info!(
+        "Interrupts enabled for hard {} at STVEC: 0x{:x}",
+        arch::get_hart_id(),
+        trap_vaddr
+    );
 }
 
 // Software break point handler

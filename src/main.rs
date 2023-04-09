@@ -30,7 +30,7 @@ mod xdebug;
 mod tools;
 
 use driver::uart::Uart;
-use log::{error, info, trace};
+use log::{error, info};
 use memory::frame;
 use memory::heap;
 use memory::pagetable::pte::PTEFlags;
@@ -42,9 +42,11 @@ use consts::memlayout;
 use crate::memory::address::virt_text_to_phys;
 use crate::memory::pagetable;
 
-// Static memory
+// Global shared atomic varible
 
 pub static DEVICE_REMAPPED: AtomicBool = AtomicBool::new(false);
+
+pub static BOOT_HART_CNT: AtomicUsize = AtomicUsize::new(0);
 
 // Init uart, called uart0
 lazy_static! {
@@ -125,13 +127,16 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
                 .expect("Starting hart failed");
         }
     }
+    BOOT_HART_CNT.fetch_add(1, Ordering::SeqCst);
 
+    // Wait for all the harts to finish booting
+    while BOOT_HART_CNT.load(Ordering::SeqCst) != hart_cnt {}
     // Remove low memory mappings
-    // pagetable::pagetable::unmap_boot_seg();
-    // unsafe {
-    //     riscv::asm::sfence_vma_all();
-    // }
-    // info!("Boot memory unmapped");
+    pagetable::pagetable::unmap_boot_seg();
+    unsafe {
+        riscv::asm::sfence_vma_all();
+    }
+    info!("Boot memory unmapped");
 
     // Avoid drop
     mem::forget(kernal_page_table);
@@ -150,6 +155,10 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
 pub extern "C" fn alt_rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     pagetable::pagetable::enable_boot_pagetable();
     info!("Hart {} started at stack: 0x{:x}", hart_id, arch::sp());
+    BOOT_HART_CNT.fetch_add(1, Ordering::SeqCst);
+
+    // Initialize interrupt controller
+    interrupt::trap::init();
     loop {}
     unreachable!();
 }
