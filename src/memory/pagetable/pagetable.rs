@@ -18,6 +18,7 @@ use crate::{
 
 use alloc::{vec, vec::Vec};
 use log::trace;
+use riscv::register::satp;
 
 use super::pte::{self, PTEFlags, PageTableEntry};
 
@@ -59,6 +60,15 @@ pub fn unmap_boot_seg() {
     let boot_pagetable = boot::boot_pagetable();
     boot_pagetable[0] = 0;
     boot_pagetable[2] = 0;
+}
+
+/// Switch to global kernel boot pagetable
+pub fn enable_boot_pagetable() {
+    let boot_pagetable = boot::boot_pagetable_paddr();
+    unsafe {
+        riscv::register::satp::set(satp::Mode::Sv39, 0, boot_pagetable >> 12);
+        riscv::asm::sfence_vma_all();
+    }
 }
 
 pub struct PageTable {

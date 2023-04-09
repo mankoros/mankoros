@@ -1,3 +1,5 @@
+use log::info;
+
 /// Copyright (c) 2023 Easton Man @Mankoros
 /// Copyright (c) 2022 Maturin OS
 ///
@@ -43,7 +45,9 @@ pub fn get_hart_status() -> usize {
     let mut hart_cnt = 0;
     let mut hart_id = 0;
     loop {
-        if sbi_rt::hart_get_status(hart_id).is_ok() {
+        let hart_status = sbi_rt::hart_get_status(hart_id);
+        if hart_status.is_ok() {
+            info!("Hart {} status is {:?}", hart_id, hart_status.unwrap());
             hart_cnt += 1;
             hart_id += 1;
         } else {
@@ -92,7 +96,7 @@ struct KernelStack([u8; 1024 * 1024]); // 1MiB stack
 static mut KERNEL_STACK: core::mem::MaybeUninit<[KernelStack; 8]> =
     core::mem::MaybeUninit::uninit(); // 8 core at max
 
-/// Assembly entry point
+/// Assembly entry point for boot hard
 ///
 /// call rust_main
 #[naked]
@@ -103,14 +107,33 @@ unsafe extern "C" fn entry(hartid: usize) -> ! {
         "   mv   tp, a0",
         "   call {set_stack}",
         "   call {set_boot_pt}",
-        // jump to rust_main
-        "   la   t0, rust_main
+        // jump to boot_rust_main
+        "   la   t0, boot_rust_main
             li   t1, 0xffffffff00000000
             add  t0, t0, t1
             add  sp, sp, t1
             jr   t0
         ",
         set_stack   = sym set_stack,
+        set_boot_pt = sym set_boot_pt,
+        options(noreturn),
+    )
+}
+
+#[naked]
+pub unsafe extern "C" fn alt_entry(hartid: usize) -> ! {
+    core::arch::asm!(
+        "   mv   tp, a0",
+        "   call {set_stack}",
+        "   call {set_boot_pt}",
+        // jump to alt_rust_main
+        "   la   t0, alt_rust_main
+            li   t1, 0xffffffff00000000
+            add  t0, t0, t1
+            add  sp, sp, t1
+            jr   t0
+        ",
+        set_stack = sym set_stack,
         set_boot_pt = sym set_boot_pt,
         options(noreturn),
     )

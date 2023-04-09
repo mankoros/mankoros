@@ -15,6 +15,7 @@ use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use lazy_static::lazy_static;
 
+mod arch;
 mod boot;
 mod consts;
 mod driver;
@@ -38,6 +39,7 @@ use sync::SpinNoIrqLock;
 use consts::address_space;
 use consts::memlayout;
 
+use crate::memory::address::virt_text_to_phys;
 use crate::memory::pagetable;
 
 // Static memory
@@ -59,17 +61,17 @@ lazy_static! {
     };
 }
 
-/// Rust entry point
+/// Boot hart rust entry point
 ///
 ///
 #[no_mangle]
-pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
+pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) -> ! {
     // Clear BSS before anything else
     boot::clear_bss();
     // Print boot message
     boot::print_boot_msg();
     // Print current boot hart
-    println!("Hart {} init booting up", hart_id);
+    println!("Hart {} init booting up", boot_hart_id);
 
     // Initial logging support
     println!("Logging initializing...");
@@ -114,12 +116,22 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     DEVICE_REMAPPED.store(true, Ordering::SeqCst);
     info!("Console switched to UART0");
 
-    // Remove low memory mappings
-    pagetable::pagetable::unmap_boot_seg();
-    unsafe {
-        riscv::asm::sfence_vma_all();
+    // Start other cores
+    let alt_rust_main_phys = virt_text_to_phys(boot::alt_entry as usize);
+    info!("Starting other cores at 0x{:x}", alt_rust_main_phys);
+    for hart_id in 0..hart_cnt {
+        if hart_id != boot_hart_id {
+            sbi_rt::hart_start(hart_id, alt_rust_main_phys, _device_tree_addr)
+                .expect("Starting hart failed");
+        }
     }
-    info!("Boot memory unmapped");
+
+    // Remove low memory mappings
+    // pagetable::pagetable::unmap_boot_seg();
+    // unsafe {
+    //     riscv::asm::sfence_vma_all();
+    // }
+    // info!("Boot memory unmapped");
 
     // Avoid drop
     mem::forget(kernal_page_table);
@@ -129,6 +141,16 @@ pub extern "C" fn rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     // Shutdown
     sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
 
+    unreachable!();
+}
+/// Other hart rust entry point
+///
+///
+#[no_mangle]
+pub extern "C" fn alt_rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
+    pagetable::pagetable::enable_boot_pagetable();
+    info!("Hart {} started at stack: 0x{:x}", hart_id, arch::sp());
+    loop {}
     unreachable!();
 }
 
