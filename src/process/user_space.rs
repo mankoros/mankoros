@@ -1,4 +1,5 @@
 use alloc::{format, string::String, vec::Vec};
+use bitflags::bitflags;
 
 use crate::{
     consts::{
@@ -11,10 +12,12 @@ use crate::{
         pagetable::{pagetable::PageTable, pte::PTEFlags},
     },
     process::aux_vector::AuxElement,
+    sync::mutex::FlagsGuard,
     tools::handler_pool::UsizePool,
 };
 
 use super::aux_vector::AuxVector;
+use riscv::register::scause;
 
 pub const THREAD_STACK_SIZE: usize = 4 * 1024 * 1024;
 /// 一个线程的地址空间的相关信息, 在 AliveProcessInfo 里受到进程大锁保护, 不需要加锁
@@ -22,6 +25,7 @@ pub struct UserSpace {
     // 根页表
     pub page_table: PageTable,
     // 栈管理
+    // 一个进程可能有很多栈 (各个线程都一个), 该池子维护可用的 StackID
     stack_id_pool: UsizePool,
     // 堆管理
     heap_page_cnt: usize,
@@ -176,7 +180,8 @@ impl UserSpace {
             stack_id.stack_bottom(),
             stack_frames,
             THREAD_STACK_SIZE,
-            PTEFlags::V | PTEFlags::R | PTEFlags::W | PTEFlags::U,
+            // V flag 会被保证写入, 不需要显式指明
+            PTEFlags::R | PTEFlags::W | PTEFlags::U,
         );
 
         // 返回栈 id
@@ -225,5 +230,142 @@ impl UserSpace {
             self.heap_page_cnt -= page_cnt;
             Ok(())
         }
+    }
+}
+
+bitflags! {
+    pub struct PageFaultAccessType: u8 {
+        const WRITE = 1 << 1;
+        const EXECUTE = 1 << 2;
+    }
+}
+
+impl PageFaultAccessType {
+    // no write & no execute == read only
+    pub const RO: Self = Self::empty();
+    // can't use | (bits or) here
+    // see https://github.com/bitflags/bitflags/issues/180
+    pub const RW: Self = Self::WRITE;
+    pub const RX: Self = Self::EXECUTE;
+
+    pub fn from_exception(e: scause::Exception) -> Self {
+        match e {
+            scause::Exception::InstructionPageFault => Self::RX,
+            scause::Exception::LoadPageFault => Self::RO,
+            scause::Exception::StorePageFault => Self::RW,
+            _ => panic!("unexcepted exception type for PageFaultAccessType"),
+        }
+    }
+
+    /// 检查是否有足够的权限以该种访问方式访问该页
+    pub fn can_access(self, flag: PTEFlags) -> bool {
+        // 任何对非用户地址的访问都是非法的
+        if !flag.contains(PTEFlags::U) {
+            return false;
+        }
+
+        // 对不可写的页写入是非法的
+        if self.contains(Self::WRITE) && !flag.contains(PTEFlags::W) {
+            return false;
+        }
+
+        // 对不可执行的页执行是非法的
+        if self.contains(Self::EXECUTE) && !flag.contains(PTEFlags::X) {
+            return false;
+        }
+
+        return true;
+    }
+}
+
+pub struct VirtAddrRange {
+    begin: VirtAddr,
+    end: VirtAddr,
+}
+
+impl VirtAddrRange {
+    /// Left Inclusive, Right Exclusive range
+    pub fn new_lire(begin: VirtAddr, end: VirtAddr) -> Self {
+        debug_assert!(begin <= end);
+        Self { begin, end }
+    }
+
+    pub fn new_beg_size(begin: VirtAddr, size: usize) -> Self {
+        Self {
+            begin,
+            end: begin + size,
+        }
+    }
+
+    pub fn begin(&self) -> VirtAddr {
+        self.begin
+    }
+
+    pub fn end(&self) -> VirtAddr {
+        self.end
+    }
+
+    pub fn size(&self) -> usize {
+        self.end.0 - self.begin.0
+    }
+
+    pub fn contains(&self, addr: VirtAddr) -> bool {
+        self.begin <= addr && addr < self.end
+    }
+
+    pub fn empty(&self) -> bool {
+        self.begin == self.end
+    }
+}
+
+pub trait UserAreaHandler {
+    fn leaf_pte_permission(&self) -> PTEFlags;
+
+    fn init(&mut self, page_table: &mut PageTable, range: VirtAddrRange);
+    fn handle_page_fault(
+        &mut self,
+        page_table: &mut PageTable,
+        addr: VirtAddr,
+        access_type: PageFaultAccessType,
+    );
+}
+
+pub struct ImmeditateAllocUAH {
+    leaf_pte_permission: PTEFlags,
+}
+
+impl ImmeditateAllocUAH {
+    pub fn new(leaf_pte_permission: PTEFlags) -> Self {
+        Self {
+            leaf_pte_permission,
+        }
+    }
+}
+
+impl UserAreaHandler for ImmeditateAllocUAH {
+    fn leaf_pte_permission(&self) -> PTEFlags {
+        self.leaf_pte_permission
+    }
+
+    fn init(&mut self, page_table: &mut PageTable, range: VirtAddrRange) {
+        // 一次性分配所有的页
+        let page_cnt = range.size() / PAGE_SIZE;
+        let frames = alloc_frame_contiguous(range.size(), PAGE_SIZE_BITS)
+            .expect("alloc frame contiguous failed");
+        page_table.map_region(
+            range.begin(),
+            PhysAddr(frames),
+            range.size(),
+            self.leaf_pte_permission,
+        );
+    }
+
+    fn handle_page_fault(
+        &mut self,
+        page_table: &mut PageTable,
+        addr: VirtAddr,
+        access_type: PageFaultAccessType,
+    ) {
+        todo!("no page will be stop process instead of stop the kernel")
     }
 }

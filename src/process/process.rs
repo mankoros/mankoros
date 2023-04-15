@@ -155,8 +155,7 @@ pub struct ThreadInfo {
     pub tid: TidHandler,
     // 线程信息还存在, 进程信息就得存在
     pub process: Arc<ProcessInfo>,
-    // 进程不可能会死 (死了就应该直接清除所有信息了)
-    // 这里只是包一层可变
+    // 线程局部信息, 只能该线程修改, 不用加锁, 但可变
     inner: SyncUnsafeCell<ThreadInfoInner>,
 }
 
