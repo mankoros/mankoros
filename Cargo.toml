@@ -26,6 +26,8 @@ riscv = "0.10.1"
 xmas-elf = "0.8.0"
 async-task = { version = "4.4.0", default-features = false }
 
+virtio-drivers = { git = "https://github.com/rcore-os/virtio-drivers.git", rev = "0491154" }
+
 [dependencies.lazy_static]
 # For runtime initializing static vars
 version = "1.4.0"

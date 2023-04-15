@@ -6,7 +6,7 @@ use core::ops::{Add, AddAssign, Sub, SubAssign};
 
 use log::{trace, warn};
 
-use crate::consts;
+use crate::consts::{self, platform};
 
 // Kernel Phy to Virt function
 // Whenever kernel wants to access to a physical address
@@ -22,6 +22,22 @@ pub fn phys_to_virt(addr: usize) -> usize {
     trace!("Kernel physical address 0x{:x} to virtual addr", addr);
 
     addr - consts::PHYMEM_START + consts::address_space::K_SEG_PHY_MEM_BEG
+}
+// Kernel Phyical device addr to Virt function
+//
+#[inline]
+pub fn phys_dev_to_virt(addr: usize) -> usize {
+    // Return if the address is obviously in HIGH address space
+    if addr >= consts::address_space::K_SEG_BEG {
+        warn!("Physical address 0x{:x} is in high address space", addr);
+        return addr;
+    }
+    trace!(
+        "Kernel device physical address 0x{:x} translated to virtual addr",
+        addr
+    );
+
+    addr - platform::DEVICE_START + consts::address_space::K_SEG_HARDWARE_BEG
 }
 // Kernel Virt text to Phy address
 #[inline]

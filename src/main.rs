@@ -43,8 +43,9 @@ use sync::SpinNoIrqLock;
 use consts::address_space;
 use consts::memlayout;
 
+use crate::consts::platform;
 use crate::memory::address::virt_text_to_phys;
-use crate::memory::pagetable;
+use crate::memory::{pagetable, phys_dev_to_virt};
 
 // Global shared atomic varible
 
@@ -113,11 +114,22 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     pagetable::pagetable::map_kernel_phys_seg();
     info!("Physical memory mapped at {:#x}", consts::PHYMEM_START);
     // Map devices
+
     kernal_page_table.map_page(
         (memlayout::UART0_BASE + address_space::K_SEG_HARDWARE_BEG).into(),
         memlayout::UART0_BASE.into(),
         PTEFlags::R | PTEFlags::W,
     );
+
+    for reg in platform::VIRTIO_MMIO_REGIONS {
+        kernal_page_table.map_region(
+            phys_dev_to_virt(reg.0).into(),
+            reg.0.into(),
+            reg.1,
+            PTEFlags::R | PTEFlags::W,
+        );
+    }
+
     info!("Console switching...");
     DEVICE_REMAPPED.store(true, Ordering::SeqCst);
     info!("Console switched to UART0");
@@ -144,6 +156,9 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
 
     // Avoid drop
     mem::forget(kernal_page_table);
+
+    // Probe devices
+    driver::probe_device();
 
     loop {}
 
