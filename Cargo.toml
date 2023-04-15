@@ -25,10 +25,17 @@ humansize = { version = "2.1.3", features = ["no_alloc"] } # For better size pri
 riscv = "0.10.1"
 xmas-elf = "0.8.0"
 async-task = { version = "4.4.0", default-features = false }
-
 virtio-drivers = { git = "https://github.com/rcore-os/virtio-drivers.git", rev = "0491154" }
+
+# rust_fatfs = { path = "crates/rust_fatfs", default-features = false, features = ["alloc"] }
 
 [dependencies.lazy_static]
 # For runtime initializing static vars
 version = "1.4.0"
 features = ["spin_no_std"] # For no-std env
+
+[dependencies.fatfs]
+git = "https://github.com/rafalh/rust-fatfs"
+rev = "a3a834e"
+default-features = false
+features = ["alloc", "lfn", "log_level_trace", "unicode"]

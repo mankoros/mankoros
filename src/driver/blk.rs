@@ -18,6 +18,7 @@ pub trait BlockDriverOps: BaseDriverOps {
 use virtio_drivers::{device::blk::VirtIOBlk as InnerDev, transport::Transport, Hal};
 pub struct VirtIoBlkDev<H: Hal, T: Transport> {
     inner: InnerDev<H, T>,
+    pos: usize,
 }
 
 unsafe impl<H: Hal, T: Transport> Send for VirtIoBlkDev<H, T> {}
@@ -27,6 +28,7 @@ impl<H: Hal, T: Transport> VirtIoBlkDev<H, T> {
     pub fn try_new(transport: T) -> DevResult<Self> {
         Ok(Self {
             inner: InnerDev::new(transport).map_err(as_dev_err)?,
+            pos: 0,
         })
     }
 }
