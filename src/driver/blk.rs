@@ -77,8 +77,8 @@ impl<H: Hal, T: Transport> fatfs::IoBase for VirtIoBlkDev<H, T> {
 impl<H: Hal, T: Transport> fatfs::Read for VirtIoBlkDev<H, T> {
     fn read(&mut self, mut buf: &mut [u8]) -> Result<usize, Self::Error> {
         let mut read_len = 0;
-        let mut cur_block_id = self.pos / self.block_size() as u64;
-        let mut cur_block_offset = self.pos as usize % self.block_size();
+        let mut cur_block_id = (self.pos + 0x800000) / self.block_size() as u64;
+        let mut cur_block_offset = (self.pos as usize + 0x800000) % self.block_size();
         while !buf.is_empty() {
             trace!(
                 "Reading position {} with buffer length {}",
@@ -106,7 +106,6 @@ impl<H: Hal, T: Transport> fatfs::Read for VirtIoBlkDev<H, T> {
                 cur_block_id += 1;
             }
         }
-        trace!("read len {}", read_len);
         self.pos += read_len as u64;
         Ok(read_len)
     }
