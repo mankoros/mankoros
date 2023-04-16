@@ -14,3 +14,6 @@ Cargo.lock
 
 # Tmp file
 tmp
+
+# Testing filesystem image
+fs.img

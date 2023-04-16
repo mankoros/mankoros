@@ -158,7 +158,18 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     mem::forget(kernal_page_table);
 
     // Probe devices
-    driver::probe_device();
+    let hd0 = driver::probe_virtio_blk().expect("Block device not found");
+
+    let main_fs =
+        fatfs::FileSystem::new(hd0, fatfs::FsOptions::new()).expect("Create FileSystem failed");
+
+    let root_dir = main_fs.root_dir();
+
+    for entry in root_dir.iter() {
+        let entry = entry.unwrap();
+        let file_name = entry.file_name();
+        info!("{}", file_name);
+    }
 
     loop {}
 

@@ -22,7 +22,7 @@ ifeq ($(MODE), release)
 CARGO_BUILD_ARGS += --release
 endif
 
-QEMU_DEVICES	:= -drive file=tmp,format=raw,id=hd0 -device virtio-blk-device,drive=hd0
+QEMU_DEVICES	:= -drive file=fs.img,format=raw,id=hd0 -device virtio-blk-device,drive=hd0
 
 .PHONY: doc kernel build clean qemu run
 .EXPORT_ALL_VARIABLES:

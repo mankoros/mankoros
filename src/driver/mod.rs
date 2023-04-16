@@ -42,14 +42,43 @@ pub trait BaseDriverOps: Send + Sync {
 
 use log::info;
 pub use transport::mmio::MmioTransport;
-use virtio_drivers::transport::{self, Transport};
+use virtio_drivers::transport::{self, pci::VirtioPciError, Transport};
 
-use crate::{consts::platform, memory::phys_dev_to_virt};
+use crate::{
+    consts::platform,
+    memory::{
+        address::{virt_text_to_phys, virt_to_phys},
+        frame, phys_dev_to_virt, phys_to_virt,
+    },
+};
 
-pub fn probe_device() {
+// TODO: implement a device manager
+
+fn probe_devices_common<D, F>(dev_type: DeviceType, ret: F) -> Option<D>
+where
+    D: BaseDriverOps,
+    F: FnOnce(MmioTransport) -> Option<D>,
+{
     for reg in platform::VIRTIO_MMIO_REGIONS {
-        probe_mmio_device(phys_dev_to_virt(reg.0.into()) as *mut u8, reg.1, None);
+        if let Some(transport) = probe_mmio_device(
+            phys_dev_to_virt(reg.0.into()) as *mut u8,
+            reg.1,
+            Some(dev_type),
+        ) {
+            let dev = ret(transport)?;
+            info!(
+                "created a new {:?} device: {:?}",
+                dev.device_type(),
+                dev.device_name()
+            );
+            return Some(dev);
+        }
     }
+    None
+}
+
+pub fn probe_virtio_blk() -> Option<VirtIoBlockDev> {
+    probe_devices_common(DeviceType::Block, |t| VirtIoBlockDev::try_new(t).ok())
 }
 
 fn probe_mmio_device(
@@ -103,5 +132,61 @@ const fn as_dev_err(e: virtio_drivers::Error) -> DevError {
         Unsupported => DevError::Unsupported,
         ConfigSpaceTooSmall => DevError::BadState,
         ConfigSpaceMissing => DevError::BadState,
+    }
+}
+
+use core::ptr::NonNull;
+
+pub type VirtIoBlockDev =
+    blk::VirtIoBlkDev<VirtIoHalImpl, virtio_drivers::transport::mmio::MmioTransport>;
+
+/// VirtIO HAL DMA
+///
+pub struct VirtIoHalImpl;
+
+unsafe impl virtio_drivers::Hal for VirtIoHalImpl {
+    fn dma_alloc(
+        pages: usize,
+        _direction: virtio_drivers::BufferDirection,
+    ) -> (virtio_drivers::PhysAddr, NonNull<u8>) {
+        let paddr = if let Some(vaddr) = frame::alloc_frame_contiguous(pages, 1) {
+            vaddr
+        } else {
+            return (0, NonNull::dangling());
+        };
+        let vaddr = phys_to_virt(paddr);
+        let ptr = NonNull::new(vaddr as _).unwrap();
+        (paddr, ptr)
+    }
+
+    unsafe fn dma_dealloc(
+        _paddr: virtio_drivers::PhysAddr,
+        vaddr: NonNull<u8>,
+        pages: usize,
+    ) -> i32 {
+        frame::dealloc_frames(virt_to_phys(vaddr.as_ptr() as usize), pages);
+        0
+    }
+
+    #[inline]
+    unsafe fn mmio_phys_to_virt(paddr: virtio_drivers::PhysAddr, _size: usize) -> NonNull<u8> {
+        NonNull::new(phys_to_virt(paddr) as *mut u8).unwrap()
+    }
+
+    #[inline]
+    unsafe fn share(
+        buffer: NonNull<[u8]>,
+        _direction: virtio_drivers::BufferDirection,
+    ) -> virtio_drivers::PhysAddr {
+        let vaddr = buffer.as_ptr() as *mut u8 as usize;
+        virt_text_to_phys(vaddr)
+    }
+
+    #[inline]
+    unsafe fn unshare(
+        _paddr: virtio_drivers::PhysAddr,
+        _buffer: NonNull<[u8]>,
+        _direction: virtio_drivers::BufferDirection,
+    ) {
     }
 }

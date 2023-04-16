@@ -64,8 +64,15 @@ pub fn alloc_frame() -> Option<usize> {
 pub fn dealloc_frame(target: usize) {
     GlobalFrameAlloc.dealloc(target);
 }
+/// Allocate a frame
+/// returns the physical address of the frame, usually 0x80xxxxxx
 pub fn alloc_frame_contiguous(size: usize, align_log2: usize) -> Option<usize> {
     GlobalFrameAlloc.alloc_contiguous(size, align_log2)
+}
+pub fn dealloc_frames(target: usize, pages: usize) {
+    for i in 0..pages {
+        GlobalFrameAlloc.dealloc(target + i * PAGE_SIZE);
+    }
 }
 
 pub fn test_first_frame() {

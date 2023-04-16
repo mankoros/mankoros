@@ -23,6 +23,18 @@ pub fn phys_to_virt(addr: usize) -> usize {
 
     addr - consts::PHYMEM_START + consts::address_space::K_SEG_PHY_MEM_BEG
 }
+// Kernel Virt to Phy function
+#[inline]
+pub fn virt_to_phys(addr: usize) -> usize {
+    // Return if the address is obviously in HIGH address space
+    if addr <= consts::address_space::K_SEG_BEG {
+        warn!("Virtual address 0x{:x} is in low address space", addr);
+        return addr;
+    }
+    trace!("Kernel virtual address 0x{:x} to physical addr", addr);
+
+    addr - consts::address_space::K_SEG_PHY_MEM_BEG + consts::PHYMEM_START
+}
 // Kernel Phyical device addr to Virt function
 //
 #[inline]
