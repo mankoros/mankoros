@@ -26,6 +26,7 @@ riscv = "0.10.1"
 xmas-elf = "0.8.0"
 async-task = { version = "4.4.0", default-features = false }
 virtio-drivers = { git = "https://github.com/rcore-os/virtio-drivers.git", rev = "0491154" }
+mbr-nostd = "0.1.0"
 
 # rust_fatfs = { path = "crates/rust_fatfs", default-features = false, features = ["alloc"] }
 

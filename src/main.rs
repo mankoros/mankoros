@@ -12,6 +12,8 @@
 #![allow(dead_code)]
 extern crate alloc;
 
+use alloc::sync::Arc;
+use alloc::vec::Vec;
 use core::mem;
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -21,6 +23,7 @@ mod arch;
 mod boot;
 mod consts;
 mod driver;
+mod fs;
 mod logging;
 mod memory;
 mod sync;
@@ -35,6 +38,7 @@ mod trap;
 
 use driver::uart::Uart;
 use log::{error, info};
+use mbr_nostd::PartitionTable;
 use memory::frame;
 use memory::heap;
 use memory::pagetable::pte::PTEFlags;
@@ -44,6 +48,7 @@ use consts::address_space;
 use consts::memlayout;
 
 use crate::consts::platform;
+use crate::fs::{disk, partition};
 use crate::memory::address::virt_text_to_phys;
 use crate::memory::{pagetable, phys_dev_to_virt};
 
@@ -160,8 +165,24 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     // Probe devices
     let hd0 = driver::probe_virtio_blk().expect("Block device not found");
 
-    let main_fs =
-        fatfs::FileSystem::new(hd0, fatfs::FsOptions::new()).expect("Create FileSystem failed");
+    let mut disk = disk::Disk::new(hd0);
+
+    let mbr = disk.mbr();
+    let disk = Arc::new(SpinNoIrqLock::new(disk));
+    let mut partitions = Vec::new();
+    for entry in mbr.partition_table_entries() {
+        if entry.partition_type != mbr_nostd::PartitionType::Unused {
+            info!("Partition table entry: {:#x?}", entry);
+            partitions.push(partition::Partition::new(
+                entry.logical_block_address as u64 * disk::BLOCK_SIZE as u64,
+                entry.sector_count as u64 * disk::BLOCK_SIZE as u64,
+                disk.clone(),
+            ))
+        }
+    }
+
+    let main_fs = fatfs::FileSystem::new(partitions[0].clone(), fatfs::FsOptions::new())
+        .expect("Create FileSystem failed");
 
     let root_dir = main_fs.root_dir();
 

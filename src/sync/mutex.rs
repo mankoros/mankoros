@@ -13,6 +13,7 @@ use riscv::register::sstatus;
 /// A mutual exclusion primitive useful for protecting shared data
 ///
 ///
+#[derive(Debug)]
 pub struct Mutex<T: ?Sized, S: MutexSupport> {
     locked: AtomicBool,
     support: MaybeUninit<S>,
