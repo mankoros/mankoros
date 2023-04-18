@@ -4,7 +4,11 @@ use riscv::register::{
     sstatus, stval,
 };
 
-use crate::{executor, syscall::Syscall, trap::trap::run_user};
+use crate::{
+    executor::{self, yield_future::yield_now},
+    interrupt::trap::run_user,
+    syscall::Syscall,
+};
 
 use super::process::ThreadInfo;
 use log::error;
@@ -81,9 +85,9 @@ async fn userloop(thread: Arc<ThreadInfo>) {
                 Interrupt::SupervisorTimer => {
                     // TODO: timer, currently do nothing
                     // timer::tick();
-                    // if !do_exit {
-                    //     thread::yield_now().await;
-                    // }
+                    if !is_exit {
+                        yield_now().await;
+                    }
                 }
                 _ => todo!(),
             },

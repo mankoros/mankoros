@@ -10,6 +10,7 @@ use self::task_queue::TaskQueue;
 use crate::lazy_static;
 
 pub mod task_queue;
+pub mod yield_future;
 
 lazy_static! {
     // 这个 Queue 要用到 VecDeque, 需要内存系统初始化完成才能被初始化
