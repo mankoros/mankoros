@@ -158,7 +158,7 @@ impl PageTable {
     // Allocates a page for a table
     // the allocated page will be zeroed to ensure every PTE is not valid
     fn alloc_table() -> PhysAddr {
-        let paddr = frame::alloc_frame().expect("failed to allocate page");
+        let paddr = frame::alloc_frame().expect("failed to allocate page").into();
         // use kernel_vaddr here to work after kernel remapped
         let kernel_vaddr = memory::kernel_phys_to_virt(paddr);
         // Fill with zeros

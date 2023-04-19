@@ -13,7 +13,7 @@ use crate::consts::{MAX_PHYSICAL_FRAMES, PAGE_SIZE, PHYMEM_START};
 use crate::sync::SpinNoIrqLock;
 use log::*;
 
-use super::address::kernel_virt_text_to_phys;
+use super::address::{kernel_virt_text_to_phys, PhysAddr};
 
 // Support 64GiB (?)
 pub type FrameAllocator = bitmap_allocator::BitAlloc16M;
@@ -25,23 +25,25 @@ pub static FRAME_ALLOCATOR: SpinNoIrqLock<FrameAllocator> =
 pub struct GlobalFrameAlloc;
 
 impl GlobalFrameAlloc {
-    fn alloc(&self) -> Option<usize> {
+    fn alloc(&self) -> Option<PhysAddr> {
         // get the real address of the alloc frame
-        let ret = FRAME_ALLOCATOR.lock(here!()).alloc().map(|id| id * PAGE_SIZE + PHYMEM_START);
+        let ret = FRAME_ALLOCATOR.lock(here!()).alloc().map(|id| id * PAGE_SIZE + PHYMEM_START).map(PhysAddr::from);
         trace!("Allocate frame: {:x?}", ret);
         ret
     }
-    fn alloc_contiguous(&self, size: usize, align_log2: usize) -> Option<usize> {
+    fn alloc_contiguous(&self, size: usize, align_log2: usize) -> Option<PhysAddr> {
         // get the real address of the alloc frame
         let ret = FRAME_ALLOCATOR
             .lock(here!())
             .alloc_contiguous(size, align_log2)
-            .map(|id| id * PAGE_SIZE + PHYMEM_START);
+            .map(|id| id * PAGE_SIZE + PHYMEM_START)
+            .map(PhysAddr::from);
         trace!("Allocate frame: {:x?}", ret);
         ret
     }
-    fn dealloc(&self, target: usize) {
+    fn dealloc(&self, target: PhysAddr) {
         trace!("Deallocate frame: {:x}", target);
+        let target: usize = target.into();
         FRAME_ALLOCATOR.lock(here!()).dealloc((target - PHYMEM_START) / PAGE_SIZE);
     }
 }
@@ -58,18 +60,18 @@ pub fn init() {
 
 /// Allocate a frame
 /// returns the physical address of the frame, usually 0x80xxxxxx
-pub fn alloc_frame() -> Option<usize> {
+pub fn alloc_frame() -> Option<PhysAddr> {
     GlobalFrameAlloc.alloc()
 }
-pub fn dealloc_frame(target: usize) {
+pub fn dealloc_frame(target: PhysAddr) {
     GlobalFrameAlloc.dealloc(target);
 }
-pub fn alloc_frame_contiguous(size: usize, align_log2: usize) -> Option<usize> {
+pub fn alloc_frame_contiguous(size: usize, align_log2: usize) -> Option<PhysAddr> {
     GlobalFrameAlloc.alloc_contiguous(size, align_log2)
 }
 
 pub fn test_first_frame() {
-    let first_frame = alloc_frame().unwrap();
+    let first_frame: usize = alloc_frame().unwrap().into();
     let kernel_end = memlayout::kernel_end as usize;
     let kernel_end = kernel_virt_text_to_phys(kernel_end);
     assert!(
@@ -80,5 +82,5 @@ pub fn test_first_frame() {
     );
     info!("Frame allocator self test passed.");
     info!("First available frame: 0x{:x}", first_frame);
-    dealloc_frame(first_frame);
+    dealloc_frame(first_frame.into());
 }

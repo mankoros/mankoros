@@ -32,6 +32,7 @@ pub fn map_elf_segment(elf: &ElfFile, page_table: &mut PageTable) -> Option<Virt
             let filesz = segment.file_size() as usize;
             let data = &elf.input[offset..(offset + filesz)];
             unsafe {
+                let phy_frames: usize = phy_frames.into();
                 (phy_frames as *mut u8).copy_from_nonoverlapping(data.as_ptr(), data.len());
             }
 
@@ -40,7 +41,7 @@ pub fn map_elf_segment(elf: &ElfFile, page_table: &mut PageTable) -> Option<Virt
             // 将准备好的物理页映射到用户地址空间中
             let vaddr_beg = VirtAddr(segment.virtual_addr() as usize);
             let pte_flags = elf_flags_to_pte(&segment.flags());
-            page_table.map_region(vaddr_beg, PhysAddr(phy_frames), seg_size, pte_flags);
+            page_table.map_region(vaddr_beg, phy_frames, seg_size, pte_flags);
 
             // 尝试更新 elf 的起始地址
             // TODO: 这样对吗? 怎么感觉不太对劲, 这 elf 真的是地址小的放在前面吗?

@@ -174,7 +174,7 @@ impl UserSpace {
         // 把物理页映射到对应的虚拟地址去
         self.page_table.map_region(
             stack_id.stack_bottom(),
-            PhysAddr(stack_frames),
+            stack_frames,
             THREAD_STACK_SIZE,
             PTEFlags::V | PTEFlags::R | PTEFlags::W | PTEFlags::U,
         );
@@ -201,7 +201,7 @@ impl UserSpace {
         let heap_addr = VirtAddr(U_SEG_HEAP_BEG + self.heap_page_cnt * PAGE_SIZE);
         self.page_table.map_region(
             heap_addr,
-            PhysAddr(heap_frames),
+            heap_frames,
             size,
             PTEFlags::V | PTEFlags::R | PTEFlags::W | PTEFlags::U,
         );
