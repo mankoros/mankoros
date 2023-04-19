@@ -6,11 +6,11 @@ use core::ops::{Add, AddAssign, Sub, SubAssign};
 pub struct VirtAddr(pub usize);
 
 impl VirtAddr {
-    pub fn page_num_down(&self) -> VirtsPageNum {
-        VirtsPageNum(self.0 / consts::PAGE_SIZE)
+    pub fn page_num_down(&self) -> VirtPageNum {
+        VirtPageNum(self.0 / consts::PAGE_SIZE)
     }
-    pub fn page_num_up(&self) -> VirtsPageNum {
-        VirtsPageNum::from(self.page_num_down() + 1)
+    pub fn page_num_up(&self) -> VirtPageNum {
+        VirtPageNum::from(self.page_num_down() + 1)
     }
     pub fn round_down(&self) -> VirtAddr {
         VirtAddr(self.0 & !consts::PAGE_MASK)
@@ -87,57 +87,57 @@ impl fmt::UpperHex for VirtAddr {
 
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
-pub struct VirtsPageNum(pub usize);
+pub struct VirtPageNum(pub usize);
 
 // + offset, - offset for VPN
 // += offset, -= offset for VPN
 // VPN - VPN for offset
-impl const Add<usize> for VirtsPageNum {
+impl const Add<usize> for VirtPageNum {
     type Output = Self;
     #[inline]
     fn add(self, rhs: usize) -> Self {
         Self(self.0 + rhs)
     }
 }
-impl const AddAssign<usize> for VirtsPageNum {
+impl const AddAssign<usize> for VirtPageNum {
     #[inline]
     fn add_assign(&mut self, rhs: usize) {
         *self = *self + rhs;
     }
 }
-impl const Sub<usize> for VirtsPageNum {
+impl const Sub<usize> for VirtPageNum {
     type Output = Self;
     #[inline]
     fn sub(self, rhs: usize) -> Self {
         Self(self.0 - rhs)
     }
 }
-impl const SubAssign<usize> for VirtsPageNum {
+impl const SubAssign<usize> for VirtPageNum {
     #[inline]
     fn sub_assign(&mut self, rhs: usize) {
         *self = *self - rhs;
     }
 }
-impl const Sub<VirtsPageNum> for VirtsPageNum {
+impl const Sub<VirtPageNum> for VirtPageNum {
     type Output = usize;
     #[inline]
-    fn sub(self, rhs: VirtsPageNum) -> usize {
+    fn sub(self, rhs: VirtPageNum) -> usize {
         self.0 - rhs.0
     }
 }
 
 // debug fmt for VPN
-impl fmt::Debug for VirtsPageNum {
+impl fmt::Debug for VirtPageNum {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_fmt(format_args!("VPN:{:#x}", self.0))
     }
 }
-impl fmt::LowerHex for VirtsPageNum {
+impl fmt::LowerHex for VirtPageNum {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_fmt(format_args!("VPN:{:#x}", self.0))
     }
 }
-impl fmt::UpperHex for VirtsPageNum {
+impl fmt::UpperHex for VirtPageNum {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_fmt(format_args!("VPN:{:#X}", self.0))
     }
@@ -146,7 +146,7 @@ impl fmt::UpperHex for VirtsPageNum {
 
 
 // conversions between usize, VirtAddr, VPN:
-//      usize <-> VirtAddr <-> VirtsPageNum -> usize
+//      usize <-> VirtAddr <-> VirtPageNum -> usize
 impl From<VirtAddr> for usize {
     fn from(v: VirtAddr) -> Self {
         v.0
@@ -158,20 +158,20 @@ impl From<usize> for VirtAddr {
     }
 }
 
-impl From<VirtAddr> for VirtsPageNum {
+impl From<VirtAddr> for VirtPageNum {
     fn from(v: VirtAddr) -> Self {
         assert_eq!(v.page_offset(), 0);
         v.page_num_down()
     }
 }
-impl From<VirtsPageNum> for VirtAddr {
-    fn from(v: VirtsPageNum) -> Self {
+impl From<VirtPageNum> for VirtAddr {
+    fn from(v: VirtPageNum) -> Self {
         Self(v.0 << consts::PAGE_SIZE_BITS)
     }
 }
 
-impl From<VirtsPageNum> for usize {
-    fn from(v: VirtsPageNum) -> Self {
+impl From<VirtPageNum> for usize {
+    fn from(v: VirtPageNum) -> Self {
         v.0
     }
 }
