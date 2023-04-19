@@ -71,7 +71,7 @@ impl PageTableEntry {
 
     // Get the physical page number from the PageTableEntry
     pub fn ppn(&self) -> PhysPageNum {
-        PhysPageNum::from((self.bits & consts::PTE_PPN_MASK_SV39) >> 10)
+        PhysPageNum((self.bits & consts::PTE_PPN_MASK_SV39) >> 10)
     }
 
     // Get the physical address from the PageTableEntry

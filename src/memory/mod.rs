@@ -6,4 +6,4 @@ pub mod address;
 
 pub mod pagetable;
 
-pub use address::phys_to_virt;
+pub use address::kernel_phys_to_virt;

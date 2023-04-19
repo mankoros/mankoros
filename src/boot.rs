@@ -8,7 +8,7 @@ use log::info;
 /// Boot time things
 ///
 use crate::{
-    memory::{address::virt_text_to_phys, pagetable::pagetable::ENTRY_COUNT},
+    memory::{address::kernel_virt_text_to_phys, pagetable::pagetable::ENTRY_COUNT},
     println,
 };
 
@@ -84,7 +84,7 @@ pub fn boot_pagetable() -> &'static mut [usize] {
 /// Return the physical address of the boot page table
 /// usually 0x80xxxxxx
 pub fn boot_pagetable_paddr() -> usize {
-    virt_text_to_phys(_boot_page_table_sv39 as usize)
+    kernel_virt_text_to_phys(_boot_page_table_sv39 as usize)
 }
 
 /// 一个核的启动栈

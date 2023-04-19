@@ -160,7 +160,7 @@ impl PageTable {
     fn alloc_table() -> PhysAddr {
         let paddr = frame::alloc_frame().expect("failed to allocate page");
         // use kernel_vaddr here to work after kernel remapped
-        let kernel_vaddr = memory::phys_to_virt(paddr);
+        let kernel_vaddr = memory::kernel_phys_to_virt(paddr);
         // Fill with zeros
         unsafe {
             core::ptr::write_bytes(kernel_vaddr as *mut u8, 0, consts::PAGE_SIZE as usize);
@@ -169,13 +169,13 @@ impl PageTable {
     }
     fn table_of<'a>(&self, paddr: PhysAddr) -> &'a [PageTableEntry] {
         // use kernel_vaddr here to work after kernel remapped
-        let kernel_vaddr = memory::phys_to_virt(paddr.into());
+        let kernel_vaddr = memory::kernel_phys_to_virt(paddr.into());
         unsafe { core::slice::from_raw_parts(kernel_vaddr as _, ENTRY_COUNT) }
     }
 
     fn table_of_mut<'a>(&self, paddr: PhysAddr) -> &'a mut [PageTableEntry] {
         // use kernel_vaddr here to work after kernel remapped
-        let kernel_vaddr = memory::phys_to_virt(paddr.into());
+        let kernel_vaddr = memory::kernel_phys_to_virt(paddr.into());
         unsafe { core::slice::from_raw_parts_mut(kernel_vaddr as _, ENTRY_COUNT) }
     }
 

@@ -13,7 +13,7 @@ use crate::consts::{MAX_PHYSICAL_FRAMES, PAGE_SIZE, PHYMEM_START};
 use crate::sync::SpinNoIrqLock;
 use log::*;
 
-use super::address::virt_text_to_phys;
+use super::address::kernel_virt_text_to_phys;
 
 // Support 64GiB (?)
 pub type FrameAllocator = bitmap_allocator::BitAlloc16M;
@@ -51,7 +51,7 @@ pub fn init() {
     FRAME_ALLOCATOR.lock(here!()).insert(0..MAX_PHYSICAL_FRAMES);
     // Remove kernel occupied
     let kernel_end = memlayout::kernel_end as usize;
-    let kernel_end = virt_text_to_phys(kernel_end);
+    let kernel_end = kernel_virt_text_to_phys(kernel_end);
     let kernel_end = (kernel_end - PHYMEM_START) / PAGE_SIZE;
     FRAME_ALLOCATOR.lock(here!()).remove(0..kernel_end);
 }
@@ -71,7 +71,7 @@ pub fn alloc_frame_contiguous(size: usize, align_log2: usize) -> Option<usize> {
 pub fn test_first_frame() {
     let first_frame = alloc_frame().unwrap();
     let kernel_end = memlayout::kernel_end as usize;
-    let kernel_end = virt_text_to_phys(kernel_end);
+    let kernel_end = kernel_virt_text_to_phys(kernel_end);
     assert!(
         first_frame == kernel_end,
         "first_frame: 0x{:x}, kernel_end: 0x{:x}",

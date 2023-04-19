@@ -43,7 +43,7 @@ use sync::SpinNoIrqLock;
 use consts::address_space;
 use consts::memlayout;
 
-use crate::memory::address::virt_text_to_phys;
+use crate::memory::address::kernel_virt_text_to_phys;
 use crate::memory::pagetable;
 
 // Global shared atomic varible
@@ -123,7 +123,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     info!("Console switched to UART0");
 
     // Start other cores
-    let alt_rust_main_phys = virt_text_to_phys(boot::alt_entry as usize);
+    let alt_rust_main_phys = kernel_virt_text_to_phys(boot::alt_entry as usize);
     info!("Starting other cores at 0x{:x}", alt_rust_main_phys);
     for hart_id in 0..hart_cnt {
         if hart_id != boot_hart_id {
