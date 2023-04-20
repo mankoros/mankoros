@@ -34,13 +34,15 @@ MankorOS is a [RISC-V](https://riscv.org/) kernel written in [Rust](https://www.
 - [ ] Process
     - [ ] process infra
     - [ ] scheduler
-    - [ ] smp setup
+    - [x] smp boot (2023-04-09 EastonMan)
 - [ ] Syscall
     - [ ] syscall infra
     - [ ] POSIX
+- [ ] Device
+    - [x] VirtIO driver (2023-04-15 EastonMan)
 - [ ] Filesystem
     - [ ] VFS
-    - [ ] FAT32
+    - [x] FAT32 (2023-04-17 EastonMan)
 - [ ] Userspace
     - [ ] user program loading
     - [ ] dynamic linking
