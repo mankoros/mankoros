@@ -28,6 +28,7 @@ mod syscall;
 mod utils;
 #[macro_use]
 mod xdebug;
+mod axerrno;
 mod executor;
 mod process;
 mod tools;
