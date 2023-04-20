@@ -2,6 +2,8 @@ use crate::consts;
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 
+use log::{trace, warn};
+
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct PhysAddr(pub usize);
 
@@ -84,8 +86,6 @@ impl fmt::UpperHex for PhysAddr {
     }
 }
 
-
-
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct PhysPageNum(pub usize);
 
@@ -142,8 +142,6 @@ impl fmt::UpperHex for PhysPageNum {
         f.write_fmt(format_args!("PPN:{:#X}", self.0))
     }
 }
-
-
 
 // conversions between usize, PhysAddr, PPN:
 //      usize <-> PhysAddr <-> PhysPageNum -> usize

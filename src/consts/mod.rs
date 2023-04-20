@@ -1,5 +1,6 @@
 pub mod address_space;
 pub mod memlayout;
+pub mod platform;
 
 pub const PAGE_SIZE_BITS: usize = 12;
 

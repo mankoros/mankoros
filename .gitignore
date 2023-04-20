@@ -11,3 +11,9 @@ Cargo.lock
 
 # Any binary output
 *.bin
+
+# Tmp file
+tmp
+
+# Testing filesystem image
+fs.img

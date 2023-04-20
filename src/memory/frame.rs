@@ -27,7 +27,11 @@ pub struct GlobalFrameAlloc;
 impl GlobalFrameAlloc {
     fn alloc(&self) -> Option<PhysAddr> {
         // get the real address of the alloc frame
-        let ret = FRAME_ALLOCATOR.lock(here!()).alloc().map(|id| id * PAGE_SIZE + PHYMEM_START).map(PhysAddr::from);
+        let ret = FRAME_ALLOCATOR
+            .lock(here!())
+            .alloc()
+            .map(|id| id * PAGE_SIZE + PHYMEM_START)
+            .map(PhysAddr::from);
         trace!("Allocate frame: {:x?}", ret);
         ret
     }
@@ -68,6 +72,11 @@ pub fn dealloc_frame(target: PhysAddr) {
 }
 pub fn alloc_frame_contiguous(size: usize, align_log2: usize) -> Option<PhysAddr> {
     GlobalFrameAlloc.alloc_contiguous(size, align_log2)
+}
+pub fn dealloc_frames(target: usize, pages: usize) {
+    for i in 0..pages {
+        GlobalFrameAlloc.dealloc((target + i * PAGE_SIZE).into());
+    }
 }
 
 pub fn test_first_frame() {

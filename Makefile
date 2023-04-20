@@ -22,6 +22,8 @@ ifeq ($(MODE), release)
 CARGO_BUILD_ARGS += --release
 endif
 
+QEMU_DEVICES	:= -drive file=fs.img,format=raw,id=hd0 -device virtio-blk-device,drive=hd0
+
 .PHONY: doc kernel build clean qemu run
 .EXPORT_ALL_VARIABLES:
 
@@ -59,6 +61,7 @@ qemu: build
             -bios default 		\
 			-m $(MEM_SIZE)		\
 			-smp $(CPUS) 		\
+			$(QEMU_DEVICES)		\
 			-kernel $(BIN_FILE)
 
 debug: build
@@ -69,6 +72,7 @@ debug: build
 			-m $(MEM_SIZE)		\
 			-smp $(CPUS) 		\
 			-kernel $(BIN_FILE) \
+			$(QEMU_DEVICES)		\
 			-s -d int
 
 # build and run
