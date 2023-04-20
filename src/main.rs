@@ -33,6 +33,7 @@ mod executor;
 mod process;
 mod tools;
 mod trap;
+mod vfs;
 
 use driver::uart::Uart;
 use log::{error, info};
