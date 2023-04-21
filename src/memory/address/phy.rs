@@ -30,6 +30,14 @@ impl PhysAddr {
     pub fn as_mut_ptr(&self) -> *mut u8 {
         self.0 as *mut u8
     }
+
+    pub unsafe fn as_page_slice(&self) -> &[u8] {
+        core::slice::from_raw_parts(self.as_ptr(), consts::PAGE_SIZE)
+    }
+
+    pub unsafe fn as_mut_page_slice(&self) -> &mut [u8] {
+        core::slice::from_raw_parts_mut(self.as_mut_ptr(), consts::PAGE_SIZE)
+    }
 }
 
 // + offset, - offset for PhysAddr
