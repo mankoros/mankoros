@@ -94,7 +94,6 @@ fn probe_mmio_device(
     _reg_size: usize,
     type_match: Option<DeviceType>,
 ) -> Option<MmioTransport> {
-    use core::ptr::NonNull;
     use transport::mmio::VirtIOHeader;
 
     let header = NonNull::new(reg_base as *mut VirtIOHeader).unwrap();
