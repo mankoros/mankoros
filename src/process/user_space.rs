@@ -6,7 +6,7 @@ use crate::{
         PAGE_SIZE, PAGE_SIZE_BITS,
     },
     memory::{
-        address::{VirtAddr},
+        address::VirtAddr,
         frame::alloc_frame_contiguous,
         pagetable::{pagetable::PageTable, pte::PTEFlags},
     },
@@ -152,6 +152,7 @@ impl StackID {
 impl UserSpace {
     pub fn new() -> Self {
         let page_table = PageTable::new();
+        // TODO: Map kernel huge page in
         let stack_id_pool = UsizePool::new();
         Self {
             page_table,
@@ -167,7 +168,6 @@ impl UserSpace {
         let stack_id = StackID(stack_id_usize);
 
         // 分配一个栈这么多的连续的物理页
-        // TODO: 在栈末尾插入金丝雀页以检测 stack overflow
         let stack_frames = alloc_frame_contiguous(THREAD_STACK_SIZE, PAGE_SIZE_BITS)
             .expect(format!("alloc stack failed, (stack_id: {:?})", stack_id_usize).as_str());
 
@@ -179,6 +179,10 @@ impl UserSpace {
             PTEFlags::V | PTEFlags::R | PTEFlags::W | PTEFlags::U,
         );
 
+        // Canary page, not readable by user
+        self.page_table
+            .map_page(stack_id.stack_bottom() - PAGE_SIZE, 0.into(), PTEFlags::R);
+
         // 返回栈 id
         stack_id
     }
@@ -186,6 +190,7 @@ impl UserSpace {
     pub fn dealloc_stack(&mut self, stack_id: StackID) {
         // 释放栈空间
         self.page_table.unmap_region(stack_id.stack_bottom(), THREAD_STACK_SIZE);
+        self.page_table.unmap_page(stack_id.stack_bottom() - PAGE_SIZE);
         // 释放栈号
         self.stack_id_pool.release(stack_id.0);
     }
