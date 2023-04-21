@@ -1,3 +1,4 @@
+use log::warn;
 pub struct VfsNodeAttr {
     /// File permission
     mode: VfsNodePermission,
@@ -162,7 +163,7 @@ impl VfsDirEntry {
     pub fn new(name: &str, type_: VfsNodeType) -> Self {
         let mut d_name = [0; 63];
         if name.len() > 63 {
-            log::warn!("directory entry name too long: {} > {}", name.len(), 63);
+            warn!("directory entry name too long: {} > {}", name.len(), 63);
             todo!();
             // probably return a Result<Self, Error>
         }
