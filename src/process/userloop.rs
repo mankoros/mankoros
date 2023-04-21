@@ -6,7 +6,7 @@ use riscv::register::{
 
 use crate::{
     executor::{self, yield_future::yield_now},
-    interrupt::trap::run_user,
+    trap::trap::run_user,
     syscall::Syscall,
 };
 

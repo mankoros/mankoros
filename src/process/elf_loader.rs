@@ -3,7 +3,7 @@ use xmas_elf::ElfFile;
 use crate::{
     consts::PAGE_SIZE_BITS,
     memory::{
-        address::{VirtAddr},
+        address::VirtAddr,
         frame::alloc_frame_contiguous,
         pagetable::{pagetable::PageTable, pte::PTEFlags},
     },
