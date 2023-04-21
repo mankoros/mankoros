@@ -51,7 +51,7 @@ async fn userloop(thread: Arc<ThreadInfo>) {
         }
 
         let scause = scause::read().cause();
-        let stval = stval::read();
+        let _stval = stval::read();
 
         drop(auto_sie);
 

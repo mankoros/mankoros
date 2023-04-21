@@ -2,7 +2,7 @@ use crate::consts;
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 
-use log::{trace, warn};
+
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct PhysAddr(pub usize);

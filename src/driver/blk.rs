@@ -7,7 +7,7 @@ use super::BlockDriverOps;
 use super::DevResult;
 use super::DeviceType;
 
-use log::trace;
+
 /// VirtIO blk driver
 ///
 ///

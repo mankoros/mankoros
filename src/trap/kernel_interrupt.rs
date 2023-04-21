@@ -1,4 +1,4 @@
-use riscv::register::{scause, sstatus};
+use riscv::register::{scause};
 
 use super::timer;
 

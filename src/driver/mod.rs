@@ -50,7 +50,7 @@ pub trait BlockDriverOps: BaseDriverOps {
 
 use log::info;
 pub use transport::mmio::MmioTransport;
-use virtio_drivers::transport::{self, pci::VirtioPciError, Transport};
+use virtio_drivers::transport::{self, Transport};
 
 use crate::{
     consts::platform,

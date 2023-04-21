@@ -1,6 +1,6 @@
 use riscv::register::{
     scause::{self, Exception, Trap},
-    sepc, sstatus, stval,
+    sepc, stval,
 };
 
 use log::{error, info, warn};
@@ -9,8 +9,8 @@ use crate::arch;
 
 #[no_mangle]
 pub fn kernel_default_exception(a0: usize) {
-    let mut sepc = sepc::read();
-    let stval = stval::read();
+    let sepc = sepc::read();
+    let _stval = stval::read();
 
     let exception = match scause::read().cause() {
         Trap::Exception(e) => e,
@@ -31,14 +31,14 @@ pub fn kernel_default_exception(a0: usize) {
         Exception::StoreFault => fatal_exception_error(a0),
         Exception::UserEnvCall => todo!(),
         Exception::InstructionPageFault => fatal_exception_error(a0),
-        e @ (Exception::LoadPageFault | Exception::StorePageFault) => {
+        _e @ (Exception::LoadPageFault | Exception::StorePageFault) => {
             todo!()
         }
         _ => fatal_exception_error(a0),
     }
 }
 
-fn fatal_exception_error(a0: usize) -> ! {
+fn fatal_exception_error(_a0: usize) -> ! {
     let sepc = sepc::read();
 
     error!(

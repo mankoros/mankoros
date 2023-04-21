@@ -2,11 +2,11 @@ use alloc::{format, string::String, vec::Vec};
 
 use crate::{
     consts::{
-        address_space::{U_SEG_HEAP_BEG, U_SEG_STACK_BEG, U_SEG_STACK_END},
+        address_space::{U_SEG_HEAP_BEG, U_SEG_STACK_END},
         PAGE_SIZE, PAGE_SIZE_BITS,
     },
     memory::{
-        address::{PhysAddr, VirtAddr},
+        address::{VirtAddr},
         frame::alloc_frame_contiguous,
         pagetable::{pagetable::PageTable, pte::PTEFlags},
     },
