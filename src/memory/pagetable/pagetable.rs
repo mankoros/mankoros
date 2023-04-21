@@ -9,7 +9,7 @@ use crate::{
     consts::{
         self, address_space::K_SEG_PHY_MEM_BEG, HUGE_PAGE_SIZE, MAX_PHYSICAL_MEMORY, PHYMEM_START,
     },
-    memory,
+    memory::{self, address::VirtPageNum},
     memory::{
         address::{PhysAddr, VirtAddr},
         frame,
@@ -107,10 +107,12 @@ impl PageTable {
         debug_assert!(!entry.is_valid(), "Remapping a valid page table entry");
         *entry = new_pte;
     }
-    pub fn unmap_page(&mut self, vaddr: VirtAddr) {
+    pub fn unmap_page(&mut self, vaddr: VirtAddr) -> PhysAddr {
         let entry = self.get_entry_mut(vaddr);
+        let paddr = entry.paddr();
         debug_assert!(entry.is_valid(), "Unmapping a invalid page table entry");
         entry.clear();
+        paddr
     }
 
     // map_region map a memory region from vaddr to paddr
@@ -151,6 +153,10 @@ impl PageTable {
             size -= consts::PAGE_SIZE;
         }
     }
+
+    pub fn get_pte_copied_from_vpn(&mut self, vpn: VirtPageNum) -> Option<PageTableEntry> {
+        self.get_entry_mut_opt(vpn.into()).as_deref().copied()
+    }
 }
 
 // Private impl
@@ -181,6 +187,17 @@ impl PageTable {
 
     // Next level page table
     // Return a slice of the next level page table
+    // Return None if not exist
+    fn next_table_mut_opt<'a>(&self, pte: &PageTableEntry) -> Option<&'a mut [PageTableEntry]> {
+        if pte.is_valid() {
+            Some(self.table_of_mut(pte.paddr()))
+        } else {
+            None
+        }
+    }
+
+    // Next level page table
+    // Return a slice of the next level page table
     fn next_table_mut<'a>(&self, pte: &PageTableEntry) -> &'a mut [PageTableEntry] {
         debug_assert!(pte.is_valid());
         self.table_of_mut(pte.paddr())
@@ -200,6 +217,20 @@ impl PageTable {
             self.table_of_mut(paddr)
         } else {
             self.next_table_mut(pte)
+        }
+    }
+
+    fn get_entry_mut_opt(&self, vaddr: VirtAddr) -> Option<&mut PageTableEntry> {
+        let p3 = self.table_of_mut(self.root_paddr);
+        let p3e = &mut p3[p3_index(vaddr)];
+        let p2 = self.next_table_mut_opt(p3e)?;
+        let p2e = &mut p2[p2_index(vaddr)];
+        let p1 = self.next_table_mut_opt(p2e)?;
+        let p1e = &mut p1[p1_index(vaddr)];
+        if p1e.is_valid() {
+            Some(p1e)
+        } else {
+            None
         }
     }
 

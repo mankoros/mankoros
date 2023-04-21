@@ -6,11 +6,9 @@ use alloc::{
 };
 use riscv::register::sstatus;
 
-use crate::{here, sync::SpinNoIrqLock, trap::context::UKContext};
+use crate::{here, sync::SpinNoIrqLock, trap::context::UKContext, vfs::filesystem::VfsNode};
 
 use super::{
-    aux_vector::AuxVector,
-    elf_loader::{get_entry_point, map_elf_segment, parse_elf},
     pid_tid::{alloc_pid, alloc_tid, Pid, PidHandler, Tid, TidHandler},
     user_space::{StackID, UserSpace},
     userloop,
@@ -66,13 +64,10 @@ impl ProcessInfo {
     }
 
     // TODO: exec 应该是 "对已有 thread 进行替换的", 这里更加偏向于 "创建一个新的 thread + 加载程序的混合体", 找时间要拆开
-    pub fn init_thread(self: Arc<Self>, elf_data: &[u8], args: Vec<String>, envp: Vec<String>) {
-        let elf = parse_elf(elf_data);
-
+    pub fn init_thread(self: Arc<Self>, elf_file: Arc<dyn VfsNode>, args: Vec<String>, envp: Vec<String>) {
         // 把 elf 的 segment 映射到用户空间
-        let begin_addr = self
-            .with_alive(|alive| map_elf_segment(&elf, &mut alive.user_space.page_table))
-            .expect("map elf failed");
+        let (entry_point, auxv) = self
+            .with_alive(|alive| alive.user_space.parse_and_map_elf_file(elf_file));
 
         // 开一个小小的堆
         self.with_alive(|alive| {
@@ -83,15 +78,14 @@ impl ProcessInfo {
         let thread = self.create_empty_thread();
 
         // 将参数, auxv 和环境变量放到栈上
-        let auxv = AuxVector::from_elf(&elf, begin_addr);
         let stack_id = thread.stack_id();
         let (sp, argc, argv, envp) = stack_id.init_stack(args, envp, auxv);
 
         // 为线程初始化上下文
-        let sepc = get_entry_point(&elf).0;
+        let sepc: usize = entry_point.into();
         thread.context().init_user(sp, sepc, sstatus::read(), argc, argv, envp);
 
-        // TODO: 思考什么时候切页表
+        // TODO: 思考什么时候切页表, 需要一个 OuterMostFuture
         // 将线程打包为 Future
 
         // 将打包好的 Future 丢入调度器中
@@ -155,8 +149,7 @@ pub struct ThreadInfo {
     pub tid: TidHandler,
     // 线程信息还存在, 进程信息就得存在
     pub process: Arc<ProcessInfo>,
-    // 进程不可能会死 (死了就应该直接清除所有信息了)
-    // 这里只是包一层可变
+    // 线程局部信息, 只能该线程修改, 不用加锁, 但可变
     inner: SyncUnsafeCell<ThreadInfoInner>,
 }
 
