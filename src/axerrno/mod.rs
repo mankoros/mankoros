@@ -107,13 +107,13 @@ pub type LinuxResult<T = ()> = Result<T, LinuxError>;
 #[macro_export]
 macro_rules! ax_err_type {
     ($err: ident) => {{
-        use $crate::AxError::*;
-        $crate::__priv::warn!("[AxError::{:?}]", $err);
+        use AxError::*;
+        log::warn!("[AxError::{:?}]", $err);
         $err
     }};
     ($err: ident, $msg: expr) => {{
-        use $crate::AxError::*;
-        $crate::__priv::warn!("[AxError::{:?}] {}", $err, $msg);
+        use AxError::*;
+        log::warn!("[AxError::{:?}] {}", $err, $msg);
         $err
     }};
 }
@@ -187,9 +187,4 @@ impl const From<AxError> for LinuxError {
             UnexpectedEof | WriteZero => LinuxError::EIO,
         }
     }
-}
-
-#[doc(hidden)]
-pub mod __priv {
-    pub use log::warn;
 }
