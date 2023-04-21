@@ -1,22 +1,20 @@
-use alloc::{format, string::String, vec::Vec};
+use alloc::{string::String, vec::Vec};
 use bitflags::bitflags;
 
 use crate::{
     consts::{
         address_space::{U_SEG_HEAP_BEG, U_SEG_STACK_END},
-        PAGE_SIZE, PAGE_SIZE_BITS,
+        PAGE_SIZE,
     },
     memory::{
-        address::{VirtAddr},
-        frame::alloc_frame_contiguous,
+        address::VirtAddr,
         pagetable::{pagetable::PageTable, pte::PTEFlags},
     },
     process::aux_vector::AuxElement,
-    sync::mutex::FlagsGuard,
     tools::handler_pool::UsizePool,
 };
 
-use super::aux_vector::AuxVector;
+use super::{aux_vector::AuxVector, share_page_mgr::SharedPageManager};
 use riscv::register::scause;
 
 pub const THREAD_STACK_SIZE: usize = 4 * 1024 * 1024;
@@ -24,6 +22,10 @@ pub const THREAD_STACK_SIZE: usize = 4 * 1024 * 1024;
 pub struct UserSpace {
     // 根页表
     pub page_table: PageTable,
+    // 分段管理
+    areas: Vec<UserArea>,
+    // 共享页管理
+    shared_page_mgr: SharedPageManager,
     // 栈管理
     // 一个进程可能有很多栈 (各个线程都一个), 该池子维护可用的 StackID
     stack_id_pool: UsizePool,
@@ -159,8 +161,32 @@ impl UserSpace {
         let stack_id_pool = UsizePool::new();
         Self {
             page_table,
+            areas: Vec::new(),
+            shared_page_mgr: SharedPageManager::new(),
             stack_id_pool,
             heap_page_cnt: 0,
+        }
+    }
+
+    /// 加入对应的区域映射, 实际写入页表中. 
+    pub fn add_area(&mut self, mut map_area: UserArea) { 
+        map_area.map(&mut self.page_table); 
+        self.areas.push(map_area);
+    }
+
+    /// 只将区域映射加入管理, 不实际写入页表
+    pub fn add_area_delay(&mut self, map_area: UserArea) {
+        self.areas.push(map_area);
+    }
+
+    pub fn remove_whole_area_containing(&mut self, vaddr: VirtAddr) {
+        if let Some((idx, area)) = self.areas
+            .iter_mut()
+            .enumerate()
+            .find(|(_, area)| area.range().contains(vaddr))
+        {
+            area.unmap(&mut self.page_table);
+            self.areas.remove(idx);
         }
     }
 
@@ -170,19 +196,12 @@ impl UserSpace {
         let stack_id_usize = self.stack_id_pool.get();
         let stack_id = StackID(stack_id_usize);
 
-        // 分配一个栈这么多的连续的物理页
-        // TODO: 在栈末尾插入金丝雀页以检测 stack overflow
-        let stack_frames = alloc_frame_contiguous(THREAD_STACK_SIZE, PAGE_SIZE_BITS)
-            .expect(format!("alloc stack failed, (stack_id: {:?})", stack_id_usize).as_str());
-
-        // 把物理页映射到对应的虚拟地址去
-        self.page_table.map_region(
-            stack_id.stack_bottom(),
-            stack_frames,
-            THREAD_STACK_SIZE,
-            // V flag 会被保证写入, 不需要显式指明
-            PTEFlags::R | PTEFlags::W | PTEFlags::U,
+        let area = UserArea::new_framed(
+            VirtAddrRange::new_beg_size(stack_id.stack_bottom(), THREAD_STACK_SIZE), 
+            UserAreaPerm::READ | UserAreaPerm::WRITE
         );
+
+        self.add_area(area);
 
         // 返回栈 id
         stack_id
@@ -190,46 +209,24 @@ impl UserSpace {
 
     pub fn dealloc_stack(&mut self, stack_id: StackID) {
         // 释放栈空间
-        self.page_table.unmap_region(stack_id.stack_bottom(), THREAD_STACK_SIZE);
+        self.remove_whole_area_containing(stack_id.stack_bottom());
         // 释放栈号
         self.stack_id_pool.release(stack_id.0);
     }
 
-    pub fn alloc_heap(&mut self, page_cnt: usize) -> VirtAddr {
+    pub fn alloc_heap(&mut self, page_cnt: usize) {
         let size = page_cnt * PAGE_SIZE;
 
-        // 分配一块连续的物理页
-        let heap_frames = alloc_frame_contiguous(size, PAGE_SIZE_BITS)
-            .expect(format!("alloc heap failed, (size: {:?})", size).as_str());
-
-        // 把物理页映射到对应的虚拟地址去
-        let heap_addr = VirtAddr(U_SEG_HEAP_BEG + self.heap_page_cnt * PAGE_SIZE);
-        self.page_table.map_region(
-            heap_addr,
-            heap_frames,
-            size,
-            PTEFlags::V | PTEFlags::R | PTEFlags::W | PTEFlags::U,
+        let area = UserArea::new_framed(
+            VirtAddrRange::new_beg_size(U_SEG_HEAP_BEG.into(), size),
+            UserAreaPerm::READ | UserAreaPerm::WRITE
         );
 
-        // 更新堆页数
-        self.heap_page_cnt += page_cnt;
-
-        // 返回堆地址
-        heap_addr
+        self.add_area(area);
     }
 
-    pub fn dealloc_heap(&mut self, page_cnt: usize) -> Result<(), &str> {
-        if page_cnt > self.heap_page_cnt {
-            Err("dealloc heap failed, page_cnt > self.heap_page_cnt")
-        } else {
-            // 释放堆空间
-            let heap_addr = VirtAddr(U_SEG_HEAP_BEG + (self.heap_page_cnt - page_cnt) * PAGE_SIZE);
-            self.page_table.unmap_region(heap_addr, page_cnt * PAGE_SIZE);
-
-            // 更新堆页数
-            self.heap_page_cnt -= page_cnt;
-            Ok(())
-        }
+    pub fn dealloc_heap(&mut self) {
+        self.remove_whole_area_containing(U_SEG_HEAP_BEG.into());
     }
 }
 
@@ -278,9 +275,28 @@ impl PageFaultAccessType {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VirtAddrRange {
     begin: VirtAddr,
     end: VirtAddr,
+}
+
+pub struct VARangeVPNIter {
+    range: VirtAddrRange,
+    curr: VirtPageNum,
+}
+
+impl Iterator for VARangeVPNIter {
+    type Item = VirtPageNum;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.curr < self.range.end().into() {
+            let ret = self.curr;
+            self.curr = self.curr + 1;
+            Some(ret)
+        } else {
+            None
+        }
+    }
 }
 
 impl VirtAddrRange {
@@ -316,56 +332,109 @@ impl VirtAddrRange {
     pub fn empty(&self) -> bool {
         self.begin == self.end
     }
-}
 
-pub trait UserAreaHandler {
-    fn leaf_pte_permission(&self) -> PTEFlags;
-
-    fn init(&mut self, page_table: &mut PageTable, range: VirtAddrRange);
-    fn handle_page_fault(
-        &mut self,
-        page_table: &mut PageTable,
-        addr: VirtAddr,
-        access_type: PageFaultAccessType,
-    );
-}
-
-pub struct ImmeditateAllocUAH {
-    leaf_pte_permission: PTEFlags,
-}
-
-impl ImmeditateAllocUAH {
-    pub fn new(leaf_pte_permission: PTEFlags) -> Self {
-        Self {
-            leaf_pte_permission,
+    pub fn vpn_iter(&self) -> VARangeVPNIter {
+        VARangeVPNIter {
+            range: self.clone(),
+            curr: self.begin.into(),
         }
     }
 }
 
-impl UserAreaHandler for ImmeditateAllocUAH {
-    fn leaf_pte_permission(&self) -> PTEFlags {
-        self.leaf_pte_permission
-    }
 
-    fn init(&mut self, page_table: &mut PageTable, range: VirtAddrRange) {
-        // 一次性分配所有的页
-        let page_cnt = range.size() / PAGE_SIZE;
-        let frames = alloc_frame_contiguous(range.size(), PAGE_SIZE_BITS)
-            .expect("alloc frame contiguous failed");
-        page_table.map_region(
-            range.begin(),
-            PhysAddr(frames),
-            range.size(),
-            self.leaf_pte_permission,
-        );
-    }
-
-    fn handle_page_fault(
-        &mut self,
-        page_table: &mut PageTable,
-        addr: VirtAddr,
-        access_type: PageFaultAccessType,
-    ) {
-        todo!("no page will be stop process instead of stop the kernel")
+bitflags! {
+    pub struct UserAreaPerm: u8 {
+        const READ = 1 << 0;
+        const WRITE = 1 << 1;
+        const EXECUTE = 1 << 2;
     }
 }
+
+impl UserAreaPerm {
+    pub fn to_normal_pte_flag(self) -> PTEFlags {
+        let mut pte_flag = PTEFlags::V | PTEFlags::U;
+        if self.contains(Self::READ) {
+            pte_flag |= PTEFlags::R;
+        } 
+        if self.contains(Self::WRITE) {
+            pte_flag |= PTEFlags::W;
+        }
+        if self.contains(Self::EXECUTE) {
+            pte_flag |= PTEFlags::X;
+        }
+        pte_flag
+    }
+}
+
+enum UserAreaType {
+    /// 正常的, 从虚拟地址到一个可能不同的物理地址的模式
+    Framed,
+    /// 文件映射区域
+    File {
+        // TODO: add file mapping area data
+        // file: Arc<dyn File>,
+        offset: usize,
+    },
+}
+pub struct UserArea {
+    kind: UserAreaType,
+    range: VirtAddrRange,
+    perm: UserAreaPerm,
+}
+
+impl UserArea {
+    pub fn new_framed(range: VirtAddrRange, perm: UserAreaPerm) -> Self {
+        Self {
+            kind: UserAreaType::Framed,
+            range,
+            perm,
+        }
+    }
+
+    // TODO: new_file
+
+    pub fn range(&self) -> &VirtAddrRange {
+        &self.range
+    }
+
+    pub fn perm(&self) -> UserAreaPerm {
+        self.perm
+    }
+
+    /// 将自己所表示的范围内的所有页映射到页表中
+    /// 如果是 Identical, 那么就会映射到相同地址的物理页
+    /// 如果是 Frame, 会进行新物理页的分配
+    /// TODO: 如果是 File
+    pub fn map(&mut self, page_table: &mut PageTable) {
+        for vpn in self.range.vpn_iter() {
+            self.map_one(vpn, page_table);
+        }
+    }
+
+    /// map 单个页, 效果详见 [`map()`]
+    pub fn map_one(&mut self, vpn: VirtPageNum, page_table: &mut PageTable) {
+        match &self.kind {
+            UserAreaType::Framed => {
+                let frame = alloc_frame().expect("alloc frame failed");
+                page_table.map_page(vpn.into(), frame, self.perm().to_normal_pte_flag());
+            }
+            UserAreaType::File { .. } => todo!()
+        }
+    }
+
+    /// 将自己所表示的范围内的所有页的映射从页表中删除
+    /// 如果是 Framed, 会进行物理页的释放
+    pub fn unmap(&mut self, page_table: &mut PageTable) {
+        for vpn in self.range.vpn_iter() {
+            self.unmap_one(vpn, page_table);
+        }
+    }
+
+    /// unmap 单个页, 效果详见 [`unmap()`]
+    pub fn unmap_one(&mut self, vpn: VirtPageNum, page_table: &mut PageTable) {
+        let paddr = page_table.unmap_page(vpn.into());
+        if let UserAreaType::Framed = self.kind {
+            dealloc_frame(paddr);
+        }
+    }
+}   

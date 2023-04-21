@@ -10,6 +10,7 @@
 #![feature(allocator_api)]
 #![feature(new_uninit)]
 #![allow(dead_code)]
+#![feature(map_try_insert)]
 extern crate alloc;
 
 use alloc::sync::Arc;

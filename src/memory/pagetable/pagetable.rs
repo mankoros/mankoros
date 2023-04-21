@@ -107,10 +107,12 @@ impl PageTable {
         debug_assert!(!entry.is_valid(), "Remapping a valid page table entry");
         *entry = new_pte;
     }
-    pub fn unmap_page(&mut self, vaddr: VirtAddr) {
+    pub fn unmap_page(&mut self, vaddr: VirtAddr) -> PhysAddr {
         let entry = self.get_entry_mut(vaddr);
+        let paddr = entry.paddr();
         debug_assert!(entry.is_valid(), "Unmapping a invalid page table entry");
         entry.clear();
+        paddr
     }
 
     // map_region map a memory region from vaddr to paddr
