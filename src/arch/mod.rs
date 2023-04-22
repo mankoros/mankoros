@@ -35,3 +35,11 @@ pub fn get_hart_id() -> usize {
     unsafe { core::arch::asm!("mv {0}, tp", out(reg) hart_id) };
     hart_id
 }
+
+#[inline(always)]
+pub fn switch_page_table(paddr: usize) {
+    unsafe {
+        core::arch::asm!("sfence.vma");
+        core::arch::asm!("csrw satp, {0}", in(reg) paddr);
+    }
+}

@@ -7,11 +7,12 @@ use riscv::register::{
 use crate::{
     executor::{self, yield_future::yield_now},
     trap::trap::run_user,
-    syscall::Syscall,
+    syscall::Syscall, arch,
 };
 
-use super::process::ThreadInfo;
+use super::process::{ThreadInfo, ProcessInfo};
 use log::error;
+use core::{future::Future, pin::Pin, task::{Context, Poll}};
 
 struct AutoSIE {}
 static mut SIE_COUNT: i32 = 0;
@@ -64,7 +65,6 @@ async fn userloop(thread: Arc<ThreadInfo>) {
         match scause {
             scause::Trap::Exception(e) => match e {
                 Exception::UserEnvCall => {
-                    // TODO: syscall
                     is_exit = Syscall::new(context, &thread, &thread.process).syscall().await;
                 }
                 Exception::InstructionPageFault
@@ -106,8 +106,39 @@ async fn userloop(thread: Arc<ThreadInfo>) {
 }
 
 pub fn spawn(thread: Arc<ThreadInfo>) {
-    let future = userloop(thread);
+    let future = OutermostFuture::new(thread.process.clone(), userloop(thread));
     let (r, t) = executor::spawn(future);
     r.run();
     t.detach();
+}
+
+struct OutermostFuture<F: Future + Send + 'static> {
+    process: Arc<ProcessInfo>,
+    future: F,
+}
+impl<F: Future + Send + 'static> OutermostFuture<F> {
+    #[inline]
+    pub fn new(process: Arc<ProcessInfo>, future: F) -> Self {
+        Self {
+            process,
+            future,
+        }
+    }
+}
+
+impl<F: Future + Send + 'static> Future for OutermostFuture<F> {
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = unsafe { self.get_unchecked_mut() };
+        // TODO: 关中断
+        // TODO: 检查是否需要切换页表, 比如看看 hart 里的进程是不是当前进程
+        // 切换页表
+        let pg_paddr = this.process.get_page_table_addr();
+        arch::switch_page_table(pg_paddr.into());
+        // TODO: 开中断
+        // 再 poll 里边的 userloop
+        let ret = unsafe { Pin::new_unchecked(&mut this.future).poll(cx) };
+        ret
+    }
 }

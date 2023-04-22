@@ -7,7 +7,7 @@ use crate::{
         PAGE_SIZE,
     },
     memory::{
-        address::{PhysAddr, PhysPageNum, VirtAddr, VirtPageNum},
+        address::{PhysAddr, VirtAddr, VirtPageNum},
         frame::{alloc_frame, dealloc_frame},
         pagetable::{pagetable::PageTable, pte::PTEFlags},
     },
@@ -17,7 +17,7 @@ use crate::{
 };
 
 use super::{aux_vector::AuxVector, share_page_mgr::SharedPageManager};
-use core::alloc::Layout;
+
 use riscv::register::scause;
 
 pub const THREAD_STACK_SIZE: usize = 4 * 1024 * 1024;
@@ -560,7 +560,7 @@ impl UserArea {
         if let None = pte {
             todo!("kill the program")
         }
-        let pte = pte.unwrap();
+        let _pte = pte.unwrap();
 
         // TODO: use pte to check whether it is under CoW
 

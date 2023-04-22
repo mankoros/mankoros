@@ -6,7 +6,7 @@ use alloc::{
 };
 use riscv::register::sstatus;
 
-use crate::{here, sync::SpinNoIrqLock, trap::context::UKContext, vfs::filesystem::VfsNode};
+use crate::{here, sync::SpinNoIrqLock, trap::context::UKContext, vfs::filesystem::VfsNode, memory::{address::PhysAddr}};
 
 use super::{
     pid_tid::{alloc_pid, alloc_tid, Pid, PidHandler, Tid, TidHandler},
@@ -116,6 +116,10 @@ impl ProcessInfo {
         });
 
         thread
+    }
+
+    pub fn get_page_table_addr(&self) -> PhysAddr {
+        self.with_alive(|alive| alive.user_space.page_table.root_paddr())
     }
 }
 
