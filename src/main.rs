@@ -200,7 +200,10 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     // TODO: wait for VFS
     // process::spawn_initproc(Vfs::find_file("/getpid").unwrap());
 
-    loop {}
+    loop {
+        executor::run_until_idle();
+        // TODO: if no task, sleep for a time instance
+    }
 
     // Shutdown
     sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
