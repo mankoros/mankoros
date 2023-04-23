@@ -29,3 +29,5 @@ pub const PTE_FLAGS_BITS: usize = 10;
 pub const PTE_FLAGS_MASK: usize = (1usize << PTE_FLAGS_BITS) - 1;
 
 pub const PTE_PPN_MASK_SV39: usize = ((1usize << 54) - 1) & !PTE_FLAGS_MASK;
+
+pub const MAX_SUPPORTED_CPUS: usize = 32;
