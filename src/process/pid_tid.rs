@@ -5,15 +5,16 @@ static TID_USIZE_POOL: SpinNoIrqLock<UsizePool> = SpinNoIrqLock::new(UsizePool::
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Pid(usize);
-impl Pid {
-    pub fn is_init(&self) -> bool {
-        self.0 == 0
-    }
-}
 
 impl PartialEq<usize> for Pid {
     fn eq(&self, other: &usize) -> bool {
         self.0 == *other
+    }
+}
+
+impl From<Pid> for usize {
+    fn from(value: Pid) -> Self {
+        value.0
     }
 }
 

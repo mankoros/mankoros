@@ -98,7 +98,7 @@ async fn userloop(thread: Arc<ThreadInfo>) {
         }
     }
 
-    if thread.process.pid().is_init() {
+    if thread.process.pid() == 1 {
         panic!("init process exit");
     }
 
