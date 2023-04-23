@@ -202,21 +202,21 @@ impl UserSpace {
         }
     }
 
-    /// 为线程分配一个栈空间, pid 为调试需要
-    pub fn alloc_stack(&mut self) -> StackID {
-        // 获得当前可用的一块地址空间用于放该线程的栈
-        let stack_id_usize = self.stack_id_pool.get();
-        let stack_id = StackID(stack_id_usize);
+    /// 为线程分配一个栈空间 ID
+    /// 该 id 只意味着某段虚拟地址的使用权被分配出去了, 不会产生真的物理页分配
+    pub fn alloc_stack_id(&mut self) -> StackID {
+        StackID(self.stack_id_pool.get())
+    }
 
+    /// 分配一个栈
+    /// 实际将某个 StackID 代表的虚拟地址空间映射到物理页上, 会进行物理页分配
+    pub fn alloc_stack(&mut self, stack_id: StackID) {
         let area = UserArea::new_framed(
             VirtAddrRange::new_beg_size(stack_id.stack_bottom(), THREAD_STACK_SIZE),
             UserAreaPerm::READ | UserAreaPerm::WRITE,
         );
-
+    
         self.add_area(area);
-
-        // 返回栈 id
-        stack_id
     }
 
     pub fn dealloc_stack(&mut self, stack_id: StackID) {

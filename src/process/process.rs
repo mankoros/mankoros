@@ -6,7 +6,13 @@ use alloc::{
 };
 use riscv::register::sstatus;
 
-use crate::{here, sync::SpinNoIrqLock, trap::context::UKContext, vfs::filesystem::VfsNode, memory::{address::PhysAddr}};
+use crate::{
+    here,
+    memory::address::PhysAddr,
+    sync::SpinNoIrqLock,
+    trap::context::UKContext,
+    vfs::filesystem::VfsNode,
+};
 
 use super::{
     pid_tid::{alloc_pid, alloc_tid, Pid, PidHandler, Tid, TidHandler},
@@ -48,7 +54,12 @@ impl ProcessInfo {
         self.alive.lock(here!()).as_mut().map(f)
     }
 
-    pub fn new_empty_process() -> Arc<Self> {
+    pub fn get_page_table_addr(&self) -> PhysAddr {
+        self.with_alive(|alive| alive.user_space.page_table.root_paddr())
+    }
+
+    /// 创建一个新的空白进程, 不进行除了 Pid 和结构体本身的内存之外的任何分配
+    pub fn new() -> Arc<Self> {
         let pid_handler = alloc_pid();
         let alive = SpinNoIrqLock::new(Some(AliveProcessInfo {
             parent: None,
@@ -63,64 +74,17 @@ impl ProcessInfo {
         })
     }
 
-    // TODO: exec 应该是 "对已有 thread 进行替换的", 这里更加偏向于 "创建一个新的 thread + 加载程序的混合体", 找时间要拆开
-    pub fn init_thread(self: Arc<Self>, elf_file: Arc<dyn VfsNode>, args: Vec<String>, envp: Vec<String>) {
-        // 把 elf 的 segment 映射到用户空间
-        let (entry_point, auxv) = self
-            .with_alive(|alive| alive.user_space.parse_and_map_elf_file(elf_file));
-
+    /// 创建该进程的第一个线程
+    pub fn create_first_thread(self: Arc<ProcessInfo>) -> Arc<ThreadInfo> {
+        let thread = ThreadInfo::new(self.clone());
         // 开一个小小的堆
-        self.with_alive(|alive| {
-            alive.user_space.alloc_heap(1);
-        });
-
-        // 创一个新的空线程
-        let thread = self.create_empty_thread();
-
-        // 将参数, auxv 和环境变量放到栈上
-        let stack_id = thread.stack_id();
-        let (sp, argc, argv, envp) = stack_id.init_stack(args, envp, auxv);
-
-        // 为线程初始化上下文
-        let sepc: usize = entry_point.into();
-        thread.context().init_user(sp, sepc, sstatus::read(), argc, argv, envp);
-
-        // TODO: 思考什么时候切页表, 需要一个 OuterMostFuture
-        // 将线程打包为 Future
-
-        // 将打包好的 Future 丢入调度器中
-        userloop::spawn(thread);
-    }
-
-    pub fn create_empty_thread(self: &Arc<Self>) -> Arc<ThreadInfo> {
-        // 分配新的 TID
-        let tid_handler = alloc_tid();
-        let tid = tid_handler.tid();
-
-        // 分配新的栈
-        let stack_id = self.with_alive(|alive| alive.user_space.alloc_stack());
-
-        // 构建初始 Thread 结构体
-        let thread = Arc::new(ThreadInfo {
-            tid: tid_handler,
-            process: self.clone(),
-            inner: SyncUnsafeCell::new(ThreadInfoInner {
-                stack_id,
-                uk_conext: unsafe { UKContext::new_uninit() },
-            }),
-        });
-
-        // 把新的线程加入到进程的线程列表中
-        self.with_alive(|alive| {
-            alive.threads.insert(tid, Arc::downgrade(&thread));
-        });
-
+        // TODO: 将其改为完全的懒加载
+        self.with_alive(|a| { a.user_space.alloc_heap(1); });
         thread
     }
 
-    pub fn get_page_table_addr(&self) -> PhysAddr {
-        self.with_alive(|alive| alive.user_space.page_table.root_paddr())
-    }
+    // process 里的方法只进行资源准备
+    // thread 里的方法才进行 fork/clone/exec 等控制流相关的东西
 }
 
 // 这个结构目前有 pre 进程的大锁保护, 内部的信息暂时都不用加锁
@@ -158,6 +122,55 @@ pub struct ThreadInfo {
 }
 
 impl ThreadInfo {
+    pub fn new(process: Arc<ProcessInfo>) -> Arc<Self> {
+        // 分配新的 TID
+        let tid_handler = alloc_tid();
+        let tid = tid_handler.tid();
+
+        // 分配新的栈
+        // TODO: 拆分分配 stack id 和 stack 资源的过程, 让 init 完全不涉及处理 id 之外的资源的分配
+        let stack_id = process.with_alive(|alive| alive.user_space.alloc_stack_id());
+
+        // 构建初始 Thread 结构体
+        let thread = Arc::new(ThreadInfo {
+            tid: tid_handler,
+            process: process.clone(),
+            inner: SyncUnsafeCell::new(ThreadInfoInner {
+                stack_id,
+                uk_conext: unsafe { UKContext::new_uninit() },
+            }),
+        });
+
+        // 把新的线程加入到进程的线程列表中
+        process.with_alive(|alive| {
+            alive.threads.insert(tid, Arc::downgrade(&thread));
+        });
+
+        thread
+    }
+
+    /// 线程的第一次 exec, 同时必须还得是进程的第一次 exec
+    // Big-TODO: 考虑 remap, 这里默认进程之前没有 map 过文件
+    pub fn exec_first(self: Arc<Self>, elf_file: Arc<dyn VfsNode>, args: Vec<String>, envp: Vec<String>) {
+        // 把 elf 的 segment 映射到用户空间
+        let (entry_point, auxv) =
+            self.process.with_alive(|a| a.user_space.parse_and_map_elf_file(elf_file));
+
+        // 分配栈
+        let stack_id = self.stack_id();
+        self.process.with_alive(|a| a.user_space.alloc_stack(stack_id));
+
+        // 将参数, auxv 和环境变量放到栈上
+        let (sp, argc, argv, envp) = stack_id.init_stack(args, envp, auxv);
+
+        // 为线程初始化上下文
+        let sepc: usize = entry_point.into();
+        self.context().init_user(sp, sepc, sstatus::read(), argc, argv, envp);
+
+        // 将线程打包为 Future, 并将打包好的 Future 丢入调度器中
+        userloop::spawn(self);
+    }
+
     pub fn context(&self) -> &mut UKContext {
         unsafe { &mut (&mut *self.inner.get()).uk_conext }
     }
