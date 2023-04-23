@@ -28,6 +28,9 @@ impl<'a> Syscall<'a> {
 
         let syscall_no = self.cx.syscall_no();
         let result: SyscallResult = match syscall_no {
+            // fast path
+            SYSCALL_GETPID => self.sys_getpid(),
+            // normal path
             SYSCALL_DBG_1 => self.sys_dbg_1().await,
             SYSCALL_DBG_2 => self.sys_dbg_2().await,
             _ => panic!("Unknown syscall_id: {}", syscall_no),
@@ -54,6 +57,12 @@ impl<'a> Syscall<'a> {
     pub async fn sys_dbg_2(&mut self) -> SyscallResult {
         info!("Syscall: dbg_2");
         Ok(0)
+    }
+
+    #[inline(always)]
+    pub fn sys_getpid(&mut self) -> SyscallResult {
+        info!("Syscall: getpid");
+        Ok(self.process.pid().into())
     }
 }
 
