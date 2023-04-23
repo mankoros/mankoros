@@ -197,6 +197,9 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
         info!("{}", file_name);
     }
 
+    // TODO: wait for VFS
+    // process::spawn_initproc(Vfs::find_file("/getpid").unwrap());
+
     loop {}
 
     // Shutdown

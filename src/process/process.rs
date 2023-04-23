@@ -122,6 +122,18 @@ pub struct ThreadInfo {
 }
 
 impl ThreadInfo {
+    pub fn tid(&self) -> Tid {
+        self.tid.tid()
+    }
+
+    pub fn context(&self) -> &mut UKContext {
+        unsafe { &mut (&mut *self.inner.get()).uk_conext }
+    }
+
+    pub fn stack_id(&self) -> StackID {
+        unsafe { (&*self.inner.get()).stack_id }
+    }
+
     pub fn new(process: Arc<ProcessInfo>) -> Arc<Self> {
         // 分配新的 TID
         let tid_handler = alloc_tid();
@@ -169,14 +181,6 @@ impl ThreadInfo {
 
         // 将线程打包为 Future, 并将打包好的 Future 丢入调度器中
         userloop::spawn(self);
-    }
-
-    pub fn context(&self) -> &mut UKContext {
-        unsafe { &mut (&mut *self.inner.get()).uk_conext }
-    }
-
-    pub fn stack_id(&self) -> StackID {
-        unsafe { (&*self.inner.get()).stack_id }
     }
 }
 

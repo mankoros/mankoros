@@ -11,6 +11,12 @@ impl Pid {
     }
 }
 
+impl PartialEq<usize> for Pid {
+    fn eq(&self, other: &usize) -> bool {
+        self.0 == *other
+    }
+}
+
 pub struct PidHandler(Pid);
 impl PidHandler {
     pub fn pid(&self) -> Pid {
@@ -33,6 +39,12 @@ pub fn alloc_pid() -> PidHandler {
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Tid(usize);
+
+impl PartialEq<usize> for Tid {
+    fn eq(&self, other: &usize) -> bool {
+        self.0 == *other
+    }
+}
 
 pub struct TidHandler(Tid);
 
