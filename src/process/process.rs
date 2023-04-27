@@ -7,11 +7,8 @@ use alloc::{
 use riscv::register::sstatus;
 
 use crate::{
-    here,
-    memory::address::PhysAddr,
-    sync::SpinNoIrqLock,
+    fs::vfs::filesystem::VfsNode, here, memory::address::PhysAddr, sync::SpinNoIrqLock,
     trap::context::UKContext,
-    vfs::filesystem::VfsNode,
 };
 
 use super::{
@@ -79,7 +76,9 @@ impl ProcessInfo {
         let thread = ThreadInfo::new(self.clone());
         // 开一个小小的堆
         // TODO: 将其改为完全的懒加载
-        self.with_alive(|a| { a.user_space.alloc_heap(1); });
+        self.with_alive(|a| {
+            a.user_space.alloc_heap(1);
+        });
         thread
     }
 
@@ -163,7 +162,12 @@ impl ThreadInfo {
 
     /// 线程的第一次 exec, 同时必须还得是进程的第一次 exec
     // Big-TODO: 考虑 remap, 这里默认进程之前没有 map 过文件
-    pub fn exec_first(self: Arc<Self>, elf_file: Arc<dyn VfsNode>, args: Vec<String>, envp: Vec<String>) {
+    pub fn exec_first(
+        self: Arc<Self>,
+        elf_file: Arc<dyn VfsNode>,
+        args: Vec<String>,
+        envp: Vec<String>,
+    ) {
         // 把 elf 的 segment 映射到用户空间
         let (entry_point, auxv) =
             self.process.with_alive(|a| a.user_space.parse_and_map_elf_file(elf_file));

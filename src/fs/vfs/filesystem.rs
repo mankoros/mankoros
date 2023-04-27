@@ -1,6 +1,6 @@
 use alloc::sync::Arc;
 
-use crate::{ax_err, axerrno::AxError};
+use crate::ax_err;
 
 use super::node::{VfsDirEntry, VfsNodeAttr, VfsNodeType};
 use super::VfsResult;
@@ -107,20 +107,20 @@ pub trait VfsNode: Send + Sync {
 #[macro_export]
 macro_rules! impl_vfs_dir_default {
     () => {
-        fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> $crate::VfsResult<usize> {
-            $crate::__priv::ax_err!(IsADirectory)
+        fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> crate::fs::vfs::VfsResult<usize> {
+            crate::ax_err!(IsADirectory)
         }
 
-        fn write_at(&self, _offset: u64, _buf: &[u8]) -> $crate::VfsResult<usize> {
-            $crate::__priv::ax_err!(IsADirectory)
+        fn write_at(&self, _offset: u64, _buf: &[u8]) -> crate::fs::vfs::VfsResult<usize> {
+            crate::ax_err!(IsADirectory)
         }
 
-        fn fsync(&self) -> $crate::VfsResult {
-            $crate::__priv::ax_err!(IsADirectory)
+        fn fsync(&self) -> crate::fs::vfs::VfsResult {
+            crate::ax_err!(IsADirectory)
         }
 
-        fn truncate(&self, _size: u64) -> $crate::VfsResult {
-            $crate::__priv::ax_err!(IsADirectory)
+        fn truncate(&self, _size: u64) -> crate::fs::vfs::VfsResult {
+            crate::ax_err!(IsADirectory)
         }
     };
 }
@@ -131,26 +131,30 @@ macro_rules! impl_vfs_dir_default {
 macro_rules! impl_vfs_non_dir_default {
     () => {
         fn lookup(
-            self: $crate::__priv::Arc<Self>,
+            self: alloc::sync::Arc<Self>,
             _path: &str,
-        ) -> $crate::VfsResult<$crate::VfsNodeRef> {
-            $crate::__priv::ax_err!(NotADirectory)
+        ) -> crate::fs::vfs::VfsResult<crate::fs::vfs::filesystem::VfsNodeRef> {
+            crate::ax_err!(NotADirectory)
         }
 
-        fn create(&self, _path: &str, _ty: $crate::VfsNodeType) -> $crate::VfsResult {
-            $crate::__priv::ax_err!(NotADirectory)
+        fn create(
+            &self,
+            _path: &str,
+            _ty: crate::fs::vfs::node::VfsNodeType,
+        ) -> crate::fs::vfs::VfsResult {
+            crate::ax_err!(NotADirectory)
         }
 
-        fn remove(&self, _path: &str) -> $crate::VfsResult {
-            $crate::__priv::ax_err!(NotADirectory)
+        fn remove(&self, _path: &str) -> crate::fs::vfs::VfsResult {
+            crate::ax_err!(NotADirectory)
         }
 
         fn read_dir(
             &self,
             _start_idx: usize,
-            _dirents: &mut [$crate::VfsDirEntry],
-        ) -> $crate::VfsResult<usize> {
-            $crate::__priv::ax_err!(NotADirectory)
+            _dirents: &mut [crate::fs::vfs::node::VfsDirEntry],
+        ) -> crate::fs::vfs::VfsResult<usize> {
+            crate::ax_err!(NotADirectory)
         }
     };
 }

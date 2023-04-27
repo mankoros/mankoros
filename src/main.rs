@@ -34,10 +34,10 @@ mod utils;
 mod xdebug;
 mod axerrno;
 mod executor;
+mod lazy_init;
 mod process;
 mod tools;
 mod trap;
-mod vfs;
 
 use driver::uart::Uart;
 use log::{error, info};
@@ -51,6 +51,7 @@ use consts::address_space;
 use consts::memlayout;
 
 use crate::consts::platform;
+use crate::fs::vfs::filesystem::Vfs;
 use crate::fs::{disk, partition};
 use crate::memory::address::kernel_virt_text_to_phys;
 use crate::memory::{kernel_phys_dev_to_virt, pagetable};
@@ -186,19 +187,19 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
         }
     }
 
-    let main_fs = fatfs::FileSystem::new(partitions[0].clone(), fatfs::FsOptions::new())
-        .expect("Create FileSystem failed");
+    static FAT_FS: lazy_init::LazyInit<Arc<fs::fatfs::FatFileSystem>> = lazy_init::LazyInit::new();
+    FAT_FS.init_by(Arc::new(fs::fatfs::FatFileSystem::new(
+        partitions[0].clone(),
+    )));
+    FAT_FS.init();
+    let main_fs = FAT_FS.clone();
 
     let root_dir = main_fs.root_dir();
 
-    for entry in root_dir.iter() {
-        let entry = entry.unwrap();
-        let file_name = entry.file_name();
-        info!("{}", file_name);
-    }
+    let getpid = root_dir.lookup("/getpid").expect("Read getpid failed");
 
     // TODO: wait for VFS
-    // process::spawn_initproc(Vfs::find_file("/getpid").unwrap());
+    process::spawn_initproc(getpid);
 
     loop {
         executor::run_until_idle();

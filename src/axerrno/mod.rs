@@ -107,12 +107,12 @@ pub type LinuxResult<T = ()> = Result<T, LinuxError>;
 #[macro_export]
 macro_rules! ax_err_type {
     ($err: ident) => {{
-        use AxError::*;
+        use crate::axerrno::AxError::*;
         log::warn!("[AxError::{:?}]", $err);
         $err
     }};
     ($err: ident, $msg: expr) => {{
-        use AxError::*;
+        use crate::axerrno::AxError::*;
         log::warn!("[AxError::{:?}] {}", $err, $msg);
         $err
     }};

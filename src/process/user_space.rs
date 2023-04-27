@@ -6,6 +6,7 @@ use crate::{
         address_space::{U_SEG_HEAP_BEG, U_SEG_STACK_END},
         PAGE_SIZE,
     },
+    fs::vfs::filesystem::VfsNode,
     memory::{
         address::{PhysAddr, VirtAddr, VirtPageNum},
         frame::{alloc_frame, dealloc_frame},
@@ -13,7 +14,6 @@ use crate::{
     },
     process::aux_vector::AuxElement,
     tools::handler_pool::UsizePool,
-    vfs::filesystem::VfsNode,
 };
 
 use super::{aux_vector::AuxVector, share_page_mgr::SharedPageManager};
@@ -215,7 +215,7 @@ impl UserSpace {
             VirtAddrRange::new_beg_size(stack_id.stack_bottom(), THREAD_STACK_SIZE),
             UserAreaPerm::READ | UserAreaPerm::WRITE,
         );
-    
+
         self.add_area(area);
     }
 
