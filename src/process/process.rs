@@ -8,7 +8,10 @@ use log::debug;
 use riscv::register::sstatus;
 
 use crate::{
-    fs::vfs::filesystem::VfsNode, here, memory::address::PhysAddr, sync::SpinNoIrqLock,
+    fs::vfs::filesystem::VfsNode,
+    here,
+    memory::{address::PhysAddr},
+    sync::SpinNoIrqLock,
     trap::context::UKContext,
 };
 
@@ -177,11 +180,11 @@ impl ThreadInfo {
 
         // 分配栈
         let stack_id = self.stack_id();
-        self.process.with_alive(|a| a.user_space.alloc_stack(stack_id));
+        let init_stack_paddr = self.process.with_alive(|a| a.user_space.alloc_stack(stack_id));
 
         debug!("Stack alloc done.");
         // 将参数, auxv 和环境变量放到栈上
-        let (sp, argc, argv, envp) = stack_id.init_stack(args, envp, auxv);
+        let (sp, argc, argv, envp) = stack_id.init_stack(init_stack_paddr, args, envp, auxv);
 
         // 为线程初始化上下文
         debug!("Entry point: {:?}", entry_point);

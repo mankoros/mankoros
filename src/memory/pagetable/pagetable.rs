@@ -157,6 +157,10 @@ impl PageTable {
     pub fn get_pte_copied_from_vpn(&mut self, vpn: VirtPageNum) -> Option<PageTableEntry> {
         self.get_entry_mut_opt(vpn.into()).as_deref().copied()
     }
+
+    pub fn get_paddr_from_vaddr(&self, vaddr: VirtAddr) -> PhysAddr {
+        self.get_entry_mut(vaddr).paddr()
+    }
 }
 
 // Private impl

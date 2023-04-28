@@ -10,6 +10,7 @@ use crate::{
     memory::{
         address::{PhysAddr, VirtAddr, VirtPageNum},
         frame::{alloc_frame, dealloc_frame},
+        kernel_phys_to_virt,
         pagetable::{pagetable::PageTable, pte::PTEFlags},
     },
     process::aux_vector::AuxElement,
@@ -20,7 +21,7 @@ use super::{aux_vector::AuxVector, share_page_mgr::SharedPageManager};
 
 use riscv::register::scause;
 
-pub const THREAD_STACK_SIZE: usize = 4 * 1024 * 1024;
+pub const THREAD_STACK_SIZE: usize = 4 * 1024;
 /// 一个线程的地址空间的相关信息, 在 AliveProcessInfo 里受到进程大锁保护, 不需要加锁
 pub struct UserSpace {
     // 根页表
@@ -47,6 +48,7 @@ impl StackID {
 
     pub fn init_stack(
         self,
+        sp: PhysAddr,
         args: Vec<String>,
         envp: Vec<String>,
         auxv: AuxVector,
@@ -85,7 +87,9 @@ impl StackID {
         在构建栈的时候, 我们从底向上塞各个东西
         */
 
-        let mut sp = self.stack_bottom().0;
+        // let mut sp = self.stack_bottom().0;
+
+        let mut sp = kernel_phys_to_virt(usize::from(sp) + PAGE_SIZE);
 
         // 存放环境与参数的字符串本身
         fn push_str(sp: &mut usize, s: &str) -> usize {
@@ -210,13 +214,20 @@ impl UserSpace {
 
     /// 分配一个栈
     /// 实际将某个 StackID 代表的虚拟地址空间映射到物理页上, 会进行物理页分配
-    pub fn alloc_stack(&mut self, stack_id: StackID) {
+    pub fn alloc_stack(&mut self, stack_id: StackID) -> PhysAddr {
         let area = UserArea::new_framed(
-            VirtAddrRange::new_beg_size(stack_id.stack_bottom(), THREAD_STACK_SIZE),
+            VirtAddrRange::new_beg_size(
+                stack_id.stack_bottom() - THREAD_STACK_SIZE,
+                THREAD_STACK_SIZE,
+            ),
             UserAreaPerm::READ | UserAreaPerm::WRITE,
         );
 
         self.add_area(area);
+
+        // This returns the lower page of stack_bottom (highest addr)
+        // TODO: work around to, bug prone
+        self.page_table.get_paddr_from_vaddr(stack_id.stack_bottom() - 1)
     }
 
     pub fn dealloc_stack(&mut self, stack_id: StackID) {
