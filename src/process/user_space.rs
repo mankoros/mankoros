@@ -260,7 +260,7 @@ impl UserSpace {
             let ph_type = ph.get_type().expect("failed to get ph type");
 
             if ph_type != xmas_elf::program::Type::Load {
-                todo!();
+                // Just ignore
             }
 
             let offset = ph.offset() as usize;

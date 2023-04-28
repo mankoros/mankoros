@@ -4,6 +4,7 @@ use alloc::{
     alloc::Global, boxed::Box, collections::BTreeMap, format, string::String, sync::Arc,
     sync::Weak, vec::Vec,
 };
+use log::debug;
 use riscv::register::sstatus;
 
 use crate::{
@@ -172,19 +173,25 @@ impl ThreadInfo {
         let (entry_point, auxv) =
             self.process.with_alive(|a| a.user_space.parse_and_map_elf_file(elf_file));
 
+        debug!("Parse ELF file done.");
+
         // 分配栈
         let stack_id = self.stack_id();
         self.process.with_alive(|a| a.user_space.alloc_stack(stack_id));
 
+        debug!("Stack alloc done.");
         // 将参数, auxv 和环境变量放到栈上
         let (sp, argc, argv, envp) = stack_id.init_stack(args, envp, auxv);
 
         // 为线程初始化上下文
+        debug!("Entry point: {:?}", entry_point);
         let sepc: usize = entry_point.into();
         self.context().init_user(sp, sepc, sstatus::read(), argc, argv, envp);
 
+        debug!("User init done.");
         // 将线程打包为 Future, 并将打包好的 Future 丢入调度器中
         userloop::spawn(self);
+        debug!("Spawning task done.");
     }
 }
 

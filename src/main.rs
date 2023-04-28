@@ -52,6 +52,7 @@ use consts::memlayout;
 
 use crate::consts::platform;
 use crate::fs::vfs::filesystem::Vfs;
+use crate::fs::vfs::node::VfsDirEntry;
 use crate::fs::{disk, partition};
 use crate::memory::address::kernel_virt_text_to_phys;
 use crate::memory::{kernel_phys_dev_to_virt, pagetable};
@@ -195,6 +196,21 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     let main_fs = FAT_FS.clone();
 
     let root_dir = main_fs.root_dir();
+
+    let mut test_cases = Vec::new();
+    for _ in 0..64 {
+        test_cases.push(VfsDirEntry::new_empty());
+    }
+
+    let test_cases_amount =
+        root_dir.read_dir(0, &mut test_cases[..]).expect("Read root dir failed");
+
+    let test_cases = test_cases[..test_cases_amount].to_vec();
+
+    info!("Total cases: {}", test_cases.len());
+    for case in test_cases.into_iter() {
+        info!("{}", case.d_name());
+    }
 
     let getpid = root_dir.lookup("/getpid").expect("Read getpid failed");
 
