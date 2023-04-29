@@ -168,7 +168,8 @@ impl VfsNode for FileWrapper<'static> {
         let mut file = self.0.lock(here!());
         let mut read_len = 0;
         let mut file_end = false;
-        file.seek(fatfs::SeekFrom::Start(offset)).map_err(as_vfs_err)?; // TODO: more efficient
+        file.seek(fatfs::SeekFrom::Start(offset)).map_err(as_vfs_err)?;
+        // This for loop is needed since fatfs do not guarantee read the whole buffer, may only read a sector
         while buf.len() != 0 && !file_end {
             let fat_read_len = file.read(buf).map_err(as_vfs_err)?;
             if fat_read_len == 0 {
@@ -182,7 +183,8 @@ impl VfsNode for FileWrapper<'static> {
 
     fn write_at(&self, offset: u64, buf: &[u8]) -> VfsResult<usize> {
         let mut file = self.0.lock(here!());
-        file.seek(fatfs::SeekFrom::Start(offset)).map_err(as_vfs_err)?; // TODO: more efficient
+        // TODO: impl a read_at like write, not sure how long fatfs can write
+        file.seek(fatfs::SeekFrom::Start(offset)).map_err(as_vfs_err)?;
         file.write(buf).map_err(as_vfs_err)
     }
 
