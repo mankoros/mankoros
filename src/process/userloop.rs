@@ -5,14 +5,19 @@ use riscv::register::{
 };
 
 use crate::{
+    arch,
     executor::{self, yield_future::yield_now},
+    syscall::Syscall,
     trap::trap::run_user,
-    syscall::Syscall, arch,
 };
 
-use super::process::{ThreadInfo, ProcessInfo};
-use log::error;
-use core::{future::Future, pin::Pin, task::{Context, Poll}};
+use super::process::{ProcessInfo, ThreadInfo};
+use core::{
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll},
+};
+use log::{debug, error, warn};
 
 struct AutoSIE {}
 static mut SIE_COUNT: i32 = 0;
@@ -56,7 +61,7 @@ async fn userloop(thread: Arc<ThreadInfo>) {
         }
 
         let scause = scause::read().cause();
-        let _stval = stval::read();
+        let stval = stval::read();
 
         drop(auto_sie);
 
@@ -65,18 +70,27 @@ async fn userloop(thread: Arc<ThreadInfo>) {
         match scause {
             scause::Trap::Exception(e) => match e {
                 Exception::UserEnvCall => {
+                    debug!("Syscall, User SPEC: 0x{:x}", context.user_sepc);
                     is_exit = Syscall::new(context, &thread, &thread.process).syscall().await;
                 }
                 Exception::InstructionPageFault
                 | Exception::LoadPageFault
                 | Exception::StorePageFault => {
                     // TODO: page fault
-                    error!("page fault here");
-                    is_exit = true;
+                    debug!(
+                        "Pagefault, User SEPC: 0x{:x}, STVAL: 0x{:x}, SCAUSE: {:#?}, User sp: 0x{:x}",
+                        context.user_sepc, stval, e, context.user_rx[2]
+                    );
+                    thread.process.with_alive(|a| a.handle_pagefault(stval.into()));
+                    // is_exit = true;
                     // do_exit = trap_handler::page_fault(&thread, e, stval, context.user_sepc).await;
                 }
                 Exception::InstructionFault | Exception::IllegalInstruction => {
                     // user die
+                    debug!(
+                        "Invalid user programm, User SPEC: 0x{:x}, SCAUSE: {:#?}, STVAL: {:x}",
+                        context.user_sepc, e, stval
+                    );
                     is_exit = true;
                 }
                 _ => todo!(),
@@ -119,10 +133,7 @@ struct OutermostFuture<F: Future + Send + 'static> {
 impl<F: Future + Send + 'static> OutermostFuture<F> {
     #[inline]
     pub fn new(process: Arc<ProcessInfo>, future: F) -> Self {
-        Self {
-            process,
-            future,
-        }
+        Self { process, future }
     }
 }
 

@@ -10,7 +10,7 @@ use riscv::register::sstatus;
 use crate::{
     fs::vfs::filesystem::VfsNode,
     here,
-    memory::{address::PhysAddr},
+    memory::address::{PhysAddr, VirtAddr},
     sync::SpinNoIrqLock,
     trap::context::UKContext,
 };
@@ -112,6 +112,12 @@ pub struct AliveProcessInfo {
     // === 进程地址空间数据 ===
     user_space: UserSpace,
     // TODO: FD Table
+}
+
+impl AliveProcessInfo {
+    pub fn handle_pagefault(&mut self, vaddr: VirtAddr) {
+        self.user_space.handle_pagefault(vaddr);
+    }
 }
 
 // ================ 线程 =================

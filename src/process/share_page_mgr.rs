@@ -1,27 +1,32 @@
-use alloc::{collections::BTreeMap, boxed::Box, format};
 use crate::memory::address::PhysPageNum;
-use core::{sync::atomic::{AtomicUsize, Ordering}, ptr::NonNull};
+use alloc::{boxed::Box, collections::BTreeMap, format};
+use core::{
+    ptr::NonNull,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 pub struct SharedPageManager {
-    map: BTreeMap<PhysPageNum, SharedCounterPtr>
+    map: BTreeMap<PhysPageNum, SharedCounterPtr>,
 }
 
 impl Drop for SharedPageManager {
     fn drop(&mut self) {
-        panic!("Should not auto drop SharePageManager")
+        // TODO: fix this
+        // panic!("Should not auto drop SharePageManager")
     }
 }
 
 impl SharedPageManager {
     pub fn new() -> Self {
         Self {
-            map: BTreeMap::new()
+            map: BTreeMap::new(),
         }
     }
 
     /// 获得一个对该页的引用计数器的指针 (引用计数++)
     pub fn clone(&mut self, ppn: PhysPageNum) -> SharedCounterPtr {
-        self.map.get(&ppn)
+        self.map
+            .get(&ppn)
             .expect(format!("SharePageManager: clone: ppn {:?} not exists", ppn).as_str())
             .clone()
     }
@@ -36,12 +41,14 @@ impl SharedPageManager {
 
     /// 将对应的页的引用计数器的指针放入管理
     pub fn insert_by(&mut self, ppn: PhysPageNum, ptr: SharedCounterPtr) {
-        self.map.try_insert(ppn, ptr)
+        self.map
+            .try_insert(ppn, ptr)
             .expect(format!("SharePageManager: insert_by: ppn {:?} already exists", ppn).as_str());
     }
 
     pub fn remove(&mut self, ppn: PhysPageNum) {
-        self.map.remove(&ppn)
+        self.map
+            .remove(&ppn)
             .expect(format!("SharePageManager: remove: ppn {:?} not exists", ppn).as_str())
             .consume();
     }
@@ -111,4 +118,3 @@ impl Clone for SharedCounterPtr {
         Self(self.0)
     }
 }
-

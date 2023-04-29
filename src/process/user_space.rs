@@ -1,8 +1,10 @@
 use alloc::{string::String, sync::Arc, vec::Vec};
 use bitflags::bitflags;
+use log::debug;
 
 use crate::{
     consts::{
+        self,
         address_space::{U_SEG_HEAP_BEG, U_SEG_STACK_END},
         PAGE_SIZE,
     },
@@ -90,6 +92,7 @@ impl StackID {
         // let mut sp = self.stack_bottom().0;
 
         let mut sp = kernel_phys_to_virt(usize::from(sp) + PAGE_SIZE);
+        let old_sp = sp;
 
         // 存放环境与参数的字符串本身
         fn push_str(sp: &mut usize, s: &str) -> usize {
@@ -154,10 +157,11 @@ impl StackID {
 
         // 返回值
         (
-            sp,          // 栈顶
-            argc,        // argc
-            arg_ptr_ptr, // argv
-            env_ptr_ptr, // envp
+            // Should return the user vaddr
+            self.stack_bottom().0 + (old_sp - sp), // 栈顶
+            argc,                                  // argc
+            arg_ptr_ptr,                           // argv
+            env_ptr_ptr,                           // envp
         )
     }
 }
@@ -215,9 +219,10 @@ impl UserSpace {
     /// 实际将某个 StackID 代表的虚拟地址空间映射到物理页上, 会进行物理页分配
     pub fn alloc_stack(&mut self, stack_id: StackID) -> PhysAddr {
         let area = UserArea::new_framed(
+            // TODO: How do stack grow ?
             VirtAddrRange::new_beg_size(
                 stack_id.stack_bottom() - THREAD_STACK_SIZE,
-                THREAD_STACK_SIZE,
+                THREAD_STACK_SIZE * 2,
             ),
             UserAreaPerm::READ | UserAreaPerm::WRITE,
         );
@@ -310,6 +315,13 @@ impl UserSpace {
         let entry_point = VirtAddr(elf.header.pt2.entry_point() as usize);
 
         (entry_point, auxv)
+    }
+
+    pub fn handle_pagefault(&mut self, vaddr: VirtAddr) {
+        let mut area: Vec<_> = self.areas.iter_mut().filter(|a| a.range.contains(vaddr)).collect();
+        assert_eq!(area.len(), 1); // TODO: dirty
+        let area = &mut area[0];
+        area.page_fault(&mut self.page_table, vaddr.into(), PageFaultAccessType::RO);
     }
 }
 
@@ -567,10 +579,10 @@ impl UserArea {
         }
 
         let pte = page_table.get_pte_copied_from_vpn(access_vpn.into());
-        if let None = pte {
-            todo!("kill the program")
-        }
-        let _pte = pte.unwrap();
+        // if let None = pte {
+        //     todo!("kill the program")
+        // }
+        // let _pte = pte.unwrap();
 
         // TODO: use pte to check whether it is under CoW
 
@@ -583,7 +595,11 @@ impl UserArea {
                 let page_offset = offset + (access_vaddr - self.range.begin());
 
                 let slice = unsafe { frame.as_mut_page_slice() };
-                file.read_at(page_offset as u64, slice).expect("read file failed");
+                debug!("Page offset: {}", page_offset);
+                debug!("Slice length: {}", slice.len());
+                let read_length =
+                    file.read_at(page_offset as u64, slice).expect("read file failed");
+                assert_eq!(read_length, consts::PAGE_SIZE);
             }
         }
         page_table.map_page(access_vpn.into(), frame, self.perm().to_normal_pte_flag());

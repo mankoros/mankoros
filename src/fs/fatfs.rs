@@ -17,7 +17,7 @@ use super::{
 };
 use alloc::sync::Arc;
 use fatfs::{self, Read, Seek, Write};
-use log::{trace, warn};
+use log::{debug, trace, warn};
 // Implementation for Partition
 impl fatfs::IoBase for Partition {
     type Error = ();
@@ -164,10 +164,20 @@ impl VfsNode for FileWrapper<'static> {
         Ok(VfsNodeAttr::new(perm, VfsNodeType::File, size, blocks))
     }
 
-    fn read_at(&self, offset: u64, buf: &mut [u8]) -> VfsResult<usize> {
+    fn read_at(&self, offset: u64, mut buf: &mut [u8]) -> VfsResult<usize> {
         let mut file = self.0.lock(here!());
+        let mut read_len = 0;
+        let mut file_end = false;
         file.seek(fatfs::SeekFrom::Start(offset)).map_err(as_vfs_err)?; // TODO: more efficient
-        file.read(buf).map_err(as_vfs_err)
+        while buf.len() != 0 && !file_end {
+            let fat_read_len = file.read(buf).map_err(as_vfs_err)?;
+            if fat_read_len == 0 {
+                file_end = true;
+            }
+            read_len += fat_read_len;
+            buf = &mut buf[fat_read_len..];
+        }
+        Ok(read_len)
     }
 
     fn write_at(&self, offset: u64, buf: &[u8]) -> VfsResult<usize> {
