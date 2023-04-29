@@ -18,7 +18,7 @@ use crate::{
 };
 
 use alloc::{vec, vec::Vec};
-use log::{trace};
+use log::trace;
 use riscv::register::satp;
 
 use super::pte::{self, PTEFlags, PageTableEntry};
@@ -181,7 +181,7 @@ impl PageTable {
     }
 
     pub fn get_paddr_from_vaddr(&self, vaddr: VirtAddr) -> PhysAddr {
-        self.get_entry_mut(vaddr).paddr()
+        self.get_entry_mut(vaddr).paddr() + vaddr.page_offset()
     }
 }
 

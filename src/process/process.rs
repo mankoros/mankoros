@@ -8,7 +8,10 @@ use log::debug;
 use riscv::register::sstatus;
 
 use crate::{
-    fs::vfs::filesystem::VfsNode,
+    fs::{
+        self,
+        vfs::filesystem::{Vfs, VfsNode},
+    },
     here,
     memory::address::{PhysAddr, VirtAddr},
     sync::SpinNoIrqLock,
@@ -62,11 +65,16 @@ impl ProcessInfo {
     /// 创建一个新的空白进程, 不进行除了 Pid 和结构体本身的内存之外的任何分配
     pub fn new() -> Arc<Self> {
         let pid_handler = alloc_pid();
+        let mut std_fd: Vec<Arc<dyn VfsNode>> = Vec::new();
+        std_fd.push(Arc::new(fs::stdio::Stdin));
+        std_fd.push(Arc::new(fs::stdio::Stdout));
+        std_fd.push(Arc::new(fs::stdio::Stderr));
         let alive = SpinNoIrqLock::new(Some(AliveProcessInfo {
             parent: None,
             children: Vec::new(),
             threads: BTreeMap::new(),
             user_space: UserSpace::new(),
+            file_descripter: std_fd,
         }));
         Arc::new(ProcessInfo {
             pid: pid_handler,
@@ -112,11 +120,18 @@ pub struct AliveProcessInfo {
     // === 进程地址空间数据 ===
     user_space: UserSpace,
     // TODO: FD Table
+    file_descripter: Vec<Arc<dyn VfsNode>>,
 }
 
 impl AliveProcessInfo {
     pub fn handle_pagefault(&mut self, vaddr: VirtAddr) {
         self.user_space.handle_pagefault(vaddr);
+    }
+    pub fn get_file_descripter(&mut self) -> &mut Vec<Arc<dyn VfsNode>> {
+        &mut self.file_descripter
+    }
+    pub fn get_user_space(&self) -> &UserSpace {
+        &self.user_space
     }
 }
 

@@ -5,8 +5,6 @@ use crate::{
 };
 use log::info;
 
-use self::fs::sys_write;
-
 mod fs;
 
 pub struct Syscall<'a> {
@@ -47,7 +45,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_CLOSE => todo!(),
             SYSCALL_GETDENTS => todo!(),
             SYSCALL_READ => todo!(),
-            SYSCALL_WRITE => sys_write(args[0], args[1] as *const u8, args[2]),
+            SYSCALL_WRITE => self.sys_write(args[0], args[1] as *const u8, args[2]),
             SYSCALL_LINKAT => todo!(),
             SYSCALL_UNLINKAT => todo!(),
             SYSCALL_MKDIRAT => todo!(),
