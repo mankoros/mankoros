@@ -33,4 +33,8 @@ impl<'a> Syscall<'a> {
             Ok(write_len)
         })
     }
+    pub fn sys_read(&mut self, fd: usize, buf: *mut u8, len: usize) -> SyscallResult {
+        todo!();
+        Ok(0)
+    }
 }

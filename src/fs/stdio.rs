@@ -16,7 +16,8 @@ use super::vfs::{
 pub struct Stdin;
 /// 标准输出流
 pub struct Stdout;
-/// 错误输出流。目前会和 Stdout 一样直接打印出来，但用的锁和 Stdout 不同
+/// 错误输出流。目前会和 Stdout 一样直接打印出来，
+/// TODO: 当stdout卡死的时候照常输出
 pub struct Stderr;
 
 impl VfsNode for Stdin {

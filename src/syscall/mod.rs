@@ -44,7 +44,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_CHDIR => todo!(),
             SYSCALL_CLOSE => todo!(),
             SYSCALL_GETDENTS => todo!(),
-            SYSCALL_READ => todo!(),
+            SYSCALL_READ => self.sys_read(args[0], args[1] as *mut u8, args[2]),
             SYSCALL_WRITE => self.sys_write(args[0], args[1] as *const u8, args[2]),
             SYSCALL_LINKAT => todo!(),
             SYSCALL_UNLINKAT => todo!(),
