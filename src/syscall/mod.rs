@@ -56,7 +56,10 @@ impl<'a> Syscall<'a> {
             SYSCALL_CLONE => todo!(),
             SYSCALL_EXECVE => todo!(),
             SYSCALL_WAIT => todo!(),
-            SYSCALL_EXIT => todo!(),
+            SYSCALL_EXIT => {
+                self.do_exit = true;
+                Ok(0)
+            }
             SYSCALL_GETPPID => todo!(),
             SYSCALL_GETPID => self.sys_getpid(),
             // Memory related
