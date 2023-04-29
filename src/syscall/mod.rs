@@ -1,8 +1,13 @@
 use crate::{
+    axerrno::AxError,
     process::process::{ProcessInfo, ThreadInfo},
     trap::context::UKContext,
 };
 use log::info;
+
+use self::fs::sys_write;
+
+mod fs;
 
 pub struct Syscall<'a> {
     cx: &'a mut UKContext,
@@ -27,6 +32,7 @@ impl<'a> Syscall<'a> {
         self.cx.set_user_pc_to_next(4);
 
         let syscall_no = self.cx.syscall_no();
+        let args = self.cx.syscall_args();
         let result: SyscallResult = match syscall_no {
             // normal path
             SYSCALL_DBG_1 => self.sys_dbg_1().await,
@@ -41,7 +47,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_CLOSE => todo!(),
             SYSCALL_GETDENTS => todo!(),
             SYSCALL_READ => todo!(),
-            SYSCALL_WRITE => todo!(),
+            SYSCALL_WRITE => sys_write(args[0], args[1] as *const u8, args[2]),
             SYSCALL_LINKAT => todo!(),
             SYSCALL_UNLINKAT => todo!(),
             SYSCALL_MKDIRAT => todo!(),
@@ -98,7 +104,7 @@ impl<'a> Syscall<'a> {
     }
 }
 
-pub type SyscallResult = Result<usize, SyscallError>;
+pub type SyscallResult = Result<usize, AxError>;
 
 // only for debug usage
 pub const SYSCALL_DBG_1: usize = 0;
@@ -191,60 +197,3 @@ pub const SYSCALL_RENAMEAT2: usize = 276;
 pub const SYSCALL_MEMBARRIER: usize = 283;
 pub const SYSCALL_STOP: usize = 998;
 pub const SYSCALL_SHUTDOWN: usize = 999;
-
-#[allow(dead_code, clippy::upper_case_acronyms)]
-#[repr(isize)]
-#[derive(Debug)]
-pub enum SyscallError {
-    EUNDEF = 0,
-    EPERM = 1,
-    ENOENT = 2,
-    ESRCH = 3,
-    EINTR = 4,
-    EIO = 5,
-    ENXIO = 6,
-    E2BIG = 7,
-    ENOEXEC = 8,
-    EBADF = 9,
-    ECHILD = 10,
-    EAGAIN = 11,
-    ENOMEM = 12,
-    EACCES = 13,
-    EFAULT = 14,
-    ENOTBLK = 15,
-    EBUSY = 16,
-    EEXIST = 17,
-    EXDEV = 18,
-    ENODEV = 19,
-    ENOTDIR = 20,
-    EISDIR = 21,
-    EINVAL = 22,
-    ENFILE = 23,
-    EMFILE = 24,
-    ENOTTY = 25,
-    ETXTBSY = 26,
-    EFBIG = 27,
-    ENOSPC = 28,
-    ESPIPE = 29,
-    EROFS = 30,
-    EMLINK = 31,
-    EPIPE = 32,
-    EDOM = 33,
-    ERANGE = 34,
-    EDEADLK = 35,
-    ENAMETOOLONG = 36,
-    ENOLCK = 37,
-    ENOSYS = 38,
-    ENOTEMPTY = 39,
-    ELOOP = 40,
-    EIDRM = 43,
-    ENOTSOCK = 80,
-    ENOPROTOOPT = 92,
-    EPFNOSUPPORT = 96,
-    EAFNOSUPPORT = 97,
-    ENOBUFS = 105,
-    EISCONN = 106,
-    ENOTCONN = 107,
-    ETIMEDOUT = 110,
-    ECONNREFUSED = 111,
-}

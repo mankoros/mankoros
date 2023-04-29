@@ -45,6 +45,17 @@ impl UKContext {
         self.user_rx[17]
     }
 
+    pub fn syscall_args(&self) -> [usize; 6] {
+        [
+            self.user_rx[10],
+            self.user_rx[11],
+            self.user_rx[12],
+            self.user_rx[13],
+            self.user_rx[14],
+            self.user_rx[15],
+        ]
+    }
+
     pub fn set_user_a0(&mut self, val: usize) {
         // a0 == x10
         self.user_rx[10] = val;
