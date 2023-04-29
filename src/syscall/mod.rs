@@ -58,7 +58,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_WAIT => todo!(),
             SYSCALL_EXIT => {
                 self.do_exit = true;
-                Ok(0)
+                Ok(args[0])
             }
             SYSCALL_GETPPID => todo!(),
             SYSCALL_GETPID => self.sys_getpid(),
