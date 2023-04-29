@@ -1,3 +1,7 @@
+use log::debug;
+
+use crate::consts;
+
 /// Returns the current frame pointer or stack base pointer
 #[inline(always)]
 pub fn fp() -> usize {
@@ -38,8 +42,14 @@ pub fn get_hart_id() -> usize {
 
 #[inline(always)]
 pub fn switch_page_table(paddr: usize) {
+    debug!("Switching to pagetable: 0x{:x}", paddr);
     unsafe {
-        core::arch::asm!("sfence.vma");
-        core::arch::asm!("csrw satp, {0}", in(reg) paddr);
+        riscv::register::satp::set(
+            riscv::register::satp::Mode::Sv39,
+            0,
+            paddr >> consts::PAGE_SIZE_BITS,
+        );
+        riscv::asm::sfence_vma_all();
     }
+    debug!("Switched to pagetable: 0x{:x}", paddr);
 }

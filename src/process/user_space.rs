@@ -164,8 +164,7 @@ impl StackID {
 
 impl UserSpace {
     pub fn new() -> Self {
-        let page_table = PageTable::new();
-        // TODO: Map kernel huge page in
+        let page_table = PageTable::new_with_kernel_seg();
         let stack_id_pool = UsizePool::new();
         Self {
             page_table,

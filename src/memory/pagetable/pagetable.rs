@@ -7,9 +7,10 @@
 use crate::{
     boot,
     consts::{
-        self, address_space::K_SEG_PHY_MEM_BEG, HUGE_PAGE_SIZE, MAX_PHYSICAL_MEMORY, PHYMEM_START,
+        self, address_space::K_SEG_PHY_MEM_BEG, HUGE_PAGE_SIZE, MAX_PHYSICAL_MEMORY, PAGE_SIZE,
+        PHYMEM_START,
     },
-    memory::{self, address::VirtPageNum},
+    memory::{self, address::VirtPageNum, kernel_phys_dev_to_virt, kernel_phys_to_virt},
     memory::{
         address::{PhysAddr, VirtAddr},
         frame,
@@ -17,7 +18,7 @@ use crate::{
 };
 
 use alloc::{vec, vec::Vec};
-use log::trace;
+use log::{debug, trace};
 use riscv::register::satp;
 
 use super::pte::{self, PTEFlags, PageTableEntry};
@@ -80,6 +81,27 @@ impl PageTable {
     pub fn new() -> Self {
         // Allocate 1 page for the root page table
         let root_paddr: PhysAddr = Self::alloc_table();
+
+        PageTable {
+            root_paddr,
+            intrm_tables: vec![root_paddr],
+        }
+    }
+
+    pub fn new_with_kernel_seg() -> Self {
+        // Allocate 1 page for the root page table
+        let root_paddr: PhysAddr = Self::alloc_table();
+        let new_vaddr = kernel_phys_to_virt(root_paddr.into());
+        let boot_pagetable = kernel_phys_to_virt(boot::boot_pagetable_paddr());
+
+        // Copy kernel segment
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                boot_pagetable as *const u8,
+                new_vaddr as *mut u8,
+                PAGE_SIZE,
+            );
+        }
 
         PageTable {
             root_paddr,
@@ -261,6 +283,7 @@ impl PageTable {
 
 impl Drop for PageTable {
     fn drop(&mut self) {
+        // TODO: avoid droping shared kernel segment pagetable
         for frame in &self.intrm_tables {
             frame::dealloc_frame((*frame).into());
         }
