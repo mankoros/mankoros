@@ -578,7 +578,7 @@ impl UserArea {
             todo!("kill the program")
         }
 
-        let pte = page_table.get_pte_copied_from_vpn(access_vpn.into());
+        let _pte = page_table.get_pte_copied_from_vpn(access_vpn.into());
         // if let None = pte {
         //     todo!("kill the program")
         // }

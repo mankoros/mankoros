@@ -17,7 +17,7 @@ use core::{
     pin::Pin,
     task::{Context, Poll},
 };
-use log::{debug, error, warn};
+use log::{debug};
 
 struct AutoSIE {}
 static mut SIE_COUNT: i32 = 0;

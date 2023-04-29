@@ -8,16 +8,17 @@ use super::disk::BLOCK_SIZE;
 use super::vfs::filesystem::*;
 use super::vfs::node::*;
 use super::vfs::*;
-/// Implementation of the fatfs glue code
-/// FAT32 FS is supposed to work upon a partition
-///
 use super::{
     partition::Partition,
     vfs::{self, filesystem::VfsNode},
 };
 use alloc::sync::Arc;
 use fatfs::{self, Read, Seek, Write};
-use log::{debug, trace, warn};
+use log::{trace, warn};
+
+/// Implementation of the fatfs glue code
+/// FAT32 FS is supposed to work upon a partition
+///
 // Implementation for Partition
 impl fatfs::IoBase for Partition {
     type Error = ();

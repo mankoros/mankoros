@@ -51,9 +51,9 @@ use consts::address_space;
 use consts::memlayout;
 
 use crate::consts::platform;
-use crate::fs::vfs::filesystem::Vfs;
+use crate::fs::vfs::filesystem::{VfsNode};
 use crate::fs::vfs::node::VfsDirEntry;
-use crate::fs::{disk, partition};
+use crate::fs::{disk, partition, root};
 use crate::memory::address::kernel_virt_text_to_phys;
 use crate::memory::{kernel_phys_dev_to_virt, pagetable};
 
@@ -195,15 +195,19 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     FAT_FS.init();
     let main_fs = FAT_FS.clone();
 
-    let root_dir = main_fs.root_dir();
+    let root_dir = Arc::new(root::RootDirectory::new(main_fs));
 
     let mut test_cases = Vec::new();
     for _ in 0..64 {
         test_cases.push(VfsDirEntry::new_empty());
     }
 
-    let test_cases_amount =
-        root_dir.read_dir(0, &mut test_cases[..]).expect("Read root dir failed");
+    let test_cases_amount = root_dir
+        .clone()
+        .lookup("/")
+        .unwrap()
+        .read_dir(0, &mut test_cases[..])
+        .expect("Read root dir failed");
 
     let test_cases = test_cases[..test_cases_amount].to_vec();
 
@@ -214,13 +218,9 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
 
     let getpid = root_dir.lookup("/getpid").expect("Read getpid failed");
 
-    // TODO: wait for VFS
     process::spawn_initproc(getpid);
 
-    loop {
-        executor::run_until_idle();
-        // TODO: if no task, sleep for a time instance
-    }
+    executor::run_until_idle();
 
     // Shutdown
     sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
