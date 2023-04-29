@@ -28,11 +28,43 @@ impl<'a> Syscall<'a> {
 
         let syscall_no = self.cx.syscall_no();
         let result: SyscallResult = match syscall_no {
-            // fast path
-            SYSCALL_GETPID => self.sys_getpid(),
             // normal path
             SYSCALL_DBG_1 => self.sys_dbg_1().await,
             SYSCALL_DBG_2 => self.sys_dbg_2().await,
+            // File related
+            SYSCALL_GETCWD => todo!(),
+            SYSCALL_PIPE2 => todo!(),
+            SYSCALL_DUP => todo!(),
+            SYSCALL_DUP3 => todo!(),
+            SYSCALL_OPENAT => todo!(),
+            SYSCALL_CHDIR => todo!(),
+            SYSCALL_CLOSE => todo!(),
+            SYSCALL_GETDENTS => todo!(),
+            SYSCALL_READ => todo!(),
+            SYSCALL_WRITE => todo!(),
+            SYSCALL_LINKAT => todo!(),
+            SYSCALL_UNLINKAT => todo!(),
+            SYSCALL_MKDIRAT => todo!(),
+            SYSCALL_UMOUNT => todo!(),
+            SYSCALL_MOUNT => todo!(),
+            SYSCALL_FSTAT => todo!(),
+            // Process related
+            SYSCALL_CLONE => todo!(),
+            SYSCALL_EXECVE => todo!(),
+            SYSCALL_WAIT => todo!(),
+            SYSCALL_EXIT => todo!(),
+            SYSCALL_GETPPID => todo!(),
+            SYSCALL_GETPID => self.sys_getpid(),
+            // Memory related
+            SYSCALL_BRK => todo!(),
+            SYSCALL_MUNMAP => todo!(),
+            SYSCALL_MMAP => todo!(),
+            // Misc
+            SYSCALL_TIMES => todo!(),
+            SYSCALL_UNAME => todo!(),
+            SYSCALL_SCHED_YIELD => todo!(),
+            SYSCALL_GETTIMEOFDAY => todo!(),
+            SYSCALL_NANOSLEEP => todo!(),
             _ => panic!("Unknown syscall_id: {}", syscall_no),
         };
 
