@@ -1,29 +1,24 @@
-use crate::{
-    axerrno::AxError,
-    process::process::{ProcessInfo, ThreadInfo},
-    syscall::misc::UtsName,
-    trap::context::UKContext,
-};
+use crate::process::lproc::LightProcess;
+use crate::{axerrno::AxError, syscall::misc::UtsName, trap::context::UKContext};
 use log::debug;
 use log::info;
 
 mod fs;
 mod memory;
 mod misc;
+mod process;
 
 pub struct Syscall<'a> {
     cx: &'a mut UKContext,
-    thread: &'a ThreadInfo,
-    process: &'a ProcessInfo,
+    lproc: &'a LightProcess,
     do_exit: bool,
 }
 
 impl<'a> Syscall<'a> {
-    pub fn new(cx: &'a mut UKContext, thread: &'a ThreadInfo, process: &'a ProcessInfo) -> Self {
+    pub fn new(cx: &'a mut UKContext, lproc: &'a LightProcess) -> Self {
         Self {
             cx,
-            thread,
-            process,
+            lproc,
             do_exit: false,
         }
     }
@@ -119,7 +114,7 @@ impl<'a> Syscall<'a> {
     #[inline(always)]
     pub fn sys_getpid(&mut self) -> SyscallResult {
         info!("Syscall: getpid");
-        Ok(self.process.pid().into())
+        Ok(self.lproc.id().into())
     }
 }
 

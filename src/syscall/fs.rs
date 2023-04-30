@@ -5,12 +5,7 @@ use log::info;
 
 use crate::{
     axerrno::AxError,
-    fs::{
-        self,
-        vfs::{filesystem::VfsNode, path},
-    },
-    memory::kernel_phys_to_virt,
-    process::process::FileDescriptor,
+    fs::{self, vfs::filesystem::VfsNode},
     utils,
 };
 
@@ -55,50 +50,43 @@ pub struct Kstat {
     pub st_ctime_nsec: isize,
 }
 
+fn within_sum<T>(f: impl FnOnce() -> T) -> T {
+    // Allow acessing user vaddr
+    unsafe { riscv::register::sstatus::set_sum() };
+    let ret = f();
+    unsafe { riscv::register::sstatus::clear_sum() };
+    ret
+}
+
 impl<'a> Syscall<'a> {
     pub fn sys_write(&mut self, fd: usize, buf: *const u8, len: usize) -> SyscallResult {
-        // TODO: check if closed
         info!("Syscall: write, fd {fd}");
-        self.process.with_alive(|a| {
-            let mut fds = a.get_file_descripter().clone();
 
-            // Sanity check
-            if fd >= fds.len() {
-                return Err(AxError::InvalidInput);
+        self.lproc.with_mut_fdtable(|f| {
+            if let Some(fd) = f.get(fd) {
+                let write_len = within_sum(|| {
+                    fd.file.write_at(0, unsafe { core::slice::from_raw_parts(buf, len) })
+                })?;
+
+                Ok(write_len)
+            } else {
+                Err(AxError::InvalidInput)
             }
-            // Allow acessing user vaddr
-            unsafe { riscv::register::sstatus::set_sum() };
-
-            let file = &mut fds[fd];
-
-            let write_len =
-                file.file.write_at(0, unsafe { core::slice::from_raw_parts(buf, len) })?;
-
-            unsafe { riscv::register::sstatus::clear_sum() };
-
-            Ok(write_len)
         })
     }
     pub fn sys_read(&mut self, fd: usize, buf: *mut u8, len: usize) -> SyscallResult {
         info!("Syscall: read, fd {fd}");
-        self.process.with_alive(|a| {
-            let mut fds = a.get_file_descripter().clone();
 
-            // Sanity check
-            if fd >= fds.len() {
-                return Err(AxError::InvalidInput);
+        self.lproc.with_mut_fdtable(|f| {
+            if let Some(fd) = f.get(fd) {
+                let read_len = within_sum(|| {
+                    fd.file.write_at(0, unsafe { core::slice::from_raw_parts_mut(buf, len) })
+                })?;
+
+                Ok(read_len)
+            } else {
+                Err(AxError::InvalidInput)
             }
-            // Allow acessing user vaddr
-            unsafe { riscv::register::sstatus::set_sum() };
-
-            let file = &mut fds[fd];
-
-            let read_len =
-                file.file.read_at(0, unsafe { core::slice::from_raw_parts_mut(buf, len) })?;
-
-            unsafe { riscv::register::sstatus::clear_sum() };
-
-            Ok(read_len)
         })
     }
 
@@ -110,37 +98,23 @@ impl<'a> Syscall<'a> {
         _user_mode: i32,
     ) -> SyscallResult {
         info!("Syscall: openat");
-        self.process.with_alive(|a| {
-            let root_fs = fs::root::get_root_dir();
 
-            // Allow acessing user vaddr
-            unsafe { riscv::register::sstatus::set_sum() };
+        let root_fs = fs::root::get_root_dir();
+        let file = within_sum(|| root_fs.lookup(unsafe { utils::raw_ptr_to_ref_str(path) }))
+            .expect("Error looking up file");
 
-            let file = root_fs
-                .lookup(unsafe { utils::raw_ptr_to_ref_str(path) })
-                .expect("Error looking up file");
-
-            let fds = a.get_file_descripter();
-            let fd = fds.len();
-            fds.push(FileDescriptor::new(file));
-
-            unsafe { riscv::register::sstatus::clear_sum() };
-
-            Ok(fd)
-        })
+        self.lproc.with_mut_fdtable(|f| Ok(f.insert(file) as usize))
     }
 
     pub fn sys_close(&mut self, fd: usize) -> SyscallResult {
         info!("Syscall: close");
-        self.process.with_alive(|a| {
-            let mut fds = a.get_file_descripter().clone();
 
-            // Sanity check
-            if fd >= fds.len() {
-                return Err(AxError::InvalidInput);
+        self.lproc.with_mut_fdtable(|m| {
+            if let Some(_) = m.remove(fd) {
+                Ok(fd)
+            } else {
+                Err(AxError::InvalidInput)
             }
-            fds[fd].is_closed = true;
-            Ok(fd)
         })
     }
 

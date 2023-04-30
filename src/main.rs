@@ -192,7 +192,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     }
 
     let getpid = root_dir.clone().lookup("/getpid").expect("Read getpid failed");
-    process::spawn_initproc(getpid);
+    process::spawn_proc(getpid);
     let brk = root_dir.clone().lookup("/brk").expect("Read brk failed");
     process::spawn_proc(brk);
     process::spawn_proc(root_dir.clone().lookup("/open").expect("Read test case failed"));

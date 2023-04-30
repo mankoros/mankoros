@@ -12,7 +12,7 @@ use crate::{
     trap::trap::run_user,
 };
 
-use super::process::{ProcessInfo, ThreadInfo};
+use super::lproc::{LightProcess, ProcessStatus};
 use core::{
     future::Future,
     pin::Pin,
@@ -45,20 +45,21 @@ impl Drop for AutoSIE {
     }
 }
 
-async fn userloop(thread: Arc<ThreadInfo>) {
+pub async fn userloop(lproc: Arc<LightProcess>) {
     loop {
         // TODO: 处理 HART 相关问题
         let auto_sie = AutoSIE::disable_interrupt_until_drop();
-        let context = thread.context();
+        let context = lproc.context();
 
-        match thread.process.with_alive_or_dead(|_| {}) {
-            Some(_) => {
-                // enter user mode
-                // never return until an exception/interrupt occurs in user mode
+        match lproc.status() {
+            ProcessStatus::UNINIT => panic!("Uninitialized process should not enter userloop"),
+            ProcessStatus::READY | ProcessStatus::RUNNING => {
                 run_user(context);
             }
-            // 进程死掉了, 可以退出 userloop 了
-            None => break,
+            ProcessStatus::ZOMBIE | ProcessStatus::STOPPED => {
+                // 进程死掉了, 可以退出 userloop 了
+                break;
+            }
         }
 
         let scause = scause::read().cause();
@@ -72,7 +73,7 @@ async fn userloop(thread: Arc<ThreadInfo>) {
             scause::Trap::Exception(e) => match e {
                 Exception::UserEnvCall => {
                     debug!("Syscall, User SPEC: 0x{:x}", context.user_sepc);
-                    is_exit = Syscall::new(context, &thread, &thread.process).syscall().await;
+                    is_exit = Syscall::new(context, &lproc).syscall().await;
                 }
                 Exception::InstructionPageFault
                 | Exception::LoadPageFault
@@ -82,7 +83,7 @@ async fn userloop(thread: Arc<ThreadInfo>) {
                         "Pagefault, User SEPC: 0x{:x}, STVAL: 0x{:x}, SCAUSE: {:#?}, User sp: 0x{:x}",
                         context.user_sepc, stval, e, context.user_rx[2]
                     );
-                    thread.process.with_alive(|a| a.handle_pagefault(stval.into()));
+                    lproc.with_mut_memory(|m| m.handle_pagefault(stval.into()));
                     // is_exit = true;
                     // do_exit = trap_handler::page_fault(&thread, e, stval, context.user_sepc).await;
                 }
@@ -113,7 +114,7 @@ async fn userloop(thread: Arc<ThreadInfo>) {
         }
     }
 
-    if thread.process.pid() == 1 {
+    if lproc.id() == 1 {
         // Preliminary stage have no init process, so allow pid 1 to exit
         // panic!("init process exit");
     }
@@ -121,21 +122,14 @@ async fn userloop(thread: Arc<ThreadInfo>) {
     // TODO: 当最后一个线程去世时, 令进程去世 (消除 alive)
 }
 
-pub fn spawn(thread: Arc<ThreadInfo>) {
-    let future = OutermostFuture::new(thread.process.clone(), userloop(thread));
-    let (r, t) = executor::spawn(future);
-    r.run();
-    t.detach();
-}
-
-struct OutermostFuture<F: Future + Send + 'static> {
-    process: Arc<ProcessInfo>,
+pub struct OutermostFuture<F: Future + Send + 'static> {
+    lproc: Arc<LightProcess>,
     future: F,
 }
 impl<F: Future + Send + 'static> OutermostFuture<F> {
     #[inline]
-    pub fn new(process: Arc<ProcessInfo>, future: F) -> Self {
-        Self { process, future }
+    pub fn new(lproc: Arc<LightProcess>, future: F) -> Self {
+        Self { lproc, future }
     }
 }
 
@@ -147,7 +141,7 @@ impl<F: Future + Send + 'static> Future for OutermostFuture<F> {
         // TODO: 关中断
         // TODO: 检查是否需要切换页表, 比如看看 hart 里的进程是不是当前进程
         // 切换页表
-        let pg_paddr = this.process.get_page_table_addr();
+        let pg_paddr = this.lproc.with_memory(|m| m.page_table.root_paddr());
         arch::switch_page_table(pg_paddr.into());
         // TODO: 开中断
         // 再 poll 里边的 userloop

@@ -5,9 +5,7 @@ use bitflags::bitflags;
 use log::info;
 
 use crate::{
-    axerrno::AxError,
-    memory::pagetable::pte::PTEFlags,
-    process::user_space::{UserAreaPerm},
+    axerrno::AxError, memory::pagetable::pte::PTEFlags, process::user_space::UserAreaPerm,
 };
 
 use super::{Syscall, SyscallResult};
@@ -78,11 +76,9 @@ bitflags! {
 impl<'a> Syscall<'a> {
     pub fn sys_brk(&mut self, brk: usize) -> SyscallResult {
         info!("Syscall brk: brk {}", brk);
-        self.process.with_alive(|a| {
-            let brk = a.get_user_space_mut().set_heap(brk.into());
-            Ok(brk.into())
-            // Allocation is not done here, so no OOM here
-        })
+        self.lproc.with_mut_memory(|m| m.set_heap(brk.into()));
+        // Allocation is not done here, so no OOM here
+        Ok(brk.into())
     }
 
     pub fn sys_mmap(
@@ -109,10 +105,8 @@ impl<'a> Syscall<'a> {
         if flags.contains(MMAPFlags::MAP_ANONYMOUS) {
             // 根据linux规范需要 fd 设为 -1 且 offset 设为 0
             if fd == -1 && offset == 0 {
-                return self.process.with_alive(|a| {
-                    let ret = a.get_user_space_mut().anonymous_mmap(len, prot.into());
-                    Ok(ret.into())
-                });
+                let ret = self.lproc.with_mut_memory(|m| m.anonymous_mmap(len, prot.into()));
+                return Ok(ret.into());
             }
         } else {
             todo!();

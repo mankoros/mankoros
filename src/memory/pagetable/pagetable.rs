@@ -20,7 +20,6 @@ use crate::{
 use alloc::{vec, vec::Vec};
 use log::{debug, trace};
 
-
 use super::pte::{self, PTEFlags, PageTableEntry};
 
 // Entries count in each page table level
@@ -87,7 +86,6 @@ impl PageTable {
 
     pub fn new_with_kernel_seg() -> Self {
         // Allocate 1 page for the root page table
-        debug!("AAA");
         let root_paddr: PhysAddr = Self::alloc_table();
         let new_vaddr = kernel_phys_to_virt(root_paddr.into());
         let boot_pagetable = kernel_phys_to_virt(boot::boot_pagetable_paddr());
