@@ -6,6 +6,7 @@ use crate::{
 use log::info;
 
 mod fs;
+mod memory;
 
 pub struct Syscall<'a> {
     cx: &'a mut UKContext,
@@ -63,7 +64,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_GETPPID => todo!(),
             SYSCALL_GETPID => self.sys_getpid(),
             // Memory related
-            SYSCALL_BRK => todo!(),
+            SYSCALL_BRK => self.sys_brk(args[0]),
             SYSCALL_MUNMAP => todo!(),
             SYSCALL_MMAP => todo!(),
             // Misc

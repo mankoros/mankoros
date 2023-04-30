@@ -133,6 +133,9 @@ impl AliveProcessInfo {
     pub fn get_user_space(&self) -> &UserSpace {
         &self.user_space
     }
+    pub fn get_user_space_mut(&mut self) -> &mut UserSpace {
+        &mut self.user_space
+    }
 }
 
 // ================ 线程 =================
@@ -202,6 +205,9 @@ impl ThreadInfo {
         // 分配栈
         let stack_id = self.stack_id();
         let init_stack_paddr = self.process.with_alive(|a| a.user_space.alloc_stack(stack_id));
+
+        // Allocate a 0 sized heap
+        self.process.with_alive(|a| a.user_space.alloc_heap(0));
 
         debug!("Stack alloc done.");
         // 将参数, auxv 和环境变量放到栈上

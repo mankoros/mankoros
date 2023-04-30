@@ -51,7 +51,7 @@ use consts::address_space;
 use consts::memlayout;
 
 use crate::consts::platform;
-use crate::fs::vfs::filesystem::{VfsNode};
+use crate::fs::vfs::filesystem::VfsNode;
 use crate::fs::vfs::node::VfsDirEntry;
 use crate::fs::{disk, partition, root};
 use crate::memory::address::kernel_virt_text_to_phys;
@@ -216,9 +216,10 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
         info!("{}", case.d_name());
     }
 
-    let getpid = root_dir.lookup("/getpid").expect("Read getpid failed");
-
+    let getpid = root_dir.clone().lookup("/getpid").expect("Read getpid failed");
     process::spawn_initproc(getpid);
+    let brk = root_dir.clone().lookup("/brk").expect("Read brk failed");
+    process::spawn_proc(brk);
 
     executor::run_until_idle();
 
@@ -237,7 +238,7 @@ pub extern "C" fn alt_rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     BOOT_HART_CNT.fetch_add(1, Ordering::SeqCst);
 
     // Initialize interrupt controller
-    trap::trap::init();
+    // trap::trap::init();
     loop {}
     unreachable!();
 }

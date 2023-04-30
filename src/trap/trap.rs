@@ -4,7 +4,7 @@ use core::arch::global_asm;
 use riscv::register::sstatus;
 use riscv::register::{stvec, utvec::TrapMode};
 
-use log::info;
+use log::{info, trace};
 
 global_asm!(include_str!("trap.asm"));
 
@@ -41,7 +41,7 @@ unsafe fn set_kernel_trap() {
     extern "C" {
         fn __kernel_trap_vector();
     }
-    info!(
+    trace!(
         "Try enabling trap vector at 0x{:x}",
         __kernel_trap_vector as usize
     );
@@ -50,7 +50,7 @@ unsafe fn set_kernel_trap() {
     // Enable irq
     sstatus::set_sie();
 
-    info!(
+    trace!(
         "Interrupts enabled for hard {} at STVEC: 0x{:x}",
         arch::get_hart_id(),
         trap_vaddr

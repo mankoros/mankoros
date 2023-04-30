@@ -136,6 +136,14 @@ impl PageTable {
         entry.clear();
         paddr
     }
+    pub fn unmap_and_dealloc_page(&mut self, vaddr: VirtAddr) -> PhysAddr {
+        let entry = self.get_entry_mut(vaddr);
+        let paddr = entry.paddr();
+        debug_assert!(entry.is_valid(), "Unmapping a invalid page table entry");
+        entry.clear();
+        frame::dealloc_frame(paddr);
+        paddr
+    }
 
     // map_region map a memory region from vaddr to paddr
     // PTE::V is guaranteed to be set, so no need to set PTE::V
@@ -160,7 +168,7 @@ impl PageTable {
         }
     }
 
-    pub fn unmap_region(&mut self, vaddr: VirtAddr, size: usize) {
+    pub fn unmap_region(&mut self, vaddr: VirtAddr, size: usize, dealloc: bool) {
         trace!(
             "unmap_region({:#x}) [{:#x}, {:#x})",
             self.root_paddr(),
@@ -170,7 +178,11 @@ impl PageTable {
         let mut vaddr = vaddr;
         let mut size = size;
         while size > 0 {
-            self.unmap_page(vaddr);
+            if dealloc {
+                self.unmap_and_dealloc_page(vaddr);
+            } else {
+                self.unmap_page(vaddr);
+            }
             vaddr += consts::PAGE_SIZE;
             size -= consts::PAGE_SIZE;
         }
