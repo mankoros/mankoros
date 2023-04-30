@@ -13,6 +13,45 @@ use crate::{
 
 use super::{Syscall, SyscallResult};
 
+/// 文件信息类
+#[repr(C)]
+pub struct Kstat {
+    /// 设备
+    pub st_dev: u64,
+    /// inode 编号
+    pub st_ino: u64,
+    /// 文件类型
+    pub st_mode: u32,
+    /// 硬链接数
+    pub st_nlink: u32,
+    /// 用户id
+    pub st_uid: u32,
+    /// 用户组id
+    pub st_gid: u32,
+    /// 设备号
+    pub st_rdev: u64,
+    _pad0: u64,
+    /// 文件大小
+    pub st_size: u64,
+    /// 块大小
+    pub st_blksize: u32,
+    _pad1: u32,
+    /// 块个数
+    pub st_blocks: u64,
+    /// 最后一次访问时间(秒)
+    pub st_atime_sec: isize,
+    /// 最后一次访问时间(纳秒)
+    pub st_atime_nsec: isize,
+    /// 最后一次修改时间(秒)
+    pub st_mtime_sec: isize,
+    /// 最后一次修改时间(纳秒)
+    pub st_mtime_nsec: isize,
+    /// 最后一次改变状态时间(秒)
+    pub st_ctime_sec: isize,
+    /// 最后一次改变状态时间(纳秒)
+    pub st_ctime_nsec: isize,
+}
+
 impl<'a> Syscall<'a> {
     pub fn sys_write(&mut self, fd: usize, buf: *const u8, len: usize) -> SyscallResult {
         // TODO: check if closed
@@ -100,5 +139,9 @@ impl<'a> Syscall<'a> {
             fds[fd].is_closed = true;
             Ok(fd)
         })
+    }
+
+    pub fn sys_fstat(&self, fd: usize, kstat: *mut Kstat) -> SyscallResult {
+        Ok(0)
     }
 }

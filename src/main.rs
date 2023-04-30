@@ -196,6 +196,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     let brk = root_dir.clone().lookup("/brk").expect("Read brk failed");
     process::spawn_proc(brk);
     process::spawn_proc(root_dir.clone().lookup("/open").expect("Read test case failed"));
+    process::spawn_proc(root_dir.clone().lookup("/fstat").expect("Read test case failed"));
 
     // executor::run_until_idle();
 

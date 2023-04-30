@@ -364,7 +364,11 @@ impl UserSpace {
         let mut area: Vec<_> = self.areas.iter_mut().filter(|a| a.range.contains(vaddr)).collect();
         assert_eq!(area.len(), 1); // TODO: dirty
         let area = &mut area[0];
-        area.page_fault(&mut self.page_table, vaddr.into(), PageFaultAccessType::RO);
+        area.page_fault(
+            &mut self.page_table,
+            vaddr.round_down().into(),
+            PageFaultAccessType::RO,
+        );
     }
 }
 

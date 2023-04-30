@@ -3,7 +3,6 @@ use alloc::format;
 use alloc::{collections::VecDeque, string::String};
 use core::fmt::{Debug, Formatter};
 use core::ops::{Deref, DerefMut};
-use log::debug;
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Path {

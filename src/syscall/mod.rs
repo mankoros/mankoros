@@ -58,7 +58,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_MKDIRAT => todo!(),
             SYSCALL_UMOUNT => todo!(),
             SYSCALL_MOUNT => todo!(),
-            SYSCALL_FSTAT => todo!(),
+            SYSCALL_FSTAT => self.sys_fstat(args[0], args[1] as *mut fs::Kstat),
             // Process related
             SYSCALL_CLONE => todo!(),
             SYSCALL_EXECVE => todo!(),
