@@ -7,6 +7,7 @@ use crate::{
     axerrno::AxError,
     fs::{self, vfs::filesystem::VfsNode},
     memory::kernel_phys_to_virt,
+    process::process::FileDescriptor,
     utils,
 };
 
@@ -14,6 +15,7 @@ use super::{Syscall, SyscallResult};
 
 impl<'a> Syscall<'a> {
     pub fn sys_write(&mut self, fd: usize, buf: *const u8, len: usize) -> SyscallResult {
+        // TODO: check if closed
         info!("Syscall: write, fd {fd}");
         self.process.with_alive(|a| {
             let mut fds = a.get_file_descripter().clone();
@@ -30,7 +32,7 @@ impl<'a> Syscall<'a> {
 
             let file = &mut fds[fd];
 
-            let write_len = file.write_at(0, unsafe {
+            let write_len = file.file.write_at(0, unsafe {
                 core::slice::from_raw_parts(kernel_vaddr as *const u8, len)
             })?;
 
@@ -54,7 +56,7 @@ impl<'a> Syscall<'a> {
 
             let file = &mut fds[fd];
 
-            let read_len = file.read_at(0, unsafe {
+            let read_len = file.file.read_at(0, unsafe {
                 core::slice::from_raw_parts_mut(kernel_vaddr as *mut u8, len)
             })?;
 
@@ -85,7 +87,21 @@ impl<'a> Syscall<'a> {
 
             let fds = a.get_file_descripter();
             let fd = fds.len();
-            fds.push(file);
+            fds.push(FileDescriptor::new(file));
+            Ok(fd)
+        })
+    }
+
+    pub fn sys_close(&mut self, fd: usize) -> SyscallResult {
+        info!("Syscall: close");
+        self.process.with_alive(|a| {
+            let mut fds = a.get_file_descripter().clone();
+
+            // Sanity check
+            if fd >= fds.len() {
+                return Err(AxError::InvalidInput);
+            }
+            fds[fd].is_closed = true;
             Ok(fd)
         })
     }

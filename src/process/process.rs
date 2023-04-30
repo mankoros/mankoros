@@ -62,10 +62,10 @@ impl ProcessInfo {
     /// 创建一个新的空白进程, 不进行除了 Pid 和结构体本身的内存之外的任何分配
     pub fn new() -> Arc<Self> {
         let pid_handler = alloc_pid();
-        let mut std_fd: Vec<Arc<dyn VfsNode>> = Vec::new();
-        std_fd.push(Arc::new(fs::stdio::Stdin));
-        std_fd.push(Arc::new(fs::stdio::Stdout));
-        std_fd.push(Arc::new(fs::stdio::Stderr));
+        let mut std_fd: Vec<_> = Vec::new();
+        std_fd.push(FileDescriptor::new(Arc::new(fs::stdio::Stdin)));
+        std_fd.push(FileDescriptor::new(Arc::new(fs::stdio::Stdout)));
+        std_fd.push(FileDescriptor::new(Arc::new(fs::stdio::Stderr)));
         let alive = SpinNoIrqLock::new(Some(AliveProcessInfo {
             parent: None,
             children: Vec::new(),
@@ -94,6 +94,21 @@ impl ProcessInfo {
     // thread 里的方法才进行 fork/clone/exec 等控制流相关的东西
 }
 
+#[derive(Clone)]
+pub struct FileDescriptor {
+    pub is_closed: bool,
+    pub file: Arc<dyn VfsNode>,
+}
+
+impl FileDescriptor {
+    pub fn new(file: Arc<dyn VfsNode>) -> Self {
+        FileDescriptor {
+            is_closed: false,
+            file,
+        }
+    }
+}
+
 // 这个结构目前有 pre 进程的大锁保护, 内部的信息暂时都不用加锁
 // 这个结构整体都是可变的, 并且所有权永远排他地属于一个进程
 pub struct AliveProcessInfo {
@@ -116,14 +131,14 @@ pub struct AliveProcessInfo {
     // === 进程地址空间数据 ===
     user_space: UserSpace,
     // TODO: FD Table
-    file_descripter: Vec<Arc<dyn VfsNode>>,
+    file_descripter: Vec<FileDescriptor>,
 }
 
 impl AliveProcessInfo {
     pub fn handle_pagefault(&mut self, vaddr: VirtAddr) {
         self.user_space.handle_pagefault(vaddr);
     }
-    pub fn get_file_descripter(&mut self) -> &mut Vec<Arc<dyn VfsNode>> {
+    pub fn get_file_descripter(&mut self) -> &mut Vec<FileDescriptor> {
         &mut self.file_descripter
     }
     pub fn get_user_space(&self) -> &UserSpace {
