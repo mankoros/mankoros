@@ -42,7 +42,7 @@ pub const U_SEG_HEAP_END: usize = 0x0000_0000_8000_0000;
 pub const U_SEG_STACK_BEG: usize = 0x0000_0001_0000_0000;
 pub const U_SEG_STACK_END: usize = 0x0000_0002_0000_0000;
 
-// 文件映射段 (128 GiB)
+// mmap 段 (128 GiB)
 pub const U_SEG_FILE_BEG: usize = 0x0000_0002_0000_0000;
 pub const U_SEG_FILE_END: usize = 0x0000_0004_0000_0000;
 

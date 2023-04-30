@@ -67,7 +67,14 @@ impl<'a> Syscall<'a> {
             // Memory related
             SYSCALL_BRK => self.sys_brk(args[0]),
             SYSCALL_MUNMAP => todo!(),
-            SYSCALL_MMAP => todo!(),
+            SYSCALL_MMAP => self.sys_mmap(
+                args[0],
+                args[1],
+                memory::MMAPPROT::from_bits(args[2] as u32).unwrap(),
+                memory::MMAPFlags::from_bits(args[3] as u32).unwrap(),
+                args[4] as i32,
+                args[5],
+            ),
             // Misc
             SYSCALL_TIMES => todo!(),
             SYSCALL_UNAME => todo!(),

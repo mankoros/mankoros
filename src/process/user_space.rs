@@ -4,7 +4,7 @@ use bitflags::bitflags;
 use crate::{
     consts::{
         self,
-        address_space::{U_SEG_HEAP_BEG, U_SEG_STACK_END},
+        address_space::{U_SEG_FILE_BEG, U_SEG_HEAP_BEG, U_SEG_STACK_END},
         PAGE_SIZE,
     },
     fs::vfs::filesystem::VfsNode,
@@ -36,6 +36,8 @@ pub struct UserSpace {
     stack_id_pool: UsizePool,
     // 堆管理
     heap_page_cnt: usize,
+    // mmap 区域
+    mmap_start_addr: VirtAddr,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -175,7 +177,18 @@ impl UserSpace {
             shared_page_mgr: SharedPageManager::new(),
             stack_id_pool,
             heap_page_cnt: 0,
+            mmap_start_addr: U_SEG_FILE_BEG.into(),
         }
+    }
+
+    /// 处理非文件的 mmap
+    pub fn anonymous_mmap(&mut self, len: usize, perm: UserAreaPerm) -> VirtAddr {
+        let new_range = VirtAddrRange::new_beg_size(self.mmap_start_addr, len);
+        let new_area = UserArea::new_framed(new_range, perm);
+        self.add_area_delay(new_area);
+        self.mmap_start_addr += len;
+
+        new_range.begin()
     }
 
     /// 加入对应的区域映射, 实际写入页表中.
@@ -411,7 +424,7 @@ impl PageFaultAccessType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub struct VirtAddrRange {
     begin: VirtAddr,
     end: VirtAddr,
