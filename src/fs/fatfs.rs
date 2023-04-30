@@ -17,6 +17,53 @@ use alloc::sync::Arc;
 use fatfs::{self, Read, Seek, Write};
 use log::{trace, warn};
 
+/// fatfs trait for vfs wrapper
+pub struct FatVfsWrapper {
+    offset: u64,
+    file: Arc<dyn VfsNode>,
+}
+
+impl fatfs::IoBase for FatVfsWrapper {
+    type Error = ();
+}
+
+impl fatfs::Read for FatVfsWrapper {
+    fn read(&mut self, mut buf: &mut [u8]) -> Result<usize, Self::Error> {
+        let mut read_len = self.file.read_at(self.offset, buf).expect("VfsWrapper read error");
+        self.offset += read_len as u64;
+        Ok(read_len)
+    }
+}
+
+impl fatfs::Write for FatVfsWrapper {
+    fn write(&mut self, mut buf: &[u8]) -> Result<usize, Self::Error> {
+        let mut write_len = self.file.write_at(self.offset, buf).expect("VfsWrapper write error");
+        self.offset += write_len as u64;
+        Ok(write_len)
+    }
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        self.file.fsync();
+        Ok(())
+    }
+}
+
+impl fatfs::Seek for FatVfsWrapper {
+    fn seek(&mut self, pos: fatfs::SeekFrom) -> Result<u64, Self::Error> {
+        let size = self.file.stat().expect("VfsWrapper stat error").size();
+        let new_pos = match pos {
+            fatfs::SeekFrom::Start(pos) => Some(pos),
+            fatfs::SeekFrom::Current(off) => self.offset.checked_add_signed(off),
+            fatfs::SeekFrom::End(off) => size.checked_add_signed(off),
+        }
+        .ok_or(())?;
+        if new_pos > size {
+            warn!("Seek beyond the end of the block device");
+        }
+        self.offset = new_pos;
+        Ok(new_pos)
+    }
+}
+
 /// Implementation of the fatfs glue code
 /// FAT32 FS is supposed to work upon a partition
 ///

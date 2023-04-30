@@ -1,3 +1,8 @@
+use super::vfs::filesystem::VfsNode;
+use super::vfs::node::VfsNodeAttr;
+use super::vfs::node::VfsNodePermission;
+use super::vfs::node::VfsNodeType;
+use super::vfs::VfsResult;
 /// Disk related
 ///
 /// Copyright (C) 2023 by ArceOS
@@ -5,8 +10,10 @@
 ///
 /// Adapted from ArceOS
 use super::BlockDevice;
+use crate::axerrno::AxError;
 use crate::driver::BlockDriverOps;
 use crate::driver::DevResult;
+use crate::impl_vfs_non_dir_default;
 
 pub const BLOCK_SIZE: usize = 512;
 
@@ -40,13 +47,13 @@ impl Disk {
     }
 
     /// Set the position of the cursor.
-    pub fn set_position(&mut self, pos: u64) {
+    pub fn set_position(&self, pos: u64) {
         self.block_id = pos / BLOCK_SIZE as u64;
         self.offset = pos as usize % BLOCK_SIZE;
     }
 
     /// Read within one block, returns the number of bytes read.
-    pub fn read_one(&mut self, buf: &mut [u8]) -> DevResult<usize> {
+    pub fn read_one(&self, buf: &mut [u8]) -> DevResult<usize> {
         let read_size = if self.offset == 0 && buf.len() >= BLOCK_SIZE {
             // whole block
             self.dev.read_block(self.block_id, &mut buf[0..BLOCK_SIZE])?;
@@ -72,7 +79,7 @@ impl Disk {
     }
 
     /// Write within one block, returns the number of bytes written.
-    pub fn write_one(&mut self, buf: &[u8]) -> DevResult<usize> {
+    pub fn write_one(&self, buf: &[u8]) -> DevResult<usize> {
         let write_size = if self.offset == 0 && buf.len() >= BLOCK_SIZE {
             // whole block
             self.dev.write_block(self.block_id, &buf[0..BLOCK_SIZE])?;
@@ -106,5 +113,53 @@ impl Disk {
             self.read_one(MBR.as_mut_slice()).expect("Read Master Boot Record failed");
             mbr_nostd::MasterBootRecord::from_bytes(&MBR).expect("Parse Master Boot Record failed")
         }
+    }
+}
+
+/// A disk can be a dev file
+impl VfsNode for Disk {
+    impl_vfs_non_dir_default! {}
+
+    fn write_at(&self, offset: u64, mut buf: &[u8]) -> VfsResult<usize> {
+        let mut write_len = 0;
+        self.set_position(offset);
+        while !buf.is_empty() {
+            match self.write_one(buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    buf = &buf[n..];
+                    write_len += n;
+                }
+                Err(_) => return Err(AxError::Io),
+            }
+        }
+        Ok(write_len)
+    }
+
+    fn fsync(&self) -> VfsResult {
+        // No cache is used here
+        Ok(())
+    }
+
+    fn truncate(&self, _size: u64) -> VfsResult {
+        crate::ax_err!(Unsupported)
+    }
+    fn read_at(&self, _offset: u64, buf: &mut [u8]) -> VfsResult<usize> {
+        // Offset is ignored
+
+        if buf.len() == 0 {
+            return Ok(0);
+        }
+        // TODO: implement read
+        Ok(1)
+    }
+    /// 文件属性
+    fn stat(&self) -> VfsResult<VfsNodeAttr> {
+        Ok(VfsNodeAttr::new(
+            VfsNodePermission::all(),
+            VfsNodeType::CharDevice,
+            0,
+            0,
+        ))
     }
 }
