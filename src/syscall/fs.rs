@@ -24,17 +24,15 @@ impl<'a> Syscall<'a> {
             if fd >= fds.len() {
                 return Err(AxError::InvalidInput);
             }
-            // Convert user vaddr
-            // TODO: do not panic when invalid vaddr
-            let paddr = a.get_user_space().page_table.get_paddr_from_vaddr((buf as usize).into());
-
-            let kernel_vaddr = kernel_phys_to_virt(paddr.into());
+            // Allow acessing user vaddr
+            unsafe { riscv::register::sstatus::set_sum() };
 
             let file = &mut fds[fd];
 
-            let write_len = file.file.write_at(0, unsafe {
-                core::slice::from_raw_parts(kernel_vaddr as *const u8, len)
-            })?;
+            let write_len =
+                file.file.write_at(0, unsafe { core::slice::from_raw_parts(buf, len) })?;
+
+            unsafe { riscv::register::sstatus::clear_sum() };
 
             Ok(write_len)
         })
@@ -48,17 +46,15 @@ impl<'a> Syscall<'a> {
             if fd >= fds.len() {
                 return Err(AxError::InvalidInput);
             }
-            // Convert user vaddr
-            // TODO: do not panic when invalid vaddr
-            let paddr = a.get_user_space().page_table.get_paddr_from_vaddr((buf as usize).into());
-
-            let kernel_vaddr = kernel_phys_to_virt(paddr.into());
+            // Allow acessing user vaddr
+            unsafe { riscv::register::sstatus::set_sum() };
 
             let file = &mut fds[fd];
 
-            let read_len = file.file.read_at(0, unsafe {
-                core::slice::from_raw_parts_mut(kernel_vaddr as *mut u8, len)
-            })?;
+            let read_len =
+                file.file.read_at(0, unsafe { core::slice::from_raw_parts_mut(buf, len) })?;
+
+            unsafe { riscv::register::sstatus::clear_sum() };
 
             Ok(read_len)
         })
@@ -75,19 +71,19 @@ impl<'a> Syscall<'a> {
         self.process.with_alive(|a| {
             let root_fs = fs::root::get_root_dir();
 
-            // Convert user vaddr
-            // TODO: do not panic when invalid vaddr
-            let paddr = a.get_user_space().page_table.get_paddr_from_vaddr((path as usize).into());
-
-            let kernel_vaddr = kernel_phys_to_virt(paddr.into());
+            // Allow acessing user vaddr
+            unsafe { riscv::register::sstatus::set_sum() };
 
             let file = root_fs
-                .lookup(unsafe { utils::raw_ptr_to_ref_str(kernel_vaddr as *const u8) })
+                .lookup(unsafe { utils::raw_ptr_to_ref_str(path) })
                 .expect("Error looking up file");
 
             let fds = a.get_file_descripter();
             let fd = fds.len();
             fds.push(FileDescriptor::new(file));
+
+            unsafe { riscv::register::sstatus::clear_sum() };
+
             Ok(fd)
         })
     }
