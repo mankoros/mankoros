@@ -6,6 +6,7 @@ use riscv::register::{
 
 use crate::{
     arch,
+    boot::boot_pagetable_paddr,
     executor::{self, yield_future::yield_now},
     syscall::Syscall,
     trap::trap::run_user,
@@ -151,6 +152,8 @@ impl<F: Future + Send + 'static> Future for OutermostFuture<F> {
         // TODO: 开中断
         // 再 poll 里边的 userloop
         let ret = unsafe { Pin::new_unchecked(&mut this.future).poll(cx) };
+        // TODO: 优化, 如果下一个进程是当前进程, 就不用切回去了
+        arch::switch_page_table(boot_pagetable_paddr());
         ret
     }
 }
