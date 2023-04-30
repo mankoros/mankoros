@@ -30,13 +30,13 @@ pub const U_SEG_BEG: usize = 0x0000_0000_0000_0000;
 // 链接基地址
 pub const U_SEG_LINK_ADDR: usize = 0x0000_0000_0001_0000;
 
-// 数据段 (32 GiB)
+// 数据段
 pub const U_SEG_DATA_BEG: usize = 0x0000_0000_0001_0000;
-pub const U_SEG_DATA_END: usize = 0x0000_0000_8000_0000;
+pub const U_SEG_DATA_END: usize = 0x0000_0000_4000_0000;
 
-// 堆段 (32 GiB)
-pub const U_SEG_HEAP_BEG: usize = 0x0000_0000_8000_0000;
-pub const U_SEG_HEAP_END: usize = 0x0000_0001_0000_0000;
+// 堆段
+pub const U_SEG_HEAP_BEG: usize = 0x0000_0000_4000_0000;
+pub const U_SEG_HEAP_END: usize = 0x0000_0000_8000_0000;
 
 // 线程栈段 (64 GiB)
 pub const U_SEG_STACK_BEG: usize = 0x0000_0001_0000_0000;

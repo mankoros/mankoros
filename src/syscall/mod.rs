@@ -3,6 +3,7 @@ use crate::{
     process::process::{ProcessInfo, ThreadInfo},
     trap::context::UKContext,
 };
+use log::debug;
 use log::info;
 
 mod fs;
@@ -82,6 +83,8 @@ impl<'a> Syscall<'a> {
             Ok(ret) => ret,
             Err(_) => -1isize as usize,
         };
+
+        debug!("Syscall ret: {}", ret);
 
         self.cx.set_user_a0(ret);
         self.do_exit

@@ -8,10 +8,7 @@ use log::debug;
 use riscv::register::sstatus;
 
 use crate::{
-    fs::{
-        self,
-        vfs::filesystem::{VfsNode},
-    },
+    fs::{self, vfs::filesystem::VfsNode},
     here,
     memory::address::{PhysAddr, VirtAddr},
     sync::SpinNoIrqLock,
@@ -87,7 +84,6 @@ impl ProcessInfo {
     pub fn create_first_thread(self: Arc<ProcessInfo>) -> Arc<ThreadInfo> {
         let thread = ThreadInfo::new(self.clone());
         // 开一个小小的堆
-        // TODO: 将其改为完全的懒加载
         self.with_alive(|a| {
             a.user_space.alloc_heap(1);
         });
@@ -206,9 +202,6 @@ impl ThreadInfo {
         // 分配栈
         let stack_id = self.stack_id();
         let init_stack_paddr = self.process.with_alive(|a| a.user_space.alloc_stack(stack_id));
-
-        // Allocate a 0 sized heap
-        self.process.with_alive(|a| a.user_space.alloc_heap(0));
 
         debug!("Stack alloc done.");
         // 将参数, auxv 和环境变量放到栈上
