@@ -43,7 +43,9 @@ impl UtsName {
 impl<'a> Syscall<'a> {
     pub fn sys_uname(&mut self, uts: *mut UtsName) -> SyscallResult {
         unsafe {
+            riscv::register::sstatus::set_sum();
             (*uts) = UtsName::default();
+            riscv::register::sstatus::clear_sum();
         }
         Ok(0)
     }
