@@ -4,7 +4,7 @@ use core::arch::global_asm;
 use riscv::register::sstatus;
 use riscv::register::{stvec, utvec::TrapMode};
 
-use log::{info, trace};
+use log::{trace};
 
 global_asm!(include_str!("trap.asm"));
 

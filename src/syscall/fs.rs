@@ -1,7 +1,7 @@
 //! Filesystem related syscall
 //!
 
-use log::debug;
+use log::info;
 
 use crate::{axerrno::AxError, memory::kernel_phys_to_virt};
 
@@ -9,9 +9,8 @@ use super::{Syscall, SyscallResult};
 
 impl<'a> Syscall<'a> {
     pub fn sys_write(&mut self, fd: usize, buf: *const u8, len: usize) -> SyscallResult {
+        info!("Syscall: write, sys_write fd {fd}");
         self.process.with_alive(|a| {
-            debug!("sys_write fd {fd}");
-
             let mut fds = a.get_file_descripter().clone();
 
             // Sanity check
@@ -33,7 +32,7 @@ impl<'a> Syscall<'a> {
             Ok(write_len)
         })
     }
-    pub fn sys_read(&mut self, fd: usize, buf: *mut u8, len: usize) -> SyscallResult {
+    pub fn sys_read(&mut self, _fd: usize, _buf: *mut u8, _len: usize) -> SyscallResult {
         todo!();
         Ok(0)
     }

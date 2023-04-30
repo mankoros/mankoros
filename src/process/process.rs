@@ -10,7 +10,7 @@ use riscv::register::sstatus;
 use crate::{
     fs::{
         self,
-        vfs::filesystem::{Vfs, VfsNode},
+        vfs::filesystem::{VfsNode},
     },
     here,
     memory::address::{PhysAddr, VirtAddr},
@@ -196,6 +196,7 @@ impl ThreadInfo {
         args: Vec<String>,
         envp: Vec<String>,
     ) {
+        debug!("Exec first");
         // 把 elf 的 segment 映射到用户空间
         let (entry_point, auxv) =
             self.process.with_alive(|a| a.user_space.parse_and_map_elf_file(elf_file));

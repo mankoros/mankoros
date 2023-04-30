@@ -221,7 +221,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     let brk = root_dir.clone().lookup("/brk").expect("Read brk failed");
     process::spawn_proc(brk);
 
-    executor::run_until_idle();
+    // executor::run_until_idle();
 
     // Shutdown
     sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);

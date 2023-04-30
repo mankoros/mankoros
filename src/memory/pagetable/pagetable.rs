@@ -5,7 +5,7 @@
 //!
 
 use crate::{
-    boot,
+    arch, boot,
     consts::{
         self, address_space::K_SEG_PHY_MEM_BEG, HUGE_PAGE_SIZE, MAX_PHYSICAL_MEMORY, PAGE_SIZE,
         PHYMEM_START,
@@ -18,8 +18,8 @@ use crate::{
 };
 
 use alloc::{vec, vec::Vec};
-use log::trace;
-use riscv::register::satp;
+use log::{debug, trace};
+
 
 use super::pte::{self, PTEFlags, PageTableEntry};
 
@@ -66,10 +66,7 @@ pub fn unmap_boot_seg() {
 /// Switch to global kernel boot pagetable
 pub fn enable_boot_pagetable() {
     let boot_pagetable = boot::boot_pagetable_paddr();
-    unsafe {
-        riscv::register::satp::set(satp::Mode::Sv39, 0, boot_pagetable >> 12);
-        riscv::asm::sfence_vma_all();
-    }
+    arch::switch_page_table(boot_pagetable);
 }
 
 pub struct PageTable {
@@ -90,6 +87,7 @@ impl PageTable {
 
     pub fn new_with_kernel_seg() -> Self {
         // Allocate 1 page for the root page table
+        debug!("AAA");
         let root_paddr: PhysAddr = Self::alloc_table();
         let new_vaddr = kernel_phys_to_virt(root_paddr.into());
         let boot_pagetable = kernel_phys_to_virt(boot::boot_pagetable_paddr());
@@ -295,7 +293,8 @@ impl PageTable {
 
 impl Drop for PageTable {
     fn drop(&mut self) {
-        // TODO: avoid droping shared kernel segment pagetable
+        // shared kernel segment pagetable is not in intrm_tables
+        // so no extra things should be done
         for frame in &self.intrm_tables {
             frame::dealloc_frame((*frame).into());
         }
