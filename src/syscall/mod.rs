@@ -42,7 +42,12 @@ impl<'a> Syscall<'a> {
             SYSCALL_PIPE2 => todo!(),
             SYSCALL_DUP => todo!(),
             SYSCALL_DUP3 => todo!(),
-            SYSCALL_OPENAT => todo!(),
+            SYSCALL_OPENAT => self.sys_openat(
+                args[0] as i32,
+                args[1] as *const u8,
+                args[2] as u32,
+                args[3] as i32,
+            ),
             SYSCALL_CHDIR => todo!(),
             SYSCALL_CLOSE => todo!(),
             SYSCALL_GETDENTS => todo!(),

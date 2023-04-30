@@ -13,7 +13,6 @@
 #![feature(map_try_insert)]
 extern crate alloc;
 
-
 use alloc::vec::Vec;
 use core::mem;
 use core::panic::PanicInfo;
@@ -196,6 +195,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     process::spawn_initproc(getpid);
     let brk = root_dir.clone().lookup("/brk").expect("Read brk failed");
     process::spawn_proc(brk);
+    process::spawn_proc(root_dir.clone().lookup("/open").expect("Read test case failed"));
 
     // executor::run_until_idle();
 
