@@ -19,6 +19,9 @@ pub mod vfs;
 type BlockDevice = driver::VirtIoBlockDev;
 
 pub fn init_filesystems(blk_dev: BlockDevice) {
+    info!("Filesystem built-in self testing (BIST)...");
+    vfs::path::path_test();
+
     info!("Initialize filesystems...");
     info!("  use block device: {:?}", blk_dev.device_name());
 
