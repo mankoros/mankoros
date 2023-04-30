@@ -32,7 +32,8 @@ MankorOS is a [RISC-V](https://riscv.org/) kernel written in [Rust](https://www.
     - [x] global allocator (2023-01-26 Origami404)
     - [ ] auto growing kernel heap
 - [ ] Process
-    - [ ] process infra
+    - [x] rCore-like, process/thread infra (very early Origami404, 2023-05-01 deprecated)
+    - [x] linux-like, unified `task_struct` infra (2023-05-01 Origami404)
     - [ ] scheduler
     - [x] smp boot (2023-04-09 EastonMan)
 - [ ] Syscall
