@@ -3,9 +3,11 @@ use crate::{
     process::process::{ProcessInfo, ThreadInfo},
     trap::context::UKContext,
 };
+use log::debug;
 use log::info;
 
 mod fs;
+mod memory;
 
 pub struct Syscall<'a> {
     cx: &'a mut UKContext,
@@ -40,9 +42,14 @@ impl<'a> Syscall<'a> {
             SYSCALL_PIPE2 => todo!(),
             SYSCALL_DUP => todo!(),
             SYSCALL_DUP3 => todo!(),
-            SYSCALL_OPENAT => todo!(),
+            SYSCALL_OPENAT => self.sys_openat(
+                args[0] as i32,
+                args[1] as *const u8,
+                args[2] as u32,
+                args[3] as i32,
+            ),
             SYSCALL_CHDIR => todo!(),
-            SYSCALL_CLOSE => todo!(),
+            SYSCALL_CLOSE => self.sys_close(args[0]),
             SYSCALL_GETDENTS => todo!(),
             SYSCALL_READ => self.sys_read(args[0], args[1] as *mut u8, args[2]),
             SYSCALL_WRITE => self.sys_write(args[0], args[1] as *const u8, args[2]),
@@ -63,9 +70,16 @@ impl<'a> Syscall<'a> {
             SYSCALL_GETPPID => todo!(),
             SYSCALL_GETPID => self.sys_getpid(),
             // Memory related
-            SYSCALL_BRK => todo!(),
+            SYSCALL_BRK => self.sys_brk(args[0]),
             SYSCALL_MUNMAP => todo!(),
-            SYSCALL_MMAP => todo!(),
+            SYSCALL_MMAP => self.sys_mmap(
+                args[0],
+                args[1],
+                memory::MMAPPROT::from_bits(args[2] as u32).unwrap(),
+                memory::MMAPFlags::from_bits(args[3] as u32).unwrap(),
+                args[4] as i32,
+                args[5],
+            ),
             // Misc
             SYSCALL_TIMES => todo!(),
             SYSCALL_UNAME => todo!(),
@@ -81,6 +95,8 @@ impl<'a> Syscall<'a> {
             Ok(ret) => ret,
             Err(_) => -1isize as usize,
         };
+
+        debug!("Syscall ret: {}", ret);
 
         self.cx.set_user_a0(ret);
         self.do_exit

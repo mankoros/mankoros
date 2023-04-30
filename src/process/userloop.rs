@@ -17,7 +17,7 @@ use core::{
     pin::Pin,
     task::{Context, Poll},
 };
-use log::{debug};
+use log::debug;
 
 struct AutoSIE {}
 static mut SIE_COUNT: i32 = 0;
@@ -113,7 +113,8 @@ async fn userloop(thread: Arc<ThreadInfo>) {
     }
 
     if thread.process.pid() == 1 {
-        panic!("init process exit");
+        // Preliminary stage have no init process, so allow pid 1 to exit
+        // panic!("init process exit");
     }
 
     // TODO: 当最后一个线程去世时, 令进程去世 (消除 alive)

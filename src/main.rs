@@ -13,7 +13,6 @@
 #![feature(map_try_insert)]
 extern crate alloc;
 
-use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::mem;
 use core::panic::PanicInfo;
@@ -41,7 +40,6 @@ mod trap;
 
 use driver::uart::Uart;
 use log::{error, info};
-use mbr_nostd::PartitionTable;
 use memory::frame;
 use memory::heap;
 use memory::pagetable::pte::PTEFlags;
@@ -51,9 +49,8 @@ use consts::address_space;
 use consts::memlayout;
 
 use crate::consts::platform;
-use crate::fs::vfs::filesystem::{VfsNode};
+use crate::fs::vfs::filesystem::VfsNode;
 use crate::fs::vfs::node::VfsDirEntry;
-use crate::fs::{disk, partition, root};
 use crate::memory::address::kernel_virt_text_to_phys;
 use crate::memory::{kernel_phys_dev_to_virt, pagetable};
 
@@ -171,31 +168,9 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
 
     // Probe devices
     let hd0 = driver::probe_virtio_blk().expect("Block device not found");
+    fs::init_filesystems(hd0);
 
-    let mut disk = disk::Disk::new(hd0);
-
-    let mbr = disk.mbr();
-    let disk = Arc::new(SpinNoIrqLock::new(disk));
-    let mut partitions = Vec::new();
-    for entry in mbr.partition_table_entries() {
-        if entry.partition_type != mbr_nostd::PartitionType::Unused {
-            info!("Partition table entry: {:#x?}", entry);
-            partitions.push(partition::Partition::new(
-                entry.logical_block_address as u64 * disk::BLOCK_SIZE as u64,
-                entry.sector_count as u64 * disk::BLOCK_SIZE as u64,
-                disk.clone(),
-            ))
-        }
-    }
-
-    static FAT_FS: lazy_init::LazyInit<Arc<fs::fatfs::FatFileSystem>> = lazy_init::LazyInit::new();
-    FAT_FS.init_by(Arc::new(fs::fatfs::FatFileSystem::new(
-        partitions[0].clone(),
-    )));
-    FAT_FS.init();
-    let main_fs = FAT_FS.clone();
-
-    let root_dir = Arc::new(root::RootDirectory::new(main_fs));
+    let root_dir = fs::root::get_root_dir();
 
     let mut test_cases = Vec::new();
     for _ in 0..64 {
@@ -216,11 +191,13 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
         info!("{}", case.d_name());
     }
 
-    let getpid = root_dir.lookup("/getpid").expect("Read getpid failed");
-
+    let getpid = root_dir.clone().lookup("/getpid").expect("Read getpid failed");
     process::spawn_initproc(getpid);
+    let brk = root_dir.clone().lookup("/brk").expect("Read brk failed");
+    process::spawn_proc(brk);
+    process::spawn_proc(root_dir.clone().lookup("/open").expect("Read test case failed"));
 
-    executor::run_until_idle();
+    // executor::run_until_idle();
 
     // Shutdown
     sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
@@ -237,7 +214,7 @@ pub extern "C" fn alt_rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     BOOT_HART_CNT.fetch_add(1, Ordering::SeqCst);
 
     // Initialize interrupt controller
-    trap::trap::init();
+    // trap::trap::init();
     loop {}
     unreachable!();
 }

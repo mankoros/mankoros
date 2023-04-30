@@ -74,7 +74,7 @@ impl VfsNode for Stdout {
     fn truncate(&self, _size: u64) -> VfsResult {
         crate::ax_err!(Unsupported)
     }
-    fn read_at(&self, _offset: u64, buf: &mut [u8]) -> VfsResult<usize> {
+    fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> VfsResult<usize> {
         // Stdout is not readable
         crate::ax_err!(Unsupported)
     }
@@ -111,7 +111,7 @@ impl VfsNode for Stderr {
     fn truncate(&self, _size: u64) -> VfsResult {
         crate::ax_err!(Unsupported)
     }
-    fn read_at(&self, _offset: u64, buf: &mut [u8]) -> VfsResult<usize> {
+    fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> VfsResult<usize> {
         // Stdout is not readable
         crate::ax_err!(Unsupported)
     }

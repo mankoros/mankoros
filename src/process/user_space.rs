@@ -1,11 +1,10 @@
 use alloc::{string::String, sync::Arc, vec::Vec};
 use bitflags::bitflags;
-use log::debug;
 
 use crate::{
     consts::{
         self,
-        address_space::{U_SEG_HEAP_BEG, U_SEG_STACK_END},
+        address_space::{U_SEG_FILE_BEG, U_SEG_HEAP_BEG, U_SEG_STACK_END},
         PAGE_SIZE,
     },
     fs::vfs::filesystem::VfsNode,
@@ -37,6 +36,8 @@ pub struct UserSpace {
     stack_id_pool: UsizePool,
     // 堆管理
     heap_page_cnt: usize,
+    // mmap 区域
+    mmap_start_addr: VirtAddr,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -176,7 +177,18 @@ impl UserSpace {
             shared_page_mgr: SharedPageManager::new(),
             stack_id_pool,
             heap_page_cnt: 0,
+            mmap_start_addr: U_SEG_FILE_BEG.into(),
         }
+    }
+
+    /// 处理非文件的 mmap
+    pub fn anonymous_mmap(&mut self, len: usize, perm: UserAreaPerm) -> VirtAddr {
+        let new_range = VirtAddrRange::new_beg_size(self.mmap_start_addr, len);
+        let new_area = UserArea::new_framed(new_range, perm);
+        self.add_area_delay(new_area);
+        self.mmap_start_addr += len;
+
+        new_range.begin()
     }
 
     /// 加入对应的区域映射, 实际写入页表中.
@@ -250,6 +262,37 @@ impl UserSpace {
         );
 
         self.add_area(area);
+    }
+
+    /// set_heap increases or decreases the heap size
+    /// It does not allocate physical memory on increase,
+    /// allocation is delayed until a page fault.
+    /// However, it de-allocate the physical memory immediately
+    /// when the heap is shrunk.
+    ///
+    /// Returns the new heap top vaddr
+    pub fn set_heap(&mut self, vaddr: VirtAddr) -> VirtAddr {
+        let mut heap_area: Vec<_> = self
+            .areas
+            .iter_mut()
+            .filter(|a| a.range().contains(U_SEG_HEAP_BEG.into()))
+            .collect();
+        debug_assert_eq!(heap_area.len(), 1);
+        let heap_area = &mut heap_area[0];
+        debug_assert_eq!(heap_area.range().begin(), U_SEG_HEAP_BEG.into());
+        let heap_end = heap_area.range().end();
+        if vaddr == 0.into() || vaddr == heap_end {
+            return heap_end;
+        } else if vaddr > heap_end {
+            // Grow the heap
+            heap_area.range_mut().grow_high(vaddr - heap_end);
+            return vaddr;
+        } else {
+            // Shrink the heap
+            heap_area.range_mut().shrink_high(heap_end - vaddr);
+            self.page_table.unmap_region(vaddr, heap_end - vaddr, true);
+            return vaddr;
+        }
     }
 
     pub fn dealloc_heap(&mut self) {
@@ -381,7 +424,7 @@ impl PageFaultAccessType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub struct VirtAddrRange {
     begin: VirtAddr,
     end: VirtAddr,
@@ -406,6 +449,23 @@ impl Iterator for VARangeVPNIter {
 }
 
 impl VirtAddrRange {
+    /// Grow the range towards higher address
+    pub fn grow_high(&mut self, size: usize) {
+        self.end += size;
+    }
+    /// Grow the range towards lower address
+    pub fn grow_low(&mut self, size: usize) {
+        self.begin -= size;
+    }
+    /// Shrink the range from the higher end
+    pub fn shrink_high(&mut self, size: usize) {
+        self.end -= size;
+    }
+    /// Shrink the range from the lower end
+    pub fn shrink_low(&mut self, size: usize) {
+        self.begin += size;
+    }
+
     /// Left Inclusive, Right Exclusive range
     pub fn new_lire(begin: VirtAddr, end: VirtAddr) -> Self {
         debug_assert!(begin <= end);
@@ -517,6 +577,9 @@ impl UserArea {
     pub fn range(&self) -> &VirtAddrRange {
         &self.range
     }
+    pub fn range_mut(&mut self) -> &mut VirtAddrRange {
+        &mut self.range
+    }
 
     pub fn perm(&self) -> UserAreaPerm {
         self.perm
@@ -589,14 +652,14 @@ impl UserArea {
         // now assume it is not CoW, just lazy alloc
         let frame = alloc_frame().expect("alloc frame failed");
         match &self.kind {
+            // If lazy alloc, map the allocate frame
             UserAreaType::Framed => {}
+            // If is file, read from fs
             UserAreaType::File { file, offset } => {
                 let access_vaddr: VirtAddr = access_vpn.into();
                 let page_offset = offset + (access_vaddr - self.range.begin());
 
                 let slice = unsafe { frame.as_mut_page_slice() };
-                debug!("Page offset: {}", page_offset);
-                debug!("Slice length: {}", slice.len());
                 let read_length =
                     file.read_at(page_offset as u64, slice).expect("read file failed");
                 assert_eq!(read_length, consts::PAGE_SIZE);
