@@ -11,6 +11,7 @@ pub mod disk;
 pub mod fatfs;
 pub mod partition;
 
+pub mod pipe;
 pub mod root;
 pub mod stdio;
 pub mod vfs;
