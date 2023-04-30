@@ -5,7 +5,7 @@ use log::info;
 
 use crate::{
     axerrno::AxError,
-    fs::{self, vfs::filesystem::VfsNode},
+    fs::{self, vfs::{filesystem::VfsNode, path}},
     memory::kernel_phys_to_virt,
     process::process::FileDescriptor,
     utils,
@@ -26,9 +26,8 @@ impl<'a> Syscall<'a> {
             }
             // Convert user vaddr
             // TODO: do not panic when invalid vaddr
-            let paddr = a.get_user_space().page_table.get_paddr_from_vaddr((buf as usize).into());
-
-            let kernel_vaddr = kernel_phys_to_virt(paddr.into());
+            let buf = (buf as usize).into();
+            let kernel_vaddr: usize = a.get_user_space().to_kernel_addr(buf);
 
             let file = &mut fds[fd];
 
@@ -50,9 +49,8 @@ impl<'a> Syscall<'a> {
             }
             // Convert user vaddr
             // TODO: do not panic when invalid vaddr
-            let paddr = a.get_user_space().page_table.get_paddr_from_vaddr((buf as usize).into());
-
-            let kernel_vaddr = kernel_phys_to_virt(paddr.into());
+            let buf = (buf as usize).into();
+            let kernel_vaddr: usize = a.get_user_space().to_kernel_addr(buf);
 
             let file = &mut fds[fd];
 
@@ -77,9 +75,8 @@ impl<'a> Syscall<'a> {
 
             // Convert user vaddr
             // TODO: do not panic when invalid vaddr
-            let paddr = a.get_user_space().page_table.get_paddr_from_vaddr((path as usize).into());
-
-            let kernel_vaddr = kernel_phys_to_virt(paddr.into());
+            let path = (path as usize).into();
+            let kernel_vaddr: usize = a.get_user_space().to_kernel_addr(path);
 
             let file = root_fs
                 .lookup(unsafe { utils::raw_ptr_to_ref_str(kernel_vaddr as *const u8) })

@@ -181,6 +181,12 @@ impl UserSpace {
         }
     }
 
+    /// 将用户态的虚拟地址转换为内核页表里存在的虚拟地址
+    pub fn to_kernel_addr(&self, vaddr: VirtAddr) -> usize {
+        let paddr = self.page_table.get_paddr_from_vaddr(vaddr);
+        kernel_phys_to_virt(paddr.into())
+    }
+
     /// 处理非文件的 mmap
     pub fn anonymous_mmap(&mut self, len: usize, perm: UserAreaPerm) -> VirtAddr {
         let new_range = VirtAddrRange::new_beg_size(self.mmap_start_addr, len);
