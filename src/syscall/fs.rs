@@ -36,4 +36,8 @@ impl<'a> Syscall<'a> {
         todo!();
         Ok(0)
     }
+
+    pub fn sys_openat(_dir_fd: i32, _path: *const u8, _flags: u32, _user_mode: i32) -> SyscallResult {
+        todo!();
+    }
 }

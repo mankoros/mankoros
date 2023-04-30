@@ -7,7 +7,7 @@ use log::info;
 use crate::{
     axerrno::AxError,
     memory::pagetable::pte::PTEFlags,
-    process::user_space::{UserArea, UserAreaPerm},
+    process::user_space::{UserAreaPerm},
 };
 
 use super::{Syscall, SyscallResult};
@@ -104,7 +104,7 @@ impl<'a> Syscall<'a> {
             return Err(AxError::InvalidInput);
         }
         // 是否可以放在任意位置
-        let anywhere = start == 0 || !flags.contains(MMAPFlags::MAP_FIXED);
+        let _anywhere = start == 0 || !flags.contains(MMAPFlags::MAP_FIXED);
 
         if flags.contains(MMAPFlags::MAP_ANONYMOUS) {
             // 根据linux规范需要 fd 设为 -1 且 offset 设为 0

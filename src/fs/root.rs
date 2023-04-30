@@ -7,11 +7,17 @@
 use alloc::{sync::Arc, vec::Vec};
 use log::debug;
 
+use crate::lazy_init::LazyInit;
 use crate::{axerrno::AxResult, impl_vfs_dir_default};
 
+use super::fatfs::FatFileSystem;
+use super::partition::Partition;
 use super::vfs::filesystem::*;
 use super::vfs::node::*;
 use super::vfs::*;
+
+static ROOT_DIR: LazyInit<Arc<RootDirectory>> = LazyInit::new();
+
 /// Maintain a path <-> fs relationship
 struct MountPoint {
     path: &'static str,
@@ -129,4 +135,18 @@ impl VfsNode for RootDirectory {
             }
         })
     }
+}
+
+pub fn get_root_dir() -> Arc<RootDirectory> {
+    ROOT_DIR.clone()
+}
+
+pub fn init_rootfs(part: Partition) {
+    static FAT_FS: LazyInit<Arc<FatFileSystem>> = LazyInit::new();
+    FAT_FS.init_by(Arc::new(FatFileSystem::new(part)));
+    FAT_FS.init();
+    let main_fs = FAT_FS.clone();
+
+    let root_dir = RootDirectory::new(main_fs);
+    ROOT_DIR.init_by(Arc::new(root_dir));
 }

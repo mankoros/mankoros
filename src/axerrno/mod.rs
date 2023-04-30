@@ -36,6 +36,8 @@ pub enum AxError {
     ConnectionRefused,
     /// A non-empty directory was specified where an empty directory was expected.
     DirectoryNotEmpty,
+    /// File descriptor is full
+    FileDescriptorFull,
     /// Data not valid for the operation were encountered.
     ///
     /// Unlike [`InvalidInput`], this typically means that the operation
@@ -185,6 +187,7 @@ impl const From<AxError> for LinuxError {
             StorageFull => LinuxError::ENOSPC,
             Unsupported => LinuxError::ENOSYS,
             UnexpectedEof | WriteZero => LinuxError::EIO,
+            FileDescriptorFull => LinuxError::EMFILE,
         }
     }
 }
