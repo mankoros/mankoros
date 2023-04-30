@@ -5,7 +5,8 @@ use alloc::{
     collections::VecDeque,
     string::String,
 };
-use crate::utils::Error;
+use alloc::format;
+use log::debug;
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Path {
@@ -44,7 +45,7 @@ impl DerefMut for Path {
 
 
 impl Path {
-    pub fn from_string(path: String) -> Result<Self, Error> {
+    pub fn from_string(path: String) -> Result<Self, ()> {
         let mut temp: VecDeque<String> = path.split('/').map(|s| String::from(s)).collect();
 
         if path.starts_with('/') {
@@ -64,7 +65,7 @@ impl Path {
             } else if name == ".." {
                 let ret = components.pop_back();
                 if ret.is_none() {
-                    return Err(Error::ENOENT);
+                    return Err(());
                 }
             } else {
                 components.push_back(name);
@@ -75,7 +76,7 @@ impl Path {
         })
     }
 
-    pub fn from_str(str: &str) -> Result<Self, Error> {
+    pub fn from_str(str: &str) -> Result<Self, ()> {
         Path::from_string(String::from(str))
     }
 
@@ -145,15 +146,15 @@ impl Path {
 #[allow(unused)]
 pub fn path_test() {
     let path = Path::from_string(String::from("/a/b/c/d/")).unwrap();
-    println!("path = {:?}", path);
+    debug!("path = {:?}", path);
     let path = Path::from_string(String::from("/abcdefg/asdsd/asdasd")).unwrap();
-    println!("path = {:?}", path);
+    debug!("path = {:?}", path);
     let path = Path::from_string(String::from("aa/../bb/../cc/././."));
-    println!("path = {:?}", path);
+    debug!("path = {:?}", path);
     let path = Path::from_string(String::from("aa/../.."));
-    println!("path = {:?}", path);
+    debug!("path = {:?}", path);
     let path = Path::from_string(String::from("./././."));
-    println!("path = {:?}", path);
+    debug!("path = {:?}", path);
     //todo!()
     //println!("{:?}", path.components);
 }
