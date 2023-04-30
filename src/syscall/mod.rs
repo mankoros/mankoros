@@ -1,6 +1,7 @@
 use crate::{
     axerrno::AxError,
     process::process::{ProcessInfo, ThreadInfo},
+    syscall::misc::UtsName,
     trap::context::UKContext,
 };
 use log::debug;
@@ -8,6 +9,7 @@ use log::info;
 
 mod fs;
 mod memory;
+mod misc;
 
 pub struct Syscall<'a> {
     cx: &'a mut UKContext,
@@ -82,7 +84,7 @@ impl<'a> Syscall<'a> {
             ),
             // Misc
             SYSCALL_TIMES => todo!(),
-            SYSCALL_UNAME => todo!(),
+            SYSCALL_UNAME => self.sys_uname(args[0] as *mut UtsName),
             SYSCALL_SCHED_YIELD => todo!(),
             SYSCALL_GETTIMEOFDAY => todo!(),
             SYSCALL_NANOSLEEP => todo!(),
