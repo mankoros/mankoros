@@ -64,7 +64,7 @@ impl<'a> Syscall<'a> {
                 self.do_exit = true;
                 Ok(args[0])
             }
-            SYSCALL_GETPPID => todo!(),
+            SYSCALL_GETPPID => self.sys_getppid(),
             SYSCALL_GETPID => self.sys_getpid(),
             // Memory related
             SYSCALL_BRK => self.sys_brk(args[0]),
@@ -115,6 +115,11 @@ impl<'a> Syscall<'a> {
     pub fn sys_getpid(&mut self) -> SyscallResult {
         info!("Syscall: getpid");
         Ok(self.lproc.id().into())
+    }
+    #[inline(always)]
+    pub fn sys_getppid(&mut self) -> SyscallResult {
+        info!("Syscall: getppid");
+        Ok(self.lproc.parent_id().into())
     }
 }
 

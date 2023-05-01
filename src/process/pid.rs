@@ -10,6 +10,11 @@ impl PartialEq<usize> for Pid {
         self.0 == *other
     }
 }
+impl From<usize> for Pid {
+    fn from(pid: usize) -> Self {
+        Pid(pid)
+    }
+}
 
 impl From<Pid> for usize {
     fn from(value: Pid) -> Self {

@@ -197,6 +197,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     };
 
     run_test_case("/getpid");
+    run_test_case("/getppid");
     run_test_case("/brk");
     run_test_case("/open");
     run_test_case("/fstat");

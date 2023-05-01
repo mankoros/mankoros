@@ -60,6 +60,15 @@ impl LightProcess {
         self.id.pid()
     }
 
+    pub fn parent_id(&self) -> Pid {
+        // TODO: must have parent
+        if let Some(p) = self.parent.as_ref() {
+            p.upgrade().unwrap().id()
+        } else {
+            0.into()
+        }
+    }
+
     pub fn tgid(&self) -> Pid {
         self.group.lock(here!()).tgid()
     }
