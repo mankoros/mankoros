@@ -25,7 +25,7 @@ impl UtsName {
     pub fn default() -> Self {
         Self {
             sysname: Self::from_str("MankorOS"),
-            nodename: Self::from_str("MnakorOS-VF2"),
+            nodename: Self::from_str("MankorOS-VF2"),
             release: Self::from_str("rolling"),
             version: Self::from_str("unknown"),
             machine: Self::from_str("unknown"),
