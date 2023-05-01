@@ -7,7 +7,7 @@ use riscv::register::{
 use crate::{
     arch,
     boot::boot_pagetable_paddr,
-    executor::{self, yield_future::yield_now},
+    executor::{yield_future::yield_now},
     syscall::Syscall,
     trap::trap::run_user,
 };

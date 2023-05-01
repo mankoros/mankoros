@@ -15,7 +15,7 @@ use alloc::{
     alloc::Global, boxed::Box, collections::BTreeMap, string::String, sync::Arc, sync::Weak,
     vec::Vec,
 };
-use core::{cell::SyncUnsafeCell, mem, sync::atomic::AtomicI32};
+use core::{cell::SyncUnsafeCell, sync::atomic::AtomicI32};
 use log::debug;
 use riscv::register::sstatus;
 

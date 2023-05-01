@@ -118,7 +118,7 @@ impl<'a> Syscall<'a> {
         })
     }
 
-    pub fn sys_fstat(&self, fd: usize, kstat: *mut Kstat) -> SyscallResult {
+    pub fn sys_fstat(&self, _fd: usize, _kstat: *mut Kstat) -> SyscallResult {
         Ok(0)
     }
 }
