@@ -61,10 +61,10 @@ impl LightProcess {
     }
 
     pub fn parent_id(&self) -> Pid {
-        // TODO: must have parent
         if let Some(p) = self.parent.as_ref() {
             p.upgrade().unwrap().id()
         } else {
+            // Return 1 if no parent
             1.into()
         }
     }
