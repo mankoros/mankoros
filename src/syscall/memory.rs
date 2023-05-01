@@ -76,9 +76,9 @@ bitflags! {
 impl<'a> Syscall<'a> {
     pub fn sys_brk(&mut self, brk: usize) -> SyscallResult {
         info!("Syscall brk: brk {}", brk);
-        self.lproc.with_mut_memory(|m| m.set_heap(brk.into()));
+        let new_brk = self.lproc.with_mut_memory(|m| m.set_heap(brk.into()));
         // Allocation is not done here, so no OOM here
-        Ok(brk.into())
+        Ok(new_brk.into())
     }
 
     pub fn sys_mmap(
