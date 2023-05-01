@@ -1,3 +1,5 @@
+use core::cell::Cell;
+
 use super::vfs::filesystem::VfsNode;
 use super::vfs::node::VfsNodeAttr;
 use super::vfs::node::VfsNodePermission;
@@ -20,18 +22,21 @@ pub const BLOCK_SIZE: usize = 512;
 /// A disk holds a block device, and can be used to read and write data to that block device.
 #[derive(Debug)]
 pub struct Disk {
-    block_id: u64,
-    offset: usize,
+    block_id: Cell<u64>,
+    offset: Cell<usize>,
     dev: BlockDevice,
 }
+
+unsafe impl Send for Disk {}
+unsafe impl Sync for Disk {}
 
 impl Disk {
     /// Create a new disk.
     pub fn new(dev: BlockDevice) -> Self {
         assert_eq!(BLOCK_SIZE, dev.block_size());
         Self {
-            block_id: 0,
-            offset: 0,
+            block_id: Cell::new(0),
+            offset: Cell::new(0),
             dev,
         }
     }
@@ -43,35 +48,35 @@ impl Disk {
 
     /// Get the position of the cursor.
     pub fn position(&self) -> u64 {
-        self.block_id * BLOCK_SIZE as u64 + self.offset as u64
+        self.block_id.get() * BLOCK_SIZE as u64 + self.offset.get() as u64
     }
 
     /// Set the position of the cursor.
     pub fn set_position(&self, pos: u64) {
-        self.block_id = pos / BLOCK_SIZE as u64;
-        self.offset = pos as usize % BLOCK_SIZE;
+        self.block_id.set(pos / BLOCK_SIZE as u64);
+        self.offset.set(pos as usize % BLOCK_SIZE);
     }
 
     /// Read within one block, returns the number of bytes read.
     pub fn read_one(&self, buf: &mut [u8]) -> DevResult<usize> {
-        let read_size = if self.offset == 0 && buf.len() >= BLOCK_SIZE {
+        let read_size = if self.offset.get() == 0 && buf.len() >= BLOCK_SIZE {
             // whole block
-            self.dev.read_block(self.block_id, &mut buf[0..BLOCK_SIZE])?;
-            self.block_id += 1;
+            self.dev.read_block(self.block_id.get(), &mut buf[0..BLOCK_SIZE])?;
+            self.block_id.set(self.block_id.get() + 1);
             BLOCK_SIZE
         } else {
             // partial block
             let mut data = [0u8; BLOCK_SIZE];
-            let start = self.offset;
-            let count = buf.len().min(BLOCK_SIZE - self.offset);
+            let start = self.offset.get();
+            let count = buf.len().min(BLOCK_SIZE - self.offset.get());
 
-            self.dev.read_block(self.block_id, &mut data)?;
+            self.dev.read_block(self.block_id.get(), &mut data)?;
             buf[..count].copy_from_slice(&data[start..start + count]);
 
-            self.offset += count;
-            if self.offset >= BLOCK_SIZE {
-                self.block_id += 1;
-                self.offset -= BLOCK_SIZE;
+            self.offset.set(self.offset.get() + count);
+            if self.offset.get() >= BLOCK_SIZE {
+                self.block_id.set(self.block_id.get() + 1);
+                self.offset.set(self.offset.get() - BLOCK_SIZE);
             }
             count
         };
@@ -80,25 +85,25 @@ impl Disk {
 
     /// Write within one block, returns the number of bytes written.
     pub fn write_one(&self, buf: &[u8]) -> DevResult<usize> {
-        let write_size = if self.offset == 0 && buf.len() >= BLOCK_SIZE {
+        let write_size = if self.offset.get() == 0 && buf.len() >= BLOCK_SIZE {
             // whole block
-            self.dev.write_block(self.block_id, &buf[0..BLOCK_SIZE])?;
-            self.block_id += 1;
+            self.dev.write_block(self.block_id.get(), &buf[0..BLOCK_SIZE])?;
+            self.block_id.set(self.block_id.get() + 1);
             BLOCK_SIZE
         } else {
             // partial block
             let mut data = [0u8; BLOCK_SIZE];
-            let start = self.offset;
-            let count = buf.len().min(BLOCK_SIZE - self.offset);
+            let start = self.offset.get();
+            let count = buf.len().min(BLOCK_SIZE - self.offset.get());
 
-            self.dev.read_block(self.block_id, &mut data)?;
+            self.dev.read_block(self.block_id.get(), &mut data)?;
             data[start..start + count].copy_from_slice(&buf[..count]);
-            self.dev.write_block(self.block_id, &data)?;
+            self.dev.write_block(self.block_id.get(), &data)?;
 
-            self.offset += count;
-            if self.offset >= BLOCK_SIZE {
-                self.block_id += 1;
-                self.offset -= BLOCK_SIZE;
+            self.offset.set(self.offset.get() + count);
+            if self.offset.get() >= BLOCK_SIZE {
+                self.block_id.set(self.block_id.get() + 1);
+                self.offset.set(self.offset.get() - BLOCK_SIZE);
             }
             count
         };

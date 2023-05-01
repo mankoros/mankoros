@@ -1,3 +1,4 @@
+use core::cell::UnsafeCell;
 use core::fmt::Debug;
 
 use super::as_dev_err;
@@ -12,7 +13,7 @@ use super::DeviceType;
 ///
 use virtio_drivers::{device::blk::VirtIOBlk as InnerDev, transport::Transport, Hal};
 pub struct VirtIoBlkDev<H: Hal, T: Transport> {
-    inner: InnerDev<H, T>,
+    inner: UnsafeCell<InnerDev<H, T>>,
     pos: u64,
 }
 
@@ -28,7 +29,7 @@ impl<H: Hal, T: Transport> Debug for VirtIoBlkDev<H, T> {
 impl<H: Hal, T: Transport> VirtIoBlkDev<H, T> {
     pub fn try_new(transport: T) -> DevResult<Self> {
         Ok(Self {
-            inner: InnerDev::new(transport).map_err(as_dev_err)?,
+            inner: UnsafeCell::new(InnerDev::new(transport).map_err(as_dev_err)?),
             pos: 0,
         })
     }
@@ -47,7 +48,7 @@ impl<H: Hal, T: Transport> const BaseDriverOps for VirtIoBlkDev<H, T> {
 impl<H: Hal, T: Transport> BlockDriverOps for VirtIoBlkDev<H, T> {
     #[inline]
     fn num_blocks(&self) -> u64 {
-        self.inner.capacity()
+        (unsafe { &*self.inner.get() }).capacity()
     }
 
     #[inline]
@@ -55,15 +56,19 @@ impl<H: Hal, T: Transport> BlockDriverOps for VirtIoBlkDev<H, T> {
         virtio_drivers::device::blk::SECTOR_SIZE
     }
 
-    fn read_block(&mut self, block_id: u64, buf: &mut [u8]) -> DevResult {
-        self.inner.read_block(block_id as _, buf).map_err(as_dev_err)
+    fn read_block(&self, block_id: u64, buf: &mut [u8]) -> DevResult {
+        (unsafe { &mut *self.inner.get() })
+            .read_block(block_id as _, buf)
+            .map_err(as_dev_err)
     }
 
-    fn write_block(&mut self, block_id: u64, buf: &[u8]) -> DevResult {
-        self.inner.write_block(block_id as _, buf).map_err(as_dev_err)
+    fn write_block(&self, block_id: u64, buf: &[u8]) -> DevResult {
+        (unsafe { &mut *self.inner.get() })
+            .write_block(block_id as _, buf)
+            .map_err(as_dev_err)
     }
 
-    fn flush(&mut self) -> DevResult {
+    fn flush(&self) -> DevResult {
         Ok(())
     }
 }
