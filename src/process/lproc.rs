@@ -65,7 +65,7 @@ impl LightProcess {
         if let Some(p) = self.parent.as_ref() {
             p.upgrade().unwrap().id()
         } else {
-            0.into()
+            1.into()
         }
     }
 

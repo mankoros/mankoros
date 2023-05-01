@@ -4,6 +4,7 @@ use mbr_nostd::PartitionTable;
 
 use crate::{
     driver::{self, BaseDriverOps},
+    here,
     sync::SpinNoIrqLock,
 };
 
@@ -38,6 +39,15 @@ pub fn init_filesystems(blk_dev: BlockDevice) {
                 disk.clone(),
             ))
         }
+    }
+    if partitions.len() == 0 {
+        // The disk may not have a partition table.
+        // Assume it is a FAT32 filesystem.
+        partitions.push(partition::Partition::new(
+            0,
+            disk.lock(here!()).size(),
+            disk.clone(),
+        ))
     }
     self::root::init_rootfs(partitions[0].clone());
 }
