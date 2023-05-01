@@ -29,14 +29,14 @@ impl Partition {
         self.size
     }
     pub fn read_one(&mut self, buf: &mut [u8]) -> DevResult<usize> {
-        let mut disk = self.disk.lock(here!());
+        let disk = self.disk.lock(here!());
         disk.set_position(self.pos + self.offset);
         let result = disk.read_one(buf);
         self.pos = disk.position() - self.offset;
         result
     }
     pub fn write_one(&mut self, buf: &[u8]) -> DevResult<usize> {
-        let mut disk = self.disk.lock(here!());
+        let disk = self.disk.lock(here!());
         disk.set_position(self.pos + self.offset);
         let result = disk.write_one(buf);
         self.pos = disk.position() - self.offset;

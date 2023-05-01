@@ -28,16 +28,16 @@ impl fatfs::IoBase for FatVfsWrapper {
 }
 
 impl fatfs::Read for FatVfsWrapper {
-    fn read(&mut self, mut buf: &mut [u8]) -> Result<usize, Self::Error> {
-        let mut read_len = self.file.read_at(self.offset, buf).expect("VfsWrapper read error");
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        let read_len = self.file.read_at(self.offset, buf).expect("VfsWrapper read error");
         self.offset += read_len as u64;
         Ok(read_len)
     }
 }
 
 impl fatfs::Write for FatVfsWrapper {
-    fn write(&mut self, mut buf: &[u8]) -> Result<usize, Self::Error> {
-        let mut write_len = self.file.write_at(self.offset, buf).expect("VfsWrapper write error");
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+        let write_len = self.file.write_at(self.offset, buf).expect("VfsWrapper write error");
         self.offset += write_len as u64;
         Ok(write_len)
     }
