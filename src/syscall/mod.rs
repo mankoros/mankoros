@@ -93,7 +93,7 @@ impl<'a> Syscall<'a> {
             Err(_) => -1isize as usize,
         };
 
-        debug!("Syscall ret: {}", ret);
+        debug!("Syscall ret: {:?}", result);
 
         self.cx.set_user_a0(ret);
         self.do_exit

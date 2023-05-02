@@ -160,10 +160,10 @@ impl StackID {
         // 返回值
         (
             // Should return the user vaddr
-            self.stack_bottom().0 - (old_sp - sp), // 栈顶
-            argc,                                  // argc
-            arg_ptr_ptr,                           // argv
-            env_ptr_ptr,                           // envp
+            self.stack_bottom().0 + THREAD_STACK_SIZE - 1 - (old_sp - sp), // 栈顶
+            argc,                                                          // argc
+            arg_ptr_ptr,                                                   // argv
+            env_ptr_ptr,                                                   // envp
         )
     }
 }
@@ -238,10 +238,7 @@ impl UserSpace {
     /// 实际将某个 StackID 代表的虚拟地址空间映射到物理页上, 会进行物理页分配
     pub fn alloc_stack(&mut self, stack_id: StackID) -> PhysAddr {
         let area = UserArea::new_framed(
-            VirtAddrRange::new_beg_size(
-                stack_id.stack_bottom() - THREAD_STACK_SIZE,
-                THREAD_STACK_SIZE,
-            ),
+            VirtAddrRange::new_beg_size(stack_id.stack_bottom(), THREAD_STACK_SIZE),
             UserAreaPerm::READ | UserAreaPerm::WRITE,
         );
 
@@ -255,7 +252,8 @@ impl UserSpace {
 
         // This returns the lower page of stack_bottom (highest addr)
         // TODO: work around to, bug prone
-        self.page_table.get_paddr_from_vaddr(stack_id.stack_bottom() - 1)
+        self.page_table
+            .get_paddr_from_vaddr(stack_id.stack_bottom() + THREAD_STACK_SIZE - 1)
     }
 
     pub fn dealloc_stack(&mut self, stack_id: StackID) {
