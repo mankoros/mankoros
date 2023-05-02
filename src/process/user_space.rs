@@ -673,12 +673,13 @@ impl UserArea {
             UserAreaType::Framed => {}
             // If is file, read from fs
             UserAreaType::File { file, offset } => {
-                let access_vaddr: VirtAddr = access_vpn.into();
-                let page_offset = offset + (access_vaddr - self.range.begin());
-
-                let slice = unsafe { frame.as_mut_page_slice() };
-                let read_length =
-                    file.read_at(page_offset as u64, slice).expect("read file failed");
+                let slice = unsafe {
+                    core::slice::from_raw_parts_mut(
+                        kernel_phys_to_virt(frame.into()) as *mut u8,
+                        consts::PAGE_SIZE,
+                    )
+                };
+                let read_length = file.read_at(*offset as u64, slice).expect("read file failed");
                 assert_eq!(read_length, consts::PAGE_SIZE);
             }
         }

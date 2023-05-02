@@ -28,6 +28,10 @@ impl VirtAddr {
     pub fn as_mut_ptr(&self) -> *mut u8 {
         self.0 as *mut u8
     }
+
+    pub unsafe fn as_mut_page_slice(&self) -> &mut [u8] {
+        core::slice::from_raw_parts_mut(self.as_mut_ptr(), consts::PAGE_SIZE)
+    }
 }
 
 // + offset, - offset for VirtAddr
@@ -83,8 +87,6 @@ impl fmt::UpperHex for VirtAddr {
         f.write_fmt(format_args!("VA:{:#X}", self.0))
     }
 }
-
-
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct VirtPageNum(pub usize);
@@ -142,8 +144,6 @@ impl fmt::UpperHex for VirtPageNum {
         f.write_fmt(format_args!("VPN:{:#X}", self.0))
     }
 }
-
-
 
 // conversions between usize, VirtAddr, VPN:
 //      usize <-> VirtAddr <-> VirtPageNum -> usize

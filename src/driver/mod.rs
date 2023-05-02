@@ -48,12 +48,15 @@ pub trait BlockDriverOps: BaseDriverOps {
     fn flush(&mut self) -> DevResult;
 }
 
-use log::info;
+use log::{info, warn};
 pub use transport::mmio::MmioTransport;
 use virtio_drivers::transport::{self, Transport};
 
 use crate::{
-    consts::platform,
+    consts::{
+        address_space::{K_SEG_DATA_BEG, K_SEG_DATA_END, K_SEG_PHY_MEM_BEG, K_SEG_PHY_MEM_END},
+        platform,
+    },
     memory::{
         frame, kernel_phys_dev_to_virt, kernel_phys_to_virt, kernel_virt_text_to_phys,
         kernel_virt_to_phys,
@@ -186,7 +189,17 @@ unsafe impl virtio_drivers::Hal for VirtIoHalImpl {
         _direction: virtio_drivers::BufferDirection,
     ) -> virtio_drivers::PhysAddr {
         let vaddr = buffer.as_ptr() as *mut u8 as usize;
-        kernel_virt_text_to_phys(vaddr)
+        if vaddr < K_SEG_PHY_MEM_END && vaddr >= K_SEG_PHY_MEM_BEG {
+            kernel_virt_to_phys(vaddr)
+        } else if vaddr < K_SEG_DATA_END && vaddr >= K_SEG_DATA_BEG {
+            kernel_virt_text_to_phys(vaddr)
+        } else {
+            warn!(
+                "VirtIO shares a buffer not in kernel text or phymem, vaddr: 0x{:#x}",
+                vaddr
+            );
+            vaddr
+        }
     }
 
     #[inline]
