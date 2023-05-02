@@ -96,7 +96,7 @@ impl<'a> Syscall<'a> {
         let file = within_sum(|| root_fs.lookup(unsafe { utils::raw_ptr_to_ref_str(path) }))
             .expect("Error looking up file");
 
-        self.lproc.with_mut_fdtable(|f| Ok(f.insert(file) as usize))
+        self.lproc.with_mut_fdtable(|f| Ok(f.alloc(file) as usize))
     }
 
     pub fn sys_close(&mut self, fd: usize) -> SyscallResult {

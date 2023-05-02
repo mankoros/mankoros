@@ -208,16 +208,21 @@ impl FdTable {
 
     pub fn new_with_std() -> Self {
         let mut t = Self::new_empty();
-        debug_assert_eq!(t.insert(Arc::new(fs::stdio::Stdin)), 0);
-        debug_assert_eq!(t.insert(Arc::new(fs::stdio::Stdout)), 1);
-        debug_assert_eq!(t.insert(Arc::new(fs::stdio::Stderr)), 2);
+        debug_assert_eq!(t.alloc(Arc::new(fs::stdio::Stdin)), 0);
+        debug_assert_eq!(t.alloc(Arc::new(fs::stdio::Stdout)), 1);
+        debug_assert_eq!(t.alloc(Arc::new(fs::stdio::Stderr)), 2);
         t
     }
 
-    pub fn insert(&mut self, file: Arc<dyn VfsNode>) -> usize {
+    // alloc finds a fd and insert the file descriptor into the table
+    pub fn alloc(&mut self, file: Arc<dyn VfsNode>) -> usize {
         let fd = self.pool.get();
         self.table.insert(fd, FileDescriptor::new(file));
         fd
+    }
+    // insert inserts the file descriptor into the table using specified fd
+    pub fn insert(&mut self, fd: usize, file: Arc<dyn VfsNode>) {
+        self.table.insert(fd, FileDescriptor::new(file));
     }
 
     pub fn remove(&mut self, fd: usize) -> Option<Arc<FileDescriptor>> {

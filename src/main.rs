@@ -203,6 +203,8 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     run_test_case("/fstat");
     run_test_case("/uname");
     run_test_case("/getcwd");
+    run_test_case("/dup");
+    run_test_case("/dup2");
 
     executor::run_until_idle();
 
