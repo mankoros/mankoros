@@ -6,9 +6,9 @@ pub struct UsizePool {
 }
 
 impl UsizePool {
-    pub const fn new() -> Self {
+    pub const fn new(start: usize) -> Self {
         UsizePool {
-            next: 0,
+            next: start,
             recycled: Vec::new(),
         }
     }

@@ -201,7 +201,7 @@ pub struct FdTable {
 impl FdTable {
     pub fn new_empty() -> Self {
         Self {
-            pool: UsizePool::new(),
+            pool: UsizePool::new(0),
             table: BTreeMap::new(),
         }
     }

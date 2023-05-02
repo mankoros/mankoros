@@ -1,6 +1,6 @@
 use crate::{here, sync::SpinNoIrqLock, tools::handler_pool::UsizePool};
 
-static PID_USIZE_POOL: SpinNoIrqLock<UsizePool> = SpinNoIrqLock::new(UsizePool::new());
+static PID_USIZE_POOL: SpinNoIrqLock<UsizePool> = SpinNoIrqLock::new(UsizePool::new(1));
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Pid(usize);

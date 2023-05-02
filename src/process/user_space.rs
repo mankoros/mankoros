@@ -171,7 +171,7 @@ impl StackID {
 impl UserSpace {
     pub fn new() -> Self {
         let page_table = PageTable::new_with_kernel_seg();
-        let stack_id_pool = UsizePool::new();
+        let stack_id_pool = UsizePool::new(0);
         Self {
             page_table,
             areas: Vec::new(),
