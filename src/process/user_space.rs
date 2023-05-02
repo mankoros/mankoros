@@ -1,5 +1,6 @@
 use alloc::{string::String, sync::Arc, vec::Vec};
 use bitflags::bitflags;
+use log::debug;
 
 use crate::{
     consts::{
@@ -92,7 +93,7 @@ impl StackID {
 
         // let mut sp = self.stack_bottom().0;
 
-        let mut sp = kernel_phys_to_virt(usize::from(sp) + PAGE_SIZE);
+        let mut sp = kernel_phys_to_virt(usize::from(sp));
         let old_sp = sp;
 
         // 存放环境与参数的字符串本身
@@ -159,7 +160,7 @@ impl StackID {
         // 返回值
         (
             // Should return the user vaddr
-            self.stack_bottom().0 + (old_sp - sp), // 栈顶
+            self.stack_bottom().0 - (old_sp - sp), // 栈顶
             argc,                                  // argc
             arg_ptr_ptr,                           // argv
             env_ptr_ptr,                           // envp
@@ -237,12 +238,17 @@ impl UserSpace {
     /// 实际将某个 StackID 代表的虚拟地址空间映射到物理页上, 会进行物理页分配
     pub fn alloc_stack(&mut self, stack_id: StackID) -> PhysAddr {
         let area = UserArea::new_framed(
-            // TODO: How do stack grow ?
             VirtAddrRange::new_beg_size(
                 stack_id.stack_bottom() - THREAD_STACK_SIZE,
-                THREAD_STACK_SIZE * 2,
+                THREAD_STACK_SIZE,
             ),
             UserAreaPerm::READ | UserAreaPerm::WRITE,
+        );
+
+        debug!(
+            "Stack area: 0x{:x} - 0x{:x}",
+            area.range().begin(),
+            area.range().end()
         );
 
         self.add_area(area);
@@ -622,6 +628,7 @@ impl UserArea {
     /// map 单个页, 效果详见 [`map()`]
     pub fn map_one(&mut self, vpn: VirtPageNum, page_table: &mut PageTable) -> PhysAddr {
         let frame = alloc_frame().expect("alloc frame failed");
+        debug!("Mapping {:#x} to {:#x}", vpn, frame);
         page_table.map_page(vpn.into(), frame, self.perm().to_normal_pte_flag());
         frame
     }
