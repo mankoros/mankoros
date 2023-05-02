@@ -31,9 +31,7 @@ pub fn kernel_default_exception(a0: usize) {
         Exception::StoreFault => fatal_exception_error(a0),
         Exception::UserEnvCall => todo!(),
         Exception::InstructionPageFault => fatal_exception_error(a0),
-        _e @ (Exception::LoadPageFault | Exception::StorePageFault) => {
-            todo!()
-        }
+        _e @ (Exception::LoadPageFault | Exception::StorePageFault) => fatal_exception_error(a0),
         _ => fatal_exception_error(a0),
     }
 }

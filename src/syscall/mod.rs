@@ -61,7 +61,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_WRITE => self.sys_write(args[0], args[1] as *const u8, args[2]),
             SYSCALL_LINKAT => todo!(),
             SYSCALL_UNLINKAT => todo!(),
-            SYSCALL_MKDIRAT => todo!(),
+            SYSCALL_MKDIRAT => self.sys_mkdir(args[0], args[1] as *const u8, args[2]),
             SYSCALL_UMOUNT => todo!(),
             SYSCALL_MOUNT => todo!(),
             SYSCALL_FSTAT => self.sys_fstat(args[0], args[1] as *mut fs::Kstat),
