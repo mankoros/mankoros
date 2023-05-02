@@ -1,5 +1,6 @@
 use core::cmp::min;
 
+use crate::executor::yield_future::yield_now;
 use crate::process::lproc::LightProcess;
 use crate::{axerrno::AxError, syscall::misc::UtsName, trap::context::UKContext};
 use log::debug;
@@ -42,9 +43,6 @@ impl<'a> Syscall<'a> {
         let syscall_no = self.cx.syscall_no();
         let args = self.cx.syscall_args();
         let result: SyscallResult = match syscall_no {
-            // normal path
-            SYSCALL_DBG_1 => self.sys_dbg_1().await,
-            SYSCALL_DBG_2 => self.sys_dbg_2().await,
             // File related
             SYSCALL_GETCWD => self.sys_getcwd(args[0] as *mut u8, args[1]),
             SYSCALL_PIPE2 => todo!(),
@@ -91,7 +89,10 @@ impl<'a> Syscall<'a> {
             // Misc
             SYSCALL_TIMES => todo!(),
             SYSCALL_UNAME => self.sys_uname(args[0] as *mut UtsName),
-            SYSCALL_SCHED_YIELD => todo!(),
+            SYSCALL_SCHED_YIELD => {
+                yield_now().await;
+                Ok(0)
+            }
             SYSCALL_GETTIMEOFDAY => todo!(),
             SYSCALL_NANOSLEEP => todo!(),
             _ => panic!("Unknown syscall_id: {}", syscall_no),
@@ -108,18 +109,6 @@ impl<'a> Syscall<'a> {
 
         self.cx.set_user_a0(ret);
         self.do_exit
-    }
-
-    #[inline(always)]
-    pub async fn sys_dbg_1(&mut self) -> SyscallResult {
-        info!("Syscall: dbg_1");
-        Ok(0)
-    }
-
-    #[inline(always)]
-    pub async fn sys_dbg_2(&mut self) -> SyscallResult {
-        info!("Syscall: dbg_2");
-        Ok(0)
     }
 
     #[inline(always)]
