@@ -1,7 +1,7 @@
 //! Filesystem related syscall
 //!
 
-use log::info;
+use log::{debug, info};
 
 use crate::{
     axerrno::AxError,
@@ -9,6 +9,7 @@ use crate::{
     utils,
 };
 
+use super::within_sum;
 use super::{Syscall, SyscallResult};
 
 /// 文件信息类
@@ -48,14 +49,6 @@ pub struct Kstat {
     pub st_ctime_sec: isize,
     /// 最后一次改变状态时间(纳秒)
     pub st_ctime_nsec: isize,
-}
-
-fn within_sum<T>(f: impl FnOnce() -> T) -> T {
-    // Allow acessing user vaddr
-    unsafe { riscv::register::sstatus::set_sum() };
-    let ret = f();
-    unsafe { riscv::register::sstatus::clear_sum() };
-    ret
 }
 
 impl<'a> Syscall<'a> {

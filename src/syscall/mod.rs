@@ -1,3 +1,5 @@
+use core::cmp::min;
+
 use crate::process::lproc::LightProcess;
 use crate::{axerrno::AxError, syscall::misc::UtsName, trap::context::UKContext};
 use log::debug;
@@ -7,6 +9,15 @@ mod fs;
 mod memory;
 mod misc;
 mod process;
+
+// Helper func
+fn within_sum<T>(f: impl FnOnce() -> T) -> T {
+    // Allow acessing user vaddr
+    unsafe { riscv::register::sstatus::set_sum() };
+    let ret = f();
+    unsafe { riscv::register::sstatus::clear_sum() };
+    ret
+}
 
 pub struct Syscall<'a> {
     cx: &'a mut UKContext,
@@ -35,7 +46,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_DBG_1 => self.sys_dbg_1().await,
             SYSCALL_DBG_2 => self.sys_dbg_2().await,
             // File related
-            SYSCALL_GETCWD => todo!(),
+            SYSCALL_GETCWD => self.sys_getcwd(args[0] as *mut u8, args[1]),
             SYSCALL_PIPE2 => todo!(),
             SYSCALL_DUP => todo!(),
             SYSCALL_DUP3 => todo!(),
@@ -120,6 +131,17 @@ impl<'a> Syscall<'a> {
     pub fn sys_getppid(&mut self) -> SyscallResult {
         info!("Syscall: getppid");
         Ok(self.lproc.parent_id().into())
+    }
+    #[inline(always)]
+    pub fn sys_getcwd(&mut self, buf: *mut u8, len: usize) -> SyscallResult {
+        info!("Syscall: getcwd");
+        let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone()).to_string();
+        let length = min(cwd.len(), len);
+        within_sum(|| unsafe {
+            core::ptr::copy_nonoverlapping(cwd.as_ptr(), buf, length);
+            *buf.add(length) = 0;
+        });
+        Ok(buf as usize)
     }
 }
 

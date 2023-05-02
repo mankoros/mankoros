@@ -202,8 +202,9 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     run_test_case("/open");
     run_test_case("/fstat");
     run_test_case("/uname");
+    run_test_case("/getcwd");
 
-    // executor::run_until_idle();
+    executor::run_until_idle();
 
     // Shutdown
     sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
