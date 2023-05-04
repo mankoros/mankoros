@@ -17,20 +17,46 @@ use super::range::VirtAddrRange;
 
 use riscv::register::scause;
 
-pub fn elf_flags_to_area(flags: xmas_elf::program::Flags) -> UserAreaPerm {
-    let mut area_flags = UserAreaPerm::empty();
+bitflags! {
+    pub struct UserAreaPerm: u8 {
+        const READ = 1 << 0;
+        const WRITE = 1 << 1;
+        const EXECUTE = 1 << 2;
+    }
+}
 
-    if flags.is_read() {
-        area_flags |= UserAreaPerm::READ;
+impl Into<PTEFlags> for UserAreaPerm {
+    fn into(self) -> PTEFlags {
+        let mut pte_flag = PTEFlags::V | PTEFlags::U;
+        if self.contains(Self::READ) {
+            pte_flag |= PTEFlags::R;
+        }
+        if self.contains(Self::WRITE) {
+            pte_flag |= PTEFlags::W;
+        }
+        if self.contains(Self::EXECUTE) {
+            pte_flag |= PTEFlags::X;
+        }
+        pte_flag
     }
-    if flags.is_write() {
-        area_flags |= UserAreaPerm::WRITE;
-    }
-    if flags.is_execute() {
-        area_flags |= UserAreaPerm::EXECUTE;
-    }
+}
 
-    area_flags
+impl From<xmas_elf::program::Flags> for UserAreaPerm {
+    fn from(flags: xmas_elf::program::Flags) -> Self {
+        let mut area_flags = UserAreaPerm::empty();
+
+        if flags.is_read() {
+            area_flags |= UserAreaPerm::READ;
+        }
+        if flags.is_write() {
+            area_flags |= UserAreaPerm::WRITE;
+        }
+        if flags.is_execute() {
+            area_flags |= UserAreaPerm::EXECUTE;
+        }
+    
+        area_flags
+    }
 }
 
 bitflags! {
@@ -70,30 +96,6 @@ impl PageFaultAccessType {
         }
 
         return true;
-    }
-}
-
-bitflags! {
-    pub struct UserAreaPerm: u8 {
-        const READ = 1 << 0;
-        const WRITE = 1 << 1;
-        const EXECUTE = 1 << 2;
-    }
-}
-
-impl UserAreaPerm {
-    pub fn to_normal_pte_flag(self) -> PTEFlags {
-        let mut pte_flag = PTEFlags::V | PTEFlags::U;
-        if self.contains(Self::READ) {
-            pte_flag |= PTEFlags::R;
-        }
-        if self.contains(Self::WRITE) {
-            pte_flag |= PTEFlags::W;
-        }
-        if self.contains(Self::EXECUTE) {
-            pte_flag |= PTEFlags::X;
-        }
-        pte_flag
     }
 }
 
@@ -178,7 +180,7 @@ impl UserArea {
     pub fn map_one(&mut self, vpn: VirtPageNum, page_table: &mut PageTable) -> PhysAddr {
         let frame = alloc_frame().expect("alloc frame failed");
         debug!("Mapping {:#x} to {:#x}", vpn, frame);
-        page_table.map_page(vpn.into(), frame, self.perm().to_normal_pte_flag());
+        page_table.map_page(vpn.into(), frame, self.perm().into());
         frame
     }
 
@@ -232,6 +234,6 @@ impl UserArea {
                 assert_eq!(read_length, consts::PAGE_SIZE);
             }
         }
-        page_table.map_page(access_vpn.into(), frame, self.perm().to_normal_pte_flag());
+        page_table.map_page(access_vpn.into(), frame, self.perm().into());
     }
 }
