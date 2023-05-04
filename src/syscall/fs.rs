@@ -96,6 +96,7 @@ impl<'a> Syscall<'a> {
     ) -> SyscallResult {
         info!("Syscall: openat");
 
+        // TODO: parse flags
         let root_fs = fs::root::get_root_dir();
         let file = within_sum(|| root_fs.lookup(unsafe { utils::raw_ptr_to_ref_str(path) }))
             .expect("Error looking up file");

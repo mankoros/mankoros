@@ -196,16 +196,13 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
         process::spawn_proc(test_case);
     };
 
-    // run_test_case("/getpid");
-    // run_test_case("/getppid");
-    // run_test_case("/brk");
-    // run_test_case("/open");
-    // run_test_case("/fstat");
-    // run_test_case("/uname");
-    // run_test_case("/getcwd");
-    // run_test_case("/dup");
-    // run_test_case("/dup2");
-    run_test_case("/mkdir_");
+    let passed_cases = [
+        "/getpid", "getppid", "brk", "open", "fstat", "uname", "getcwd", "dup", "dup2", "mkdir_",
+    ];
+
+    for case_name in passed_cases.into_iter() {
+        run_test_case(case_name);
+    }
 
     executor::run_until_idle();
 
