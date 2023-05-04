@@ -16,7 +16,7 @@ use crate::{
         kernel_phys_to_virt,
         pagetable::pagetable::PageTable,
     },
-    process::{aux_vector::AuxElement, user_space::user_area::{elf_flags_to_area, PageFaultAccessType}},
+    process::{aux_vector::AuxElement, user_space::user_area::{PageFaultAccessType}},
     tools::handler_pool::UsizePool,
 };
 
@@ -339,7 +339,7 @@ impl UserSpace {
             let seg_size = ph.mem_size() as usize;
 
             let area_range = VirtAddrRange::new_beg_size(vaddr_beg, seg_size);
-            let area_flags = elf_flags_to_area(ph.flags());
+            let area_flags = ph.flags().into();
 
             let lazy = ph.file_size() == ph.mem_size();
             if lazy {
