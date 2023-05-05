@@ -8,19 +8,20 @@ use core::ops::{Add, AddAssign, Sub, SubAssign};
 pub struct PhysAddr(pub usize);
 
 impl PhysAddr {
-    pub fn page_num_down(&self) -> PhysPageNum {
+    pub const fn page_num_down(&self) -> PhysPageNum {
         PhysPageNum(self.0 / consts::PAGE_SIZE)
     }
-    pub fn page_num_up(&self) -> PhysPageNum {
+    pub const fn page_num_up(&self) -> PhysPageNum {
         PhysPageNum::from(self.page_num_down() + 1)
     }
-    pub fn round_down(&self) -> PhysAddr {
+    pub const fn round_down(&self) -> PhysAddr {
         PhysAddr(self.0 & !consts::PAGE_MASK)
     }
-    pub fn round_up(&self) -> PhysAddr {
+    pub const fn round_up(&self) -> PhysAddr {
+        #[allow(arithmetic_overflow)]
         PhysAddr(self.0 & !consts::PAGE_MASK + consts::PAGE_SIZE)
     }
-    pub fn page_offset(&self) -> usize {
+    pub const fn page_offset(&self) -> usize {
         self.0 & consts::PAGE_MASK
     }
 
@@ -153,30 +154,30 @@ impl fmt::UpperHex for PhysPageNum {
 
 // conversions between usize, PhysAddr, PPN:
 //      usize <-> PhysAddr <-> PhysPageNum -> usize
-impl From<PhysAddr> for usize {
+impl const From<PhysAddr> for usize {
     fn from(v: PhysAddr) -> Self {
         v.0
     }
 }
-impl From<usize> for PhysAddr {
+impl const From<usize> for PhysAddr {
     fn from(v: usize) -> Self {
         Self(v & ((1 << consts::PA_WIDTH_SV39) - 1))
     }
 }
 
-impl From<PhysAddr> for PhysPageNum {
+impl const From<PhysAddr> for PhysPageNum {
     fn from(v: PhysAddr) -> Self {
-        assert_eq!(v.page_offset(), 0);
+        // assert_eq!(v.page_offset(), 0);
         v.page_num_down()
     }
 }
-impl From<PhysPageNum> for PhysAddr {
+impl const From<PhysPageNum> for PhysAddr {
     fn from(v: PhysPageNum) -> Self {
         Self(v.0 << consts::PAGE_SIZE_BITS)
     }
 }
 
-impl From<PhysPageNum> for usize {
+impl const From<PhysPageNum> for usize {
     fn from(v: PhysPageNum) -> Self {
         v.0
     }

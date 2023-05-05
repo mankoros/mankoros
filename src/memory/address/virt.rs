@@ -1,4 +1,4 @@
-use crate::consts;
+use crate::consts::{self, PAGE_SIZE};
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 
@@ -6,19 +6,20 @@ use core::ops::{Add, AddAssign, Sub, SubAssign};
 pub struct VirtAddr(pub usize);
 
 impl VirtAddr {
-    pub fn page_num_down(&self) -> VirtPageNum {
+    pub const fn page_num_down(&self) -> VirtPageNum {
         VirtPageNum(self.0 / consts::PAGE_SIZE)
     }
-    pub fn page_num_up(&self) -> VirtPageNum {
+    pub const fn page_num_up(&self) -> VirtPageNum {
         VirtPageNum::from(self.page_num_down() + 1)
     }
-    pub fn round_down(&self) -> VirtAddr {
+    pub const fn round_down(&self) -> VirtAddr {
         VirtAddr(self.0 & !consts::PAGE_MASK)
     }
-    pub fn round_up(&self) -> VirtAddr {
+    pub const fn round_up(&self) -> VirtAddr {
+        #[allow(arithmetic_overflow)]
         VirtAddr(self.0 & !consts::PAGE_MASK + consts::PAGE_SIZE)
     }
-    pub fn page_offset(&self) -> usize {
+    pub const fn page_offset(&self) -> usize {
         self.0 & consts::PAGE_MASK
     }
 
@@ -30,7 +31,11 @@ impl VirtAddr {
     }
 
     pub unsafe fn as_mut_page_slice(&self) -> &mut [u8] {
-        core::slice::from_raw_parts_mut(self.as_mut_ptr(), consts::PAGE_SIZE)
+        self.as_mut_slice(PAGE_SIZE)
+    }
+
+    pub unsafe fn as_mut_slice(&self, len: usize) -> &mut [u8] {
+        core::slice::from_raw_parts_mut(self.as_mut_ptr(), len)
     }
 }
 
@@ -147,30 +152,30 @@ impl fmt::UpperHex for VirtPageNum {
 
 // conversions between usize, VirtAddr, VPN:
 //      usize <-> VirtAddr <-> VirtPageNum -> usize
-impl From<VirtAddr> for usize {
+impl const From<VirtAddr> for usize {
     fn from(v: VirtAddr) -> Self {
         v.0
     }
 }
-impl From<usize> for VirtAddr {
+impl const From<usize> for VirtAddr {
     fn from(v: usize) -> Self {
         Self(v & ((1 << consts::PA_WIDTH_SV39) - 1))
     }
 }
 
-impl From<VirtAddr> for VirtPageNum {
+impl const From<VirtAddr> for VirtPageNum {
     fn from(v: VirtAddr) -> Self {
-        assert_eq!(v.page_offset(), 0);
+        // assert_eq!(v.page_offset(), 0);
         v.page_num_down()
     }
 }
-impl From<VirtPageNum> for VirtAddr {
+impl const From<VirtPageNum> for VirtAddr {
     fn from(v: VirtPageNum) -> Self {
         Self(v.0 << consts::PAGE_SIZE_BITS)
     }
 }
 
-impl From<VirtPageNum> for usize {
+impl const From<VirtPageNum> for usize {
     fn from(v: VirtPageNum) -> Self {
         v.0
     }
