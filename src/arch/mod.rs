@@ -53,3 +53,8 @@ pub fn switch_page_table(paddr: usize) {
     }
     debug!("Switched to pagetable: 0x{:x}", paddr);
 }
+
+#[inline(always)]
+pub fn get_curr_page_table_addr() -> usize {
+    riscv::register::satp::read().ppn() << consts::PAGE_SIZE_BITS
+}
