@@ -76,9 +76,12 @@ bitflags! {
 impl<'a> Syscall<'a> {
     pub fn sys_brk(&mut self, brk: usize) -> SyscallResult {
         info!("Syscall brk: brk {}", brk);
-        let new_brk = self.lproc.with_mut_memory(|m| m.set_heap(brk.into()));
-        // Allocation is not done here, so no OOM here
-        Ok(new_brk.into())
+        self.lproc.with_mut_memory(|m| {
+            m.areas_mut().reset_heap_break(brk.into())
+            // 当设置新的 brk 成功时, syscall 要返回 0
+            .map(|_| 0)
+            .map_err(|_| AxError::NoMemory)
+        })
     }
 
     pub fn sys_mmap(
@@ -105,8 +108,11 @@ impl<'a> Syscall<'a> {
         if flags.contains(MMAPFlags::MAP_ANONYMOUS) {
             // 根据linux规范需要 fd 设为 -1 且 offset 设为 0
             if fd == -1 && offset == 0 {
-                let ret = self.lproc.with_mut_memory(|m| m.anonymous_mmap(len, prot.into()));
-                return Ok(ret.into());
+                return self.lproc.with_mut_memory(|m| {
+                    m.areas_mut().insert_mmap_anonymous(len, prot.into())
+                        .map(|(r, _)| r.start.into())
+                        .map_err(|_| AxError::NoMemory)
+                })
             }
         } else {
             todo!();
