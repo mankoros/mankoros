@@ -23,6 +23,7 @@ use super::{aux_vector::AuxVector};
 
 
 use self::{user_area::{UserAreaManager, PageFaultErr}};
+use log::debug;
 
 pub const THREAD_STACK_SIZE: usize = 4 * 1024;
 
@@ -209,7 +210,7 @@ impl UserSpace {
             let ph_type = ph.get_type().expect("failed to get ph type");
 
             if ph_type != xmas_elf::program::Type::Load {
-                // Just ignore
+                continue;
             }
 
             let offset = ph.offset() as usize;
@@ -222,12 +223,14 @@ impl UserSpace {
                 // 如果该段在文件中的大小与其被载入内存后应有的大小相同, 
                 // 我们可以直接采用类似 mmap private 的方式来加载它
                 // 此时, 该段的内容将会被懒加载
-                self.areas_mut().insert_mmap_private_at(area_begin, area_size, area_perm, elf_file.clone(), offset)
+                self.areas_mut()
+                    .insert_mmap_private_at(area_begin, area_size, area_perm, elf_file.clone(), offset)
                     .expect("failed to map elf file in a mmap-private-like way");
             } else {
                 // 否则, 我们就采用类似 mmap anonymous 的方式来创建一个空白的匿名区域
                 // 然后将文件中的内容复制到其中 (可能只占分配出来的空白区域的一部分)
-                self.areas_mut().insert_mmap_anonymous_at(area_begin, area_size, area_perm)
+                self.areas_mut()
+                    .insert_mmap_anonymous_at(area_begin, area_size, area_perm)
                     .expect("failed to map elf file in a mmap-anonymous-like way");
                 // copy data
                 debug_assert!(self.page_table.root_paddr() == get_curr_page_table_addr().into());
