@@ -25,7 +25,7 @@ use crate::consts::address_space::{U_SEG_HEAP_BEG, U_SEG_FILE_END, U_SEG_FILE_BE
 use crate::process::shared_frame_mgr::with_shared_frame_mgr;
 use crate::arch::get_curr_page_table_addr;
 
-type VirtAddrRange = Range<VirtAddr>;
+pub type VirtAddrRange = Range<VirtAddr>;
 
 bitflags! {
     pub struct UserAreaPerm: u8 {
@@ -137,6 +137,7 @@ impl Debug for UserAreaType {
     }
 }
 
+#[derive(Debug)]
 pub enum PageFaultErr {
     NoSegment,
     PermUnmatch,
@@ -349,5 +350,16 @@ impl UserAreaManager {
         let (_, area) = self.map.get_mut(access_vpn.into())
             .ok_or(PageFaultErr::NoSegment)?;
         area.page_fault(page_table, access_vpn, access_type)
+    }
+
+    pub fn force_map_range(&mut self, page_table: &mut PageTable, range: VirtAddrRange) {
+        let vpn_begin = range.start.into();
+        let vpn_end = range.end.round_up().into();
+
+        let mut vpn = vpn_begin;
+        while vpn < vpn_end {
+            self.page_fault(page_table, vpn, PageFaultAccessType::RO).unwrap();
+            vpn += 1;
+        }
     }
 }
