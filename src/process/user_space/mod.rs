@@ -22,7 +22,7 @@ use crate::{
 use super::{aux_vector::AuxVector};
 
 
-use self::{user_area::{UserAreaManager, PageFaultErr}};
+use self::{user_area::{UserAreaManager, PageFaultErr, VirtAddrRange}};
 use log::debug;
 
 pub const THREAD_STACK_SIZE: usize = 4 * 1024;
@@ -46,6 +46,14 @@ impl StackID {
     pub fn stack_bottom(&self) -> VirtAddr {
         // 栈是倒着长的 (从高地址往低地址)
         VirtAddr(U_SEG_STACK_END - self.0 * THREAD_STACK_SIZE)
+    }
+
+    pub fn stack_range(&self) -> VirtAddrRange {
+        let bottom = self.stack_bottom();
+        VirtAddrRange {
+            start: bottom, 
+            end: bottom + THREAD_STACK_SIZE,
+        }
     }
 
     pub fn init_stack(
@@ -118,6 +126,7 @@ impl StackID {
         let rand_bytes = "Meow~ O4 here;D"; // 15 + 1 char for 16bytes
 
         sp -= rand_size;
+        debug!("AAAAAAAAAAAAAAAAAAAAAAAAAA");
         push_str(&mut sp, platform);
         push_str(&mut sp, rand_bytes);
         align16(&mut sp);
@@ -261,5 +270,9 @@ impl UserSpace {
 
     pub fn handle_pagefault(&mut self, vaddr: VirtAddr, access_type: PageFaultAccessType) -> Result<(), PageFaultErr> {
         self.areas.page_fault(&mut self.page_table, vaddr.into(), access_type)
+    }
+
+    pub fn force_map_range(&mut self, range: VirtAddrRange) {
+        self.areas.force_map_range(&mut self.page_table, range);
     }
 }

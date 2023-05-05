@@ -151,6 +151,7 @@ impl LightProcess {
         let stack_id = self.stack_id;
         self.with_mut_memory(|m| {
             m.areas_mut().insert_stack_at(stack_id.stack_bottom(), THREAD_STACK_SIZE);
+            m.force_map_range(stack_id.stack_range());
         });
 
         debug!("Stack alloc done.");
