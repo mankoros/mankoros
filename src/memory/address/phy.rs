@@ -19,7 +19,7 @@ impl PhysAddr {
     }
     pub const fn round_up(&self) -> PhysAddr {
         #[allow(arithmetic_overflow)]
-        PhysAddr(self.0 & !consts::PAGE_MASK + consts::PAGE_SIZE)
+        PhysAddr((self.0 & !consts::PAGE_MASK) + consts::PAGE_SIZE)
     }
     pub const fn page_offset(&self) -> usize {
         self.0 & consts::PAGE_MASK

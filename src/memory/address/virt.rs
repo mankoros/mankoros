@@ -17,7 +17,7 @@ impl VirtAddr {
     }
     pub const fn round_up(&self) -> VirtAddr {
         #[allow(arithmetic_overflow)]
-        VirtAddr(self.0 & !consts::PAGE_MASK + consts::PAGE_SIZE)
+        VirtAddr((self.0 & !consts::PAGE_MASK) + consts::PAGE_SIZE)
     }
     pub const fn page_offset(&self) -> usize {
         self.0 & consts::PAGE_MASK
