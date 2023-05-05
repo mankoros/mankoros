@@ -11,6 +11,7 @@
 #![feature(new_uninit)]
 #![allow(dead_code)]
 #![feature(map_try_insert)]
+#![feature(const_convert)]
 extern crate alloc;
 
 use alloc::vec::Vec;
