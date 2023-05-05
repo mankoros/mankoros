@@ -11,6 +11,8 @@
 #![feature(new_uninit)]
 #![allow(dead_code)]
 #![feature(map_try_insert)]
+#![feature(btree_drain_filter)]
+#![feature(let_chains)]
 #![feature(const_convert)]
 extern crate alloc;
 

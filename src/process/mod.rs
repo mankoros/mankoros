@@ -5,7 +5,7 @@ use alloc::{sync::Arc, vec::Vec};
 pub mod aux_vector;
 pub mod lproc;
 pub mod pid;
-mod share_page_mgr;
+mod shared_frame_mgr;
 pub mod user_space;
 pub mod userloop;
 

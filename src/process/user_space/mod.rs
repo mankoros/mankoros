@@ -1,46 +1,41 @@
-pub mod range;
 pub mod user_area;
+pub mod range_map;
 
 use alloc::{string::String, sync::Arc, vec::Vec};
 
-use log::debug;
+
 
 use crate::{
     consts::{
-        address_space::{U_SEG_FILE_BEG, U_SEG_HEAP_BEG, U_SEG_STACK_END},
-        PAGE_SIZE,
+        address_space::{U_SEG_STACK_END},
     },
     fs::vfs::filesystem::VfsNode,
     memory::{
-        address::{PhysAddr, VirtAddr},
+        address::{VirtAddr},
         kernel_phys_to_virt,
         pagetable::pagetable::PageTable,
     },
     process::{aux_vector::AuxElement, user_space::user_area::{PageFaultAccessType}},
-    tools::handler_pool::UsizePool,
+    tools::handler_pool::UsizePool, arch::get_curr_page_table_addr,
 };
 
-use super::{aux_vector::AuxVector, share_page_mgr::SharedPageManager};
+use super::{aux_vector::AuxVector};
 
 
-use self::{user_area::{UserArea, UserAreaPerm}, range::VirtAddrRange};
+use self::{user_area::{UserAreaManager, PageFaultErr}};
 
 pub const THREAD_STACK_SIZE: usize = 4 * 1024;
+
+// TODO-PERF: 拆锁
 /// 一个线程的地址空间的相关信息, 在 AliveProcessInfo 里受到进程大锁保护, 不需要加锁
 pub struct UserSpace {
     // 根页表
     pub page_table: PageTable,
     // 分段管理
-    areas: Vec<UserArea>,
-    // 共享页管理
-    shared_page_mgr: SharedPageManager,
-    // 栈管理
+    areas: UserAreaManager,
     // 一个进程可能有很多栈 (各个线程都一个), 该池子维护可用的 StackID
+    // 一个已分配的 stack id 代表了栈地址区域内的一段 THREAD_STACK_SIZE 长的段
     stack_id_pool: UsizePool,
-    // 堆管理
-    heap_page_cnt: usize,
-    // mmap 区域
-    mmap_start_addr: VirtAddr,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -54,11 +49,14 @@ impl StackID {
 
     pub fn init_stack(
         self,
-        sp: PhysAddr,
         args: Vec<String>,
         envp: Vec<String>,
         auxv: AuxVector,
     ) -> (usize, usize, usize, usize) {
+        // spec says:
+        //      In the standard RISC-V calling convention, the stack grows downward 
+        //      and the stack pointer is always kept 16-byte aligned.
+
         /*
         参考: https://www.cnblogs.com/likaiming/p/11193697.html
         初始化之后的栈应该长这样子:
@@ -93,10 +91,7 @@ impl StackID {
         在构建栈的时候, 我们从底向上塞各个东西
         */
 
-        // let mut sp = self.stack_bottom().0;
-
-        let mut sp = kernel_phys_to_virt(usize::from(sp));
-        let old_sp = sp;
+        let mut sp = self.stack_bottom().0;
 
         // 存放环境与参数的字符串本身
         fn push_str(sp: &mut usize, s: &str) -> usize {
@@ -160,13 +155,7 @@ impl StackID {
         push_usize(&mut sp, argc);
 
         // 返回值
-        (
-            // Should return the user vaddr
-            self.stack_bottom().0 + THREAD_STACK_SIZE - 1 - (old_sp - sp), // 栈顶
-            argc,                                                          // argc
-            arg_ptr_ptr,                                                   // argv
-            env_ptr_ptr,                                                   // envp
-        )
+        (sp, argc, arg_ptr_ptr, env_ptr_ptr)
     }
 }
 
@@ -176,12 +165,17 @@ impl UserSpace {
         let stack_id_pool = UsizePool::new(1);
         Self {
             page_table,
-            areas: Vec::new(),
-            shared_page_mgr: SharedPageManager::new(),
+            areas: UserAreaManager::new(),
             stack_id_pool,
-            heap_page_cnt: 0,
-            mmap_start_addr: U_SEG_FILE_BEG.into(),
         }
+    }
+
+    pub fn areas(&self) -> &UserAreaManager {
+        &self.areas
+    }
+
+    pub fn areas_mut(&mut self) -> &mut UserAreaManager {
+        &mut self.areas
     }
 
     /// 将用户态的虚拟地址转换为内核页表里存在的虚拟地址
@@ -190,125 +184,10 @@ impl UserSpace {
         kernel_phys_to_virt(paddr.into())
     }
 
-    /// 处理非文件的 mmap
-    pub fn anonymous_mmap(&mut self, len: usize, perm: UserAreaPerm) -> VirtAddr {
-        let new_range = VirtAddrRange::new_beg_size(self.mmap_start_addr, len);
-        let new_area = UserArea::new_framed(new_range, perm);
-        self.add_area_delay(new_area);
-        self.mmap_start_addr += len;
-
-        new_range.begin()
-    }
-
-    /// 加入对应的区域映射, 实际写入页表中.
-    pub fn add_area(&mut self, mut map_area: UserArea) {
-        map_area.map(&mut self.page_table);
-        self.areas.push(map_area);
-    }
-
-    pub fn add_area_with_file_content(
-        &mut self,
-        mut map_area: UserArea,
-        file: &Arc<dyn VfsNode>,
-        offset: usize,
-    ) {
-        map_area.map_with_file_content(&mut self.page_table, file, offset);
-        self.areas.push(map_area);
-    }
-
-    /// 只将区域映射加入管理, 不实际写入页表
-    pub fn add_area_delay(&mut self, map_area: UserArea) {
-        self.areas.push(map_area);
-    }
-
-    pub fn remove_whole_area_containing(&mut self, vaddr: VirtAddr) {
-        if let Some((idx, area)) =
-            self.areas.iter_mut().enumerate().find(|(_, area)| area.range().contains(vaddr))
-        {
-            area.unmap(&mut self.page_table);
-            self.areas.remove(idx);
-        }
-    }
-
     /// 为线程分配一个栈空间 ID
     /// 该 id 只意味着某段虚拟地址的使用权被分配出去了, 不会产生真的物理页分配
     pub fn alloc_stack_id(&mut self) -> StackID {
         StackID(self.stack_id_pool.get())
-    }
-
-    /// 分配一个栈
-    /// 实际将某个 StackID 代表的虚拟地址空间映射到物理页上, 会进行物理页分配
-    pub fn alloc_stack(&mut self, stack_id: StackID) -> PhysAddr {
-        let area = UserArea::new_framed(
-            VirtAddrRange::new_beg_size(stack_id.stack_bottom(), THREAD_STACK_SIZE),
-            UserAreaPerm::READ | UserAreaPerm::WRITE,
-        );
-
-        debug!(
-            "Stack area: 0x{:x} - 0x{:x}",
-            area.range().begin(),
-            area.range().end()
-        );
-
-        self.add_area(area);
-
-        // This returns the lower page of stack_bottom (highest addr)
-        // TODO: work around to, bug prone
-        self.page_table
-            .get_paddr_from_vaddr(stack_id.stack_bottom() + THREAD_STACK_SIZE - 1)
-    }
-
-    pub fn dealloc_stack(&mut self, stack_id: StackID) {
-        // 释放栈空间
-        self.remove_whole_area_containing(stack_id.stack_bottom());
-        // 释放栈号
-        self.stack_id_pool.release(stack_id.0);
-    }
-
-    pub fn alloc_heap(&mut self, page_cnt: usize) {
-        let size = page_cnt * PAGE_SIZE;
-
-        let area = UserArea::new_framed(
-            VirtAddrRange::new_beg_size(U_SEG_HEAP_BEG.into(), size),
-            UserAreaPerm::READ | UserAreaPerm::WRITE,
-        );
-
-        self.add_area(area);
-    }
-
-    /// set_heap increases or decreases the heap size
-    /// It does not allocate physical memory on increase,
-    /// allocation is delayed until a page fault.
-    /// However, it de-allocate the physical memory immediately
-    /// when the heap is shrunk.
-    ///
-    /// Returns the new heap top vaddr
-    pub fn set_heap(&mut self, vaddr: VirtAddr) -> VirtAddr {
-        let mut heap_area: Vec<_> = self
-            .areas
-            .iter_mut()
-            .filter(|a| a.range().contains(U_SEG_HEAP_BEG.into()))
-            .collect();
-        debug_assert_eq!(heap_area.len(), 1);
-        let heap_area = &mut heap_area[0];
-        debug_assert_eq!(heap_area.range().begin(), U_SEG_HEAP_BEG.into());
-        let heap_end = heap_area.range().end();
-        if vaddr == 0.into() || vaddr == heap_end {
-            return heap_end;
-        } else if vaddr > heap_end {
-            // Grow the heap
-            heap_area.range_mut().grow_high(vaddr - heap_end);
-            return vaddr;
-        } else {
-            // Shrink the heap
-            heap_area.range_mut().shrink_high(heap_end - vaddr);
-            self.page_table.unmap_region(vaddr, heap_end - vaddr, true);
-            return vaddr;
-        }
-    }
-
-    pub fn dealloc_heap(&mut self) {
-        self.remove_whole_area_containing(U_SEG_HEAP_BEG.into());
     }
 
     /// Return: entry_point, auxv
@@ -335,32 +214,37 @@ impl UserSpace {
 
             let offset = ph.offset() as usize;
 
-            let vaddr_beg = VirtAddr(ph.virtual_addr() as usize);
-            let seg_size = ph.mem_size() as usize;
+            let area_begin = VirtAddr(ph.virtual_addr() as usize);
+            let area_perm = ph.flags().into();
+            let area_size = ph.mem_size() as usize;
 
-            let area_range = VirtAddrRange::new_beg_size(vaddr_beg, seg_size);
-            let area_flags = ph.flags().into();
-
-            let lazy = ph.file_size() == ph.mem_size();
-            if lazy {
-                let area = UserArea::new_file(area_range, area_flags, elf_file.clone(), offset);
-                // 懒加载这段文件
-                self.add_area_delay(area);
+            if ph.file_size() == ph.mem_size() {
+                // 如果该段在文件中的大小与其被载入内存后应有的大小相同, 
+                // 我们可以直接采用类似 mmap private 的方式来加载它
+                // 此时, 该段的内容将会被懒加载
+                self.areas_mut().insert_mmap_private_at(area_begin, area_size, area_perm, elf_file.clone(), offset)
+                    .expect("failed to map elf file in a mmap-private-like way");
             } else {
-                let area = UserArea::new_framed(area_range, area_flags);
-                self.add_area_with_file_content(area, &elf_file, offset);
+                // 否则, 我们就采用类似 mmap anonymous 的方式来创建一个空白的匿名区域
+                // 然后将文件中的内容复制到其中 (可能只占分配出来的空白区域的一部分)
+                self.areas_mut().insert_mmap_anonymous_at(area_begin, area_size, area_perm)
+                    .expect("failed to map elf file in a mmap-anonymous-like way");
+                // copy data
+                debug_assert!(self.page_table.root_paddr() == get_curr_page_table_addr().into());
+                let area_slice = unsafe { area_begin.as_mut_slice(area_size) };
+                elf_file.read_at(offset as u64, area_slice)
+                    .expect("failed to copy elf data");
             }
 
-            // 尝试更新 elf 的起始地址
-            // TODO: 这样对吗? 怎么感觉不太对劲, 这 elf 真的是地址小的放在前面吗?
+            // 更新 elf 的起始地址
             match elf_begin_opt {
                 Some(elf_begin) => {
-                    if vaddr_beg < elf_begin {
-                        elf_begin_opt = Some(vaddr_beg);
+                    if area_begin < elf_begin {
+                        elf_begin_opt = Some(area_begin);
                     }
                 }
                 None => {
-                    elf_begin_opt = Some(vaddr_beg);
+                    elf_begin_opt = Some(area_begin);
                 }
             }
         }
@@ -372,14 +256,7 @@ impl UserSpace {
         (entry_point, auxv)
     }
 
-    pub fn handle_pagefault(&mut self, vaddr: VirtAddr) {
-        let mut area: Vec<_> = self.areas.iter_mut().filter(|a| a.range().contains(vaddr)).collect();
-        assert_eq!(area.len(), 1); // TODO: dirty
-        let area = &mut area[0];
-        area.page_fault(
-            &mut self.page_table,
-            vaddr.round_down().into(),
-            PageFaultAccessType::RO,
-        );
+    pub fn handle_pagefault(&mut self, vaddr: VirtAddr, access_type: PageFaultAccessType) -> Result<(), PageFaultErr> {
+        self.areas.page_fault(&mut self.page_table, vaddr.into(), access_type)
     }
 }

@@ -9,7 +9,7 @@ use crate::{
     boot::boot_pagetable_paddr,
     executor::{yield_future::yield_now},
     syscall::Syscall,
-    trap::trap::run_user,
+    trap::trap::run_user, process::user_space::user_area::PageFaultAccessType,
 };
 
 use super::lproc::{LightProcess, ProcessStatus};
@@ -83,8 +83,18 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                         "Pagefault, User SEPC: 0x{:x}, STVAL: 0x{:x}, SCAUSE: {:#?}, User sp: 0x{:x}",
                         context.user_sepc, stval, e, context.user_rx[2]
                     );
-                    lproc.with_mut_memory(|m| m.handle_pagefault(stval.into()));
-                    // is_exit = true;
+
+                    let access_type = match e {
+                        Exception::InstructionPageFault => PageFaultAccessType::RX,
+                        Exception::LoadPageFault => PageFaultAccessType::RO,
+                        Exception::StorePageFault => PageFaultAccessType::RW,
+                        _ => unreachable!(),
+                    };
+
+                    let result = lproc.with_mut_memory(|m| m.handle_pagefault(stval.into(), access_type));
+                    if let Err(_) = result {
+                        is_exit = true;
+                    }
                     // do_exit = trap_handler::page_fault(&thread, e, stval, context.user_sepc).await;
                 }
                 Exception::InstructionFault | Exception::IllegalInstruction => {

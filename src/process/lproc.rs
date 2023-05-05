@@ -9,7 +9,7 @@ use crate::{
     },
     sync::SpinNoIrqLock,
     tools::handler_pool::UsizePool,
-    trap::context::UKContext,
+    trap::context::UKContext, consts::PAGE_SIZE, process::user_space::THREAD_STACK_SIZE,
 };
 use alloc::{
     alloc::Global, boxed::Box, collections::BTreeMap, string::String, sync::Arc, sync::Weak,
@@ -149,11 +149,13 @@ impl LightProcess {
 
         // 分配栈
         let stack_id = self.stack_id;
-        let init_stack_paddr = self.with_mut_memory(|m| m.alloc_stack(stack_id));
+        self.with_mut_memory(|m| {
+            m.areas_mut().insert_stack_at(stack_id.stack_bottom(), THREAD_STACK_SIZE);
+        });
 
         debug!("Stack alloc done.");
         // 将参数, auxv 和环境变量放到栈上
-        let (sp, argc, argv, envp) = stack_id.init_stack(init_stack_paddr, args, envp, auxv);
+        let (sp, argc, argv, envp) = stack_id.init_stack(args, envp, auxv);
 
         // 为线程初始化上下文
         debug!("Entry point: {:?}", entry_point);
@@ -162,7 +164,7 @@ impl LightProcess {
 
         // 分配堆
         // TODO: 改成彻底的 lazy alloc
-        self.with_mut_memory(|m| m.alloc_heap(1));
+        self.with_mut_memory(|m| m.areas_mut().insert_heap(PAGE_SIZE));
         debug!("Heap alloc done.");
 
         // 设置状态为 READY
