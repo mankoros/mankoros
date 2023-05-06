@@ -24,6 +24,7 @@ use super::{aux_vector::AuxVector};
 use self::{user_area::{UserAreaManager, PageFaultErr, VirtAddrRange}};
 use log::debug;
 
+
 pub const THREAD_STACK_SIZE: usize = 4 * 1024;
 
 // TODO-PERF: 拆锁
@@ -119,8 +120,12 @@ impl StackID {
             let len = s.len();
             *sp -= len + 1; // +1 for NUL ('\0')
             unsafe {
-                core::ptr::copy_nonoverlapping(s.as_ptr(), *sp as *mut u8, len);
-                *(*sp as *mut u8).add(len) = 0;
+                // core::ptr::copy_nonoverlapping(s.as_ptr(), *sp as *mut u8, len);
+                for (i, c) in s.bytes().enumerate() {
+                    debug!("push_str: {:x} ({:x}) <- {:?}", *sp + i, i, c);
+                    *((*sp as *mut u8).add(i)) = c;
+                }
+                *(*sp as *mut u8).add(len) = 0u8;
             }
             *sp
         }
@@ -138,13 +143,9 @@ impl StackID {
         let rand_bytes = "Meow~ O4 here;D"; // 15 + 1 char for 16bytes
 
         sp -= rand_size;
-        debug!("Curr sp: {:x}", sp);
         push_str(&mut sp, platform);
-        debug!("Curr sp: {:x}", sp);
         push_str(&mut sp, rand_bytes);
-        debug!("Curr sp: {:x}", sp);
         align16(&mut sp);
-        debug!("Curr sp: {:x}", sp);
 
         // 存放 auxv
         fn push_aux_elm(sp: &mut usize, elm: &AuxElement) {

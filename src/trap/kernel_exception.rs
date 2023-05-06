@@ -5,7 +5,7 @@ use riscv::register::{
 
 use log::{error, info, warn};
 
-use crate::arch;
+use crate::arch::{self, get_curr_page_table_addr};
 
 #[no_mangle]
 pub fn kernel_default_exception(a0: usize) {
@@ -39,6 +39,7 @@ pub fn kernel_default_exception(a0: usize) {
 fn fatal_exception_error(_a0: usize) -> ! {
     let sepc = sepc::read();
 
+    error!("current page table: {:x}", get_curr_page_table_addr());
     error!(
         "kernel fatal_exception_error! {:?} bad addr = {:#x}, sepc = {:#x}, hart = {} sp = {:#x}",
         scause::read().cause(),
