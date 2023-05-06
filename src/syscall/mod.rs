@@ -1,5 +1,6 @@
 use core::cmp::min;
 
+use crate::arch::within_sum;
 use crate::executor::yield_future::yield_now;
 use crate::process::lproc::LightProcess;
 use crate::{axerrno::AxError, syscall::misc::UtsName, trap::context::UKContext};
@@ -10,15 +11,6 @@ mod fs;
 mod memory;
 mod misc;
 mod process;
-
-// Helper func
-fn within_sum<T>(f: impl FnOnce() -> T) -> T {
-    // Allow acessing user vaddr
-    unsafe { riscv::register::sstatus::set_sum() };
-    let ret = f();
-    unsafe { riscv::register::sstatus::clear_sum() };
-    ret
-}
 
 pub struct Syscall<'a> {
     cx: &'a mut UKContext,

@@ -58,3 +58,12 @@ pub fn switch_page_table(paddr: usize) {
 pub fn get_curr_page_table_addr() -> usize {
     riscv::register::satp::read().ppn() << consts::PAGE_SIZE_BITS
 }
+
+#[inline(always)]
+pub fn within_sum<T>(f: impl FnOnce() -> T) -> T {
+    // Allow acessing user vaddr
+    unsafe { riscv::register::sstatus::set_sum() };
+    let ret = f();
+    unsafe { riscv::register::sstatus::clear_sum() };
+    ret
+}

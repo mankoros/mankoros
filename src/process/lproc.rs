@@ -9,7 +9,7 @@ use crate::{
     },
     sync::SpinNoIrqLock,
     tools::handler_pool::UsizePool,
-    trap::context::UKContext, consts::PAGE_SIZE,
+    trap::context::UKContext, consts::PAGE_SIZE, arch::within_sum,
 };
 use alloc::{
     alloc::Global, boxed::Box, collections::BTreeMap, string::String, sync::Arc, sync::Weak,
@@ -156,7 +156,7 @@ impl LightProcess {
 
         debug!("Stack alloc done.");
         // 将参数, auxv 和环境变量放到栈上
-        let (sp, argc, argv, envp) = stack_id.init_stack(args, envp, auxv);
+        let (sp, argc, argv, envp) = within_sum(|| stack_id.init_stack(args, envp, auxv));
 
         // 为线程初始化上下文
         debug!("Entry point: {:?}", entry_point);

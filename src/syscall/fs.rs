@@ -13,7 +13,7 @@ use crate::{
     utils,
 };
 
-use super::within_sum;
+use crate::arch::within_sum;
 use super::{Syscall, SyscallResult};
 
 /// 文件信息类
