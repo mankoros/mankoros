@@ -47,6 +47,7 @@ impl Drop for AutoSIE {
 
 pub async fn userloop(lproc: Arc<LightProcess>) {
     loop {
+        debug!("enter userloop: {:x?}", lproc.id());
         // TODO: 处理 HART 相关问题
         let auto_sie = AutoSIE::disable_interrupt_until_drop();
         let context = lproc.context();

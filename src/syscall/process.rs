@@ -34,24 +34,14 @@ bitflags! {
 }
 
 impl<'a> Syscall<'a> {
-    pub fn sys_dup(&mut self, fd: usize) -> SyscallResult {
-        self.lproc.with_mut_fdtable(|table| {
-            if let Some(old_fd) = table.get(fd) {
-                let new_fd = table.alloc(old_fd.file.clone());
-                Ok(new_fd)
-            } else {
-                Err(AxError::InvalidInput)
-            }
-        })
-    }
-    pub fn sys_dup3(&mut self, old_fd: usize, new_fd: usize) -> SyscallResult {
-        self.lproc.with_mut_fdtable(|table| {
-            if let Some(old_fd) = table.get(old_fd) {
-                table.insert(new_fd, old_fd.file.clone());
-                Ok(new_fd)
-            } else {
-                Err(AxError::InvalidInput)
-            }
-        })
+    pub fn sys_clone(
+        &mut self,
+        flags: CloneFlags,
+        child_stack: usize,
+        parent_tid_ptr: usize,
+        child_tid_ptr: usize,
+        new_thread_local_storage_ptr: usize,
+    ) -> SyscallResult {
+        todo!()
     }
 }
