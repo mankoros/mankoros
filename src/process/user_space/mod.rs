@@ -7,12 +7,11 @@ use alloc::{string::String, sync::Arc, vec::Vec};
 
 use crate::{
     consts::{
-        address_space::{U_SEG_STACK_END},
+        address_space::{U_SEG_STACK_BEG},
     },
     fs::vfs::filesystem::VfsNode,
     memory::{
         address::{VirtAddr},
-        kernel_phys_to_virt,
         pagetable::pagetable::PageTable,
     },
     process::{aux_vector::AuxElement, user_space::user_area::{PageFaultAccessType}},
@@ -43,18 +42,31 @@ pub struct UserSpace {
 pub struct StackID(usize);
 
 impl StackID {
-    pub fn stack_bottom(&self) -> VirtAddr {
-        // 栈是倒着长的 (从高地址往低地址)
-        VirtAddr(U_SEG_STACK_END - self.0 * THREAD_STACK_SIZE)
-    }
+    /// 栈实际上占用的地址范围, 仅供内部使用
+    pub(crate) fn stack_range(&self) -> VirtAddrRange {
+        let start = VirtAddr(U_SEG_STACK_BEG + self.0 * THREAD_STACK_SIZE);
 
-    pub fn stack_range(&self) -> VirtAddrRange {
-        let bottom = self.stack_bottom();
         VirtAddrRange {
-            start: bottom, 
-            end: bottom + THREAD_STACK_SIZE,
+            start,
+            end: start + THREAD_STACK_SIZE,
         }
     }
+
+    /// 栈是倒着长的 (从高地址往低地址), 
+    /// 所以 sp 的开始是这个栈里最大的, 满足对齐 (16 byte) 的地址
+    /// 一般而言, 这会导致一个栈里浪费 15 byte, 说不定可以向里面塞一些彩蛋?
+    pub fn sp_init(&self) -> VirtAddr {
+        let vaddr_max = self.stack_range().end - 1;
+        let vaddr_aligned = VirtAddr(vaddr_max.0 & !(16 - 1));
+        vaddr_aligned
+    }
+
+    /// 栈最后的地址, 理论上可以访问这个地址, 但是不应该访问它
+    /// 当 sp = sp_max 时, 任何 push 都应该导致 stack overflow
+    pub fn sp_max(&self) -> VirtAddr {
+        self.stack_range().start
+    }
+
 
     pub fn init_stack(
         self,
@@ -100,7 +112,7 @@ impl StackID {
         在构建栈的时候, 我们从底向上塞各个东西
         */
 
-        let mut sp = self.stack_bottom().0;
+        let mut sp = self.sp_init().0;
 
         // 存放环境与参数的字符串本身
         fn push_str(sp: &mut usize, s: &str) -> usize {
@@ -126,10 +138,13 @@ impl StackID {
         let rand_bytes = "Meow~ O4 here;D"; // 15 + 1 char for 16bytes
 
         sp -= rand_size;
-        debug!("AAAAAAAAAAAAAAAAAAAAAAAAAA");
+        debug!("Curr sp: {:x}", sp);
         push_str(&mut sp, platform);
+        debug!("Curr sp: {:x}", sp);
         push_str(&mut sp, rand_bytes);
+        debug!("Curr sp: {:x}", sp);
         align16(&mut sp);
+        debug!("Curr sp: {:x}", sp);
 
         // 存放 auxv
         fn push_aux_elm(sp: &mut usize, elm: &AuxElement) {

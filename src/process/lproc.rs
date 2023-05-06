@@ -9,7 +9,7 @@ use crate::{
     },
     sync::SpinNoIrqLock,
     tools::handler_pool::UsizePool,
-    trap::context::UKContext, consts::PAGE_SIZE, process::user_space::THREAD_STACK_SIZE,
+    trap::context::UKContext, consts::PAGE_SIZE,
 };
 use alloc::{
     alloc::Global, boxed::Box, collections::BTreeMap, string::String, sync::Arc, sync::Weak,
@@ -150,7 +150,7 @@ impl LightProcess {
         // 分配栈
         let stack_id = self.stack_id;
         self.with_mut_memory(|m| {
-            m.areas_mut().insert_stack_at(stack_id.stack_bottom(), THREAD_STACK_SIZE);
+            m.areas_mut().insert_stack_at(stack_id);
             m.force_map_range(stack_id.stack_range());
         });
 
