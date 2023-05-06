@@ -11,7 +11,6 @@ use crate::{
     memory::{
         address::{VirtPageNum},
         frame::{alloc_frame},
-        kernel_phys_to_virt,
         pagetable::{pagetable::PageTable, pte::PTEFlags},
     },
 };
@@ -24,6 +23,8 @@ use crate::consts::address_space::{U_SEG_HEAP_BEG, U_SEG_FILE_END, U_SEG_FILE_BE
 
 use crate::process::shared_frame_mgr::with_shared_frame_mgr;
 use crate::arch::get_curr_page_table_addr;
+use log::debug;
+use super::StackID;
 
 pub type VirtAddrRange = Range<VirtAddr>;
 
@@ -179,14 +180,19 @@ impl UserArea {
         access_vpn: VirtPageNum,
         access_type: PageFaultAccessType,
     ) -> Result<(), PageFaultErr> {
+        debug!("page fault: {:?}, {:?}, {:?} at page table {:?}", 
+            self, access_vpn, access_type, page_table.root_paddr());
+
         if !access_type.can_access(self.perm()) {
             return Err(PageFaultErr::PermUnmatch);
         }
 
-        let pte = page_table.get_pte_copied_from_vpn(access_vpn);
+        // anyway we need a new frame
         let frame = alloc_frame()
             .ok_or(PageFaultErr::KernelOOM)?;
-
+    
+        // perpare the data for the new frame
+        let pte = page_table.get_pte_copied_from_vpn(access_vpn);
         if let Some(pte) = pte && pte.is_valid() {
             // must be CoW
             let pte_flags = pte.flags();
@@ -206,14 +212,10 @@ impl UserArea {
             unsafe {
                 frame.as_mut_page_slice().copy_from_slice(old_frame.as_page_slice());
             }
-
-            // re-map new frame
-            page_table.map_page(access_vpn.into(), frame, self.perm().into());
-
         } else {
             // a lazy alloc or lazy load (demand paging)
             match &self.kind {
-                // If lazy alloc, map the allocate frame
+                // If lazy alloc, do nothing (or maybe memset it to zero?)
                 UserAreaType::MmapAnonymous => {}
                 // If lazy load, read from fs
                 UserAreaType::MmapPrivate { file, offset } => {
@@ -222,9 +224,10 @@ impl UserArea {
                     assert_eq!(read_length, consts::PAGE_SIZE);
                 }
             }
-            page_table.map_page(access_vpn.into(), frame, self.perm().into());
         }
-        
+
+        // remap the frame
+        page_table.map_page(access_vpn.into(), frame, self.perm().into());
         Ok(())
     }
 }
@@ -253,13 +256,12 @@ impl UserAreaManager {
         self.map.get(vaddr)
     }
 
-    pub fn insert_stack_at(&mut self, begin_vaddr: VirtAddr, size: usize) {
-        let range = VirtAddrRange {
-            start: begin_vaddr,
-            end: begin_vaddr + size,
-        };
-        let area = UserArea::new_anonymous(range.clone(), UserAreaPerm::READ | UserAreaPerm::WRITE);
-        self.map.try_insert(range, area).unwrap();
+    pub fn insert_stack_at(&mut self, stack_id: StackID) {
+        let area = UserArea::new_anonymous(
+            stack_id.stack_range(), 
+            UserAreaPerm::READ | UserAreaPerm::WRITE
+        );
+        self.map.try_insert(stack_id.stack_range(), area).unwrap();
     }
 
     pub fn insert_heap(&mut self, init_size: usize) {
@@ -348,8 +350,10 @@ impl UserAreaManager {
     }
 
     pub fn force_map_range(&mut self, page_table: &mut PageTable, range: VirtAddrRange) {
+        debug!("force map range: {:?}", range);
+
         let vpn_begin = range.start.into();
-        let vpn_end = range.end.round_up().into();
+        let vpn_end = range.end.into();
 
         let mut vpn = vpn_begin;
         while vpn < vpn_end {
