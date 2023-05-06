@@ -188,12 +188,6 @@ impl UserSpace {
         &mut self.areas
     }
 
-    /// 将用户态的虚拟地址转换为内核页表里存在的虚拟地址
-    pub fn to_kernel_addr(&self, vaddr: VirtAddr) -> usize {
-        let paddr = self.page_table.get_paddr_from_vaddr(vaddr);
-        kernel_phys_to_virt(paddr.into())
-    }
-
     /// 为线程分配一个栈空间 ID
     /// 该 id 只意味着某段虚拟地址的使用权被分配出去了, 不会产生真的物理页分配
     pub fn alloc_stack_id(&mut self) -> StackID {
