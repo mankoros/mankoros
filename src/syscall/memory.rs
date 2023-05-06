@@ -5,7 +5,7 @@ use bitflags::bitflags;
 use log::info;
 
 use crate::{
-    axerrno::AxError, memory::pagetable::pte::PTEFlags, process::user_space::UserAreaPerm,
+    axerrno::AxError, memory::pagetable::pte::PTEFlags, process::user_space::user_area::UserAreaPerm,
 };
 
 use super::{Syscall, SyscallResult};

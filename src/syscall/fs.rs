@@ -143,7 +143,7 @@ impl<'a> Syscall<'a> {
         Ok(0)
     }
 
-    pub fn sys_mkdir(&self, dir_fd: usize, path: *const u8, _user_mode: usize) -> SyscallResult {
+    pub fn sys_mkdir(&self, _dir_fd: usize, path: *const u8, _user_mode: usize) -> SyscallResult {
         info!("Syscall: mkdir");
         let path = within_sum(|| unsafe { utils::raw_ptr_to_ref_str(path) }.clone().to_owned());
         let mut path = Path::from_string(path).expect("Error parsing path");
