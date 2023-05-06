@@ -7,10 +7,10 @@
 use crate::{
     arch, boot,
     consts::{
-        self, address_space::K_SEG_PHY_MEM_BEG, HUGE_PAGE_SIZE, MAX_PHYSICAL_MEMORY, PAGE_SIZE,
+        self, address_space::K_SEG_PHY_MEM_BEG, HUGE_PAGE_SIZE, MAX_PHYSICAL_MEMORY,
         PHYMEM_START,
     },
-    memory::{self, address::VirtPageNum, kernel_phys_to_virt},
+    memory::{self, address::VirtPageNum},
     memory::{
         address::{PhysAddr, VirtAddr},
         frame,
@@ -87,16 +87,11 @@ impl PageTable {
     pub fn new_with_kernel_seg() -> Self {
         // Allocate 1 page for the root page table
         let root_paddr: PhysAddr = Self::alloc_table();
-        let new_vaddr = kernel_phys_to_virt(root_paddr.into());
-        let boot_pagetable = kernel_phys_to_virt(boot::boot_pagetable_paddr());
+        let boot_root_paddr: PhysAddr = boot::boot_pagetable_paddr().into();
 
         // Copy kernel segment
         unsafe {
-            core::ptr::copy_nonoverlapping(
-                boot_pagetable as *const u8,
-                new_vaddr as *mut u8,
-                PAGE_SIZE,
-            );
+            root_paddr.as_mut_page_slice().copy_from_slice(boot_root_paddr.as_page_slice())
         }
 
         PageTable {
@@ -198,14 +193,12 @@ impl PageTable {
     // Allocates a page for a table
     // the allocated page will be zeroed to ensure every PTE is not valid
     fn alloc_table() -> PhysAddr {
-        let paddr = frame::alloc_frame().expect("failed to allocate page").into();
-        // use kernel_vaddr here to work after kernel remapped
-        let kernel_vaddr = memory::kernel_phys_to_virt(paddr);
+        let paddr: PhysAddr = frame::alloc_frame().expect("failed to allocate page");
         // Fill with zeros
         unsafe {
-            core::ptr::write_bytes(kernel_vaddr as *mut u8, 0, consts::PAGE_SIZE as usize);
+            paddr.as_mut_page_slice().fill(0);
         }
-        paddr.into()
+        paddr
     }
     fn table_of<'a>(&self, paddr: PhysAddr) -> &'a [PageTableEntry] {
         // use kernel_vaddr here to work after kernel remapped

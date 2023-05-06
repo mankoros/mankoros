@@ -1,6 +1,7 @@
 use crate::consts;
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
+use super::kernel_phys_to_virt;
 
 
 
@@ -32,12 +33,22 @@ impl PhysAddr {
         self.0 as *mut u8
     }
 
+    pub unsafe fn as_slice(&self, len: usize) -> &[u8] {
+        let mapped_addr = kernel_phys_to_virt(self.0);
+        core::slice::from_raw_parts(mapped_addr as *const u8, len)
+    }
+
+    pub unsafe fn as_mut_slice(&self, len: usize) -> &mut [u8] {
+        let mapped_addr = kernel_phys_to_virt(self.0);
+        core::slice::from_raw_parts_mut(mapped_addr as *mut u8, len)
+    }
+
     pub unsafe fn as_page_slice(&self) -> &[u8] {
-        core::slice::from_raw_parts(self.as_ptr(), consts::PAGE_SIZE)
+        self.as_slice(consts::PAGE_SIZE)
     }
 
     pub unsafe fn as_mut_page_slice(&self) -> &mut [u8] {
-        core::slice::from_raw_parts_mut(self.as_mut_ptr(), consts::PAGE_SIZE)
+        self.as_mut_slice(consts::PAGE_SIZE)
     }
 }
 

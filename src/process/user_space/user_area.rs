@@ -217,12 +217,7 @@ impl UserArea {
                 UserAreaType::MmapAnonymous => {}
                 // If lazy load, read from fs
                 UserAreaType::MmapPrivate { file, offset } => {
-                    let slice = unsafe {
-                        core::slice::from_raw_parts_mut(
-                            kernel_phys_to_virt(frame.into()) as *mut u8,
-                            consts::PAGE_SIZE,
-                        )
-                    };
+                    let slice = unsafe { frame.as_mut_page_slice() };
                     let read_length = file.read_at(*offset as u64, slice).expect("read file failed");
                     assert_eq!(read_length, consts::PAGE_SIZE);
                 }
