@@ -21,7 +21,7 @@ use crate::{
 use super::{aux_vector::AuxVector, shared_frame_mgr::with_shared_frame_mgr};
 
 
-use self::{user_area::{UserAreaManager, PageFaultErr, VirtAddrRange}};
+use self::{user_area::{UserAreaManager, PageFaultErr, VirtAddrRange, UserAreaPerm}};
 use log::debug;
 
 
@@ -202,6 +202,12 @@ impl UserSpace {
 
     pub fn areas_mut(&mut self) -> &mut UserAreaManager {
         &mut self.areas
+    }
+
+    pub fn has_perm(&self, vaddr: VirtAddr, perm: UserAreaPerm) -> bool {
+        self.areas.get_area(vaddr)
+            .map(|a| a.perm().contains(perm))
+            .unwrap_or(false)
     }
 
     /// 为线程分配一个栈空间 ID

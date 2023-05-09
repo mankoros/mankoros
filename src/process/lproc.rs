@@ -266,8 +266,9 @@ impl LightProcess {
         let new = Arc::new(new);
 
         if flags.contains(CloneFlags::THREAD) {
-            self.with_mut_group(|g| g.push(new.clone()));
+            new.with_mut_group(|g| g.push(new.clone()));
         } else {
+            new.with_mut_group(|g| g.push_leader(new.clone()));
             self.add_child(new.clone());
         }
 

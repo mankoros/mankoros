@@ -62,7 +62,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_FSTAT => self.sys_fstat(args[0], args[1] as *mut fs::Kstat),
             // Process related
             SYSCALL_CLONE => self.sys_clone(
-                CloneFlags::from_bits(args[0] as u32).unwrap(), 
+                args[0] as u32, 
                 args[1], 
                 args[2], 
                 args[3], 
