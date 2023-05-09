@@ -41,7 +41,7 @@ pub struct LightProcess {
     stack_id: StackID,
 
     // 因为每个儿子自己跑来加 parent 的 children, 所以可能并发, 要加锁
-    children: SpinNoIrqLock<Vec<Arc<LightProcess>>>,
+    children: Arc<SpinNoIrqLock<Vec<Arc<LightProcess>>>>,
     // 因为同一个 Thread Group 里的进程可能会互相修改状态, 所以要加锁
     status: SpinNoIrqLock<SyncUnsafeCell<ProcessStatus>>,
     exit_code: AtomicI32,
@@ -123,7 +123,7 @@ impl LightProcess {
             parent: None,
             context: SyncUnsafeCell::new(unsafe { UKContext::new_uninit() }),
             stack_id: memory.alloc_stack_id(),
-            children: SpinNoIrqLock::new(Vec::new()),
+            children: new_shared(Vec::new()),
             status: SpinNoIrqLock::new(SyncUnsafeCell::new(ProcessStatus::UNINIT)),
             exit_code: AtomicI32::new(0),
             group: new_shared(ThreadGroup::new_empty()),
