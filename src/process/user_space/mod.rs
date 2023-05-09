@@ -18,7 +18,7 @@ use crate::{
     tools::handler_pool::UsizePool, arch::get_curr_page_table_addr,
 };
 
-use super::{aux_vector::AuxVector};
+use super::{aux_vector::AuxVector, shared_frame_mgr::with_shared_frame_mgr};
 
 
 use self::{user_area::{UserAreaManager, PageFaultErr, VirtAddrRange}};
@@ -284,5 +284,17 @@ impl UserSpace {
 
     pub fn force_map_range(&mut self, range: VirtAddrRange) {
         self.areas.force_map_range(&mut self.page_table, range);
+    }
+
+    pub fn clone_cow(&mut self) -> Self {
+        Self {
+            page_table: self.page_table.copy_table_and_mark_self_cow(|frame_paddr| {
+                with_shared_frame_mgr(|mgr| {
+                    mgr.add_ref(frame_paddr.into());
+                });
+            }),
+            areas: self.areas.clone(),
+            stack_id_pool: self.stack_id_pool.clone(),
+        }
     }
 }

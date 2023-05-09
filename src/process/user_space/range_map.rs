@@ -2,6 +2,7 @@ use core::ops::Range;
 
 use alloc::collections::BTreeMap;
 
+#[derive(Clone, Debug)]
 struct Node<U, V> {
     pub end: U,
     pub value: V,
@@ -12,6 +13,7 @@ struct Node<U, V> {
 /// 保证区间不重合 否则panic
 ///
 /// 禁止区间长度为0
+#[derive(Clone)]
 pub struct RangeMap<U: Ord + Copy, V>(BTreeMap<U, Node<U, V>>);
 
 impl<U: Ord + Copy, V> RangeMap<U, V> {

@@ -110,6 +110,7 @@ impl PageFaultAccessType {
     }
 }
 
+#[derive(Clone)]
 enum UserAreaType {
     /// 匿名映射区域
     MmapAnonymous,
@@ -145,7 +146,7 @@ pub enum PageFaultErr {
     KernelOOM,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct UserArea {
     kind: UserAreaType,
     perm: UserAreaPerm,
@@ -175,7 +176,7 @@ impl UserArea {
     }
 
     pub fn page_fault(
-        &mut self,
+        &self,
         page_table: &mut PageTable,
         access_vpn: VirtPageNum,
         access_type: PageFaultAccessType,
@@ -234,6 +235,7 @@ impl UserArea {
 
 /// 管理整个用户虚拟地址空间的虚拟地址分配
 /// 包括堆和栈
+#[derive(Clone)]
 pub struct UserAreaManager {
     map: RangeMap<VirtAddr, UserArea>,    
 }
@@ -254,6 +256,14 @@ impl UserAreaManager {
 
     pub fn get(&self, vaddr: VirtAddr) -> Option<(VirtAddrRange, &UserArea)> {
         self.map.get(vaddr)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (VirtAddrRange, &UserArea)> {
+        self.map.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (VirtAddrRange, &mut UserArea)> {
+        self.map.iter_mut()
     }
 
     pub fn insert_stack_at(&mut self, stack_id: StackID) {

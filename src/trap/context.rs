@@ -2,6 +2,7 @@ use alloc::boxed::Box;
 use riscv::register::sstatus::Sstatus;
 
 #[repr(C)]
+#[derive(Clone)]
 pub struct UKContext {
     // field 的顺序非常重要! 在切换上下文的汇编函数里要靠相对偏移量来正确地存放/读取上下文的!!!
     pub user_rx: [usize; 32],  // 0-31

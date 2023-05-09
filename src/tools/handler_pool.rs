@@ -1,5 +1,6 @@
 use alloc::vec::Vec;
 
+#[derive(Clone)]
 pub struct UsizePool {
     next: usize,
     recycled: Vec<usize>,

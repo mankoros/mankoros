@@ -9,13 +9,13 @@ use crate::{
     },
     sync::SpinNoIrqLock,
     tools::handler_pool::UsizePool,
-    trap::context::UKContext, consts::PAGE_SIZE, arch::within_sum,
+    trap::context::UKContext, consts::PAGE_SIZE, arch::within_sum, syscall,
 };
 use alloc::{
     alloc::Global, boxed::Box, collections::BTreeMap, string::String, sync::Arc, sync::Weak,
     vec::Vec,
 };
-use core::{cell::SyncUnsafeCell, sync::atomic::AtomicI32};
+use core::{cell::SyncUnsafeCell, sync::atomic::{AtomicI32, Ordering}};
 use log::debug;
 use riscv::register::sstatus;
 
@@ -85,6 +85,28 @@ impl LightProcess {
 
     pub fn context(&self) -> &mut UKContext {
         unsafe { &mut *self.context.get() }
+    }
+
+    pub fn exit_code(&self) -> i32 {
+        self.exit_code.load(Ordering::SeqCst)
+    }
+
+    pub fn add_child(self: Arc<Self>, child: Arc<LightProcess>) {
+        self.children.lock(here!()).push(child);
+    }
+
+    pub fn remove_child(self: Arc<Self>, child: &Arc<LightProcess>) {
+        let mut children = self.children.lock(here!());
+        let index = children.iter().position(|c| Arc::ptr_eq(c, child)).unwrap();
+        children.remove(index);
+    }
+
+    pub fn with_group<T>(&self, f: impl FnOnce(&ThreadGroup) -> T) -> T {
+        f(&self.group.lock(here!()))
+    }
+
+    pub fn with_mut_group<T>(&self, f: impl FnOnce(&mut ThreadGroup) -> T) -> T {
+        f(&mut self.group.lock(here!()))
     }
 
     pub fn with_memory<T>(&self, f: impl FnOnce(&UserSpace) -> T) -> T {
@@ -172,6 +194,85 @@ impl LightProcess {
         self.set_status(ProcessStatus::READY);
         debug!("User init done.");
     }
+
+    pub fn do_clone(self: Arc<Self>, flags: syscall::CloneFlags) -> Arc<Self> {
+        use syscall::CloneFlags;
+
+        let id = alloc_pid();
+        let context = SyncUnsafeCell::new(Box::new(self.context().clone()));
+        let status = SpinNoIrqLock::new(SyncUnsafeCell::new(self.status()));
+        let exit_code = AtomicI32::new(self.exit_code());
+        
+        let parent;
+        let children;
+        let group;
+
+        if flags.contains(CloneFlags::THREAD) {
+            parent = self.parent.clone();
+            children = self.children.clone();
+            // remember to add the new lproc to group please!
+            group = self.group.clone(); 
+        } else {
+            parent = Some(Arc::downgrade(&self));
+            children = new_shared(Vec::new());
+            group = new_shared(ThreadGroup::new_empty());
+        }
+
+        let stack_id;
+        let memory;
+        if flags.contains(CloneFlags::VM) {
+            memory = self.memory.clone();
+            stack_id = self.with_mut_memory(|m| m.alloc_stack_id());
+        } else {
+            // TODO-PERF: 这里应该可以优化
+            // 比如引入一个新的状态, 表示这个进程的内存是应该 CoW 的, 但是不真正去 CoW 本来的内存
+            // 只是给它一个全是 Invaild 的页表, 然后如果它没有进行任何写入操作, 直接进入 syscall exec 的话,
+            // 就可以直接来一个新的地址空间, 不用连累旧的进程的地址空间也来一次 CoW.
+            // 反之如果在那种状态 page fault 了, 那么我们就要进行 "昂贵" 的 CoW 操作了
+            let mut raw_memory = self.with_mut_memory(|m| m.clone_cow());
+            memory = new_shared(self.with_mut_memory(|m| m.clone_cow()));
+            stack_id = raw_memory.alloc_stack_id();
+        }
+
+        let fsinfo;
+        if flags.contains(CloneFlags::FS) {
+            fsinfo = self.fsinfo.clone();
+        } else {
+            fsinfo = new_shared(FsInfo::new());
+        }
+        
+        let fdtable;
+        if flags.contains(CloneFlags::FILES) {
+            fdtable = self.fdtable.clone();
+        } else {
+            fdtable = new_shared(FdTable::new_with_std());
+        }
+        
+        // TODO: signal handler
+        
+        let new = Self {
+            id,
+            parent,
+            context,
+            stack_id,
+            children,
+            status,
+            exit_code,
+            group,
+            memory,
+            fsinfo,
+            fdtable,
+        };
+        let new = Arc::new(new);
+
+        if flags.contains(CloneFlags::THREAD) {
+            self.with_mut_group(|g| g.push(new.clone()));
+        } else {
+            self.add_child(new.clone());
+        }
+
+        new
+    }
 }
 
 pub struct FsInfo {
@@ -238,7 +339,7 @@ impl FdTable {
     }
 }
 
-struct ThreadGroup {
+pub struct ThreadGroup {
     members: BTreeMap<Pid, Arc<LightProcess>>,
     leader: Option<Weak<LightProcess>>,
 }
