@@ -186,6 +186,42 @@ impl PageTable {
     pub fn get_paddr_from_vaddr(&self, vaddr: VirtAddr) -> PhysAddr {
         self.get_entry_mut(vaddr).paddr() + vaddr.page_offset()
     }
+
+    pub fn copy_table_and_mark_self_cow(&mut self, do_with_frame: impl Fn(PhysAddr) -> ()) -> Self {
+        let old = self;
+        let mut new = Self::new();
+
+        let op1_iter = old.table_of_mut(old.root_paddr).iter_mut();
+        let np1_iter = new.table_of_mut(new.root_paddr).iter_mut();
+
+        for (op1, np1) in Iterator::zip(op1_iter, np1_iter) {
+            let op2t = old.next_table_mut_opt(&op1);
+            if op2t.is_none() {
+                continue;
+            }
+            let op2_iter = op2t.unwrap().iter_mut();
+            let np2_iter = new.next_table_mut_or_create(np1).iter_mut();
+
+            for (op2, np2) in Iterator::zip(op2_iter, np2_iter) {
+                let op3t = old.next_table_mut_opt(&op2);
+                if op3t.is_none() {
+                    continue;
+                }
+                let op3_iter = op3t.unwrap().iter_mut();
+                let np3_iter = new.next_table_mut_or_create(np2).iter_mut();
+
+                for (op3, np3) in Iterator::zip(op3_iter, np3_iter) {
+                    if op3.is_valid() {
+                        do_with_frame(op3.paddr());
+                        op3.become_shared(false);
+                        *np3 = *op3;
+                    }
+                }
+            }
+        }
+
+        new
+    }
 }
 
 // Private impl
