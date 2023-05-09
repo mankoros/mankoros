@@ -13,15 +13,16 @@ mod misc;
 mod process;
 
 pub use process::CloneFlags;
+use alloc::sync::Arc;
 
 pub struct Syscall<'a> {
     cx: &'a mut UKContext,
-    lproc: &'a LightProcess,
+    lproc: Arc<LightProcess>,
     do_exit: bool,
 }
 
 impl<'a> Syscall<'a> {
-    pub fn new(cx: &'a mut UKContext, lproc: &'a LightProcess) -> Self {
+    pub fn new(cx: &'a mut UKContext, lproc: Arc<LightProcess>) -> Self {
         Self {
             cx,
             lproc,

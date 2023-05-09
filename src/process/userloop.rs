@@ -74,7 +74,7 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
             scause::Trap::Exception(e) => match e {
                 Exception::UserEnvCall => {
                     debug!("Syscall, User SPEC: 0x{:x}", context.user_sepc);
-                    is_exit = Syscall::new(context, &lproc).syscall().await;
+                    is_exit = Syscall::new(context, lproc.clone()).syscall().await;
                 }
                 Exception::InstructionPageFault
                 | Exception::LoadPageFault
