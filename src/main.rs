@@ -196,7 +196,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
 
     let run_test_case = |path: &'static str| {
         let test_case = root_dir.clone().lookup(path).expect("Read test case failed");
-        process::spawn_proc(test_case);
+        process::spawn_proc_from_file(test_case);
     };
 
     let passed_cases = [

@@ -9,11 +9,21 @@ mod shared_frame_mgr;
 pub mod user_space;
 pub mod userloop;
 
-pub fn spawn_proc(file: Arc<dyn VfsNode>) {
+pub fn spawn_proc_from_file(file: Arc<dyn VfsNode>) {
     let lproc = LightProcess::new();
 
     let future = OutermostFuture::new(lproc.clone(), async {
         lproc.clone().exec_first(file, Vec::new(), Vec::new());
+        userloop::userloop(lproc).await;
+    });
+
+    let (r, t) = executor::spawn(future);
+    r.run();
+    t.detach();
+}
+
+pub fn spawn_proc(lproc: Arc<LightProcess>) {
+    let future = OutermostFuture::new(lproc.clone(), async {
         userloop::userloop(lproc).await;
     });
 
