@@ -1,12 +1,12 @@
-use alloc::vec::Vec;
+use alloc::{vec::Vec, sync::Arc};
 
-use crate::{consts, sync::SpinNoIrqLock};
+use crate::{consts, sync::SpinNoIrqLock, process::lproc::LightProcess};
+use core::arch::asm;
 
 pub struct HartLocal {
-    // TODO: something point to a task
-    //
     num_intr_off: usize,
     intr_enable: bool,
+    current_lproc: Option<Arc<LightProcess>>,
 }
 
 impl HartLocal {
@@ -14,7 +14,12 @@ impl HartLocal {
         Self {
             num_intr_off: 0,
             intr_enable: true, // interrupt is enabled after init
+            current_lproc: None,
         }
+    }
+
+    pub fn get_current_lproc(&self) -> Option<Arc<LightProcess>> {
+        self.current_lproc.as_ref().map(Arc::clone)
     }
 }
 
@@ -26,4 +31,26 @@ lazy_static::lazy_static! {
         }
         context
     };
+}
+
+#[no_mangle]
+#[inline(always)]
+pub fn get_hart_id() -> usize {
+    let mut hartid: usize;
+    unsafe {
+        asm!("mv {}, tp", out(reg) hartid);
+    }
+    hartid
+}
+
+pub fn get_curr_lproc() -> Option<Arc<LightProcess>> {
+    let hart_id = get_hart_id();
+    let hart_context = HART_CONTEXT[hart_id].lock(here!());
+    hart_context.get_current_lproc()
+}
+
+pub fn set_curr_lproc(lproc: Arc<LightProcess>) {
+    let hart_id = get_hart_id();
+    let mut hart_context = HART_CONTEXT[hart_id].lock(here!());
+    hart_context.current_lproc = Some(lproc);
 }

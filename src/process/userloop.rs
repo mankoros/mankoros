@@ -7,7 +7,7 @@ use riscv::register::{
 use crate::{
     arch,
     boot::boot_pagetable_paddr,
-    executor::{yield_future::yield_now},
+    executor::{yield_future::yield_now, hart_local::set_curr_lproc},
     syscall::Syscall,
     trap::trap::run_user, process::user_space::user_area::PageFaultAccessType,
 };
@@ -149,6 +149,7 @@ impl<F: Future + Send + 'static> Future for OutermostFuture<F> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = unsafe { self.get_unchecked_mut() };
+        set_curr_lproc(this.lproc.clone());
         // TODO: 关中断
         // TODO: 检查是否需要切换页表, 比如看看 hart 里的进程是不是当前进程
         // 切换页表

@@ -9,7 +9,7 @@ use async_task::{Runnable, Task};
 use self::task_queue::TaskQueue;
 use crate::lazy_static;
 
-mod hart_local;
+pub mod hart_local;
 pub mod task_queue;
 pub mod yield_future;
 
