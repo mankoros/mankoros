@@ -7,8 +7,7 @@
 use crate::{
     arch, boot,
     consts::{
-        self, address_space::K_SEG_PHY_MEM_BEG, HUGE_PAGE_SIZE, MAX_PHYSICAL_MEMORY,
-        PHYMEM_START,
+        self, address_space::K_SEG_PHY_MEM_BEG, HUGE_PAGE_SIZE, MAX_PHYSICAL_MEMORY, PHYMEM_START,
     },
     memory::{self, address::VirtPageNum},
     memory::{
@@ -18,7 +17,7 @@ use crate::{
 };
 
 use alloc::{vec, vec::Vec};
-use log::{trace};
+use log::{debug, trace};
 
 use super::pte::{self, PTEFlags, PageTableEntry};
 
@@ -90,9 +89,7 @@ impl PageTable {
         let boot_root_paddr: PhysAddr = boot::boot_pagetable_paddr().into();
 
         // Copy kernel segment
-        unsafe {
-            root_paddr.as_mut_page_slice().copy_from_slice(boot_root_paddr.as_page_slice())
-        }
+        unsafe { root_paddr.as_mut_page_slice().copy_from_slice(boot_root_paddr.as_page_slice()) }
 
         PageTable {
             root_paddr,
@@ -194,7 +191,12 @@ impl PageTable {
         let op1_iter = old.table_of_mut(old.root_paddr).iter_mut();
         let np1_iter = new.table_of_mut(new.root_paddr).iter_mut();
 
-        for (op1, np1) in Iterator::zip(op1_iter, np1_iter) {
+        for (_idx, (op1, np1)) in Iterator::zip(op1_iter, np1_iter).enumerate() {
+            if op1.is_leaf() {
+                // Huge Page
+                *np1 = *op1;
+                continue;
+            }
             let op2t = old.next_table_mut_opt(&op1);
             if op2t.is_none() {
                 continue;
@@ -212,8 +214,11 @@ impl PageTable {
 
                 for (op3, np3) in Iterator::zip(op3_iter, np3_iter) {
                     if op3.is_valid() {
-                        do_with_frame(op3.paddr());
-                        op3.become_shared(false);
+                        if op3.is_user() {
+                            // Only user page need CoW
+                            do_with_frame(op3.paddr());
+                            op3.set_shared(); // Allow sharing already shared page
+                        }
                         *np3 = *op3;
                     }
                 }
@@ -253,6 +258,7 @@ impl PageTable {
     // Return None if not exist
     fn next_table_mut_opt<'a>(&self, pte: &PageTableEntry) -> Option<&'a mut [PageTableEntry]> {
         if pte.is_valid() {
+            debug_assert!(pte.is_directory()); // Must be a directory
             Some(self.table_of_mut(pte.paddr()))
         } else {
             None

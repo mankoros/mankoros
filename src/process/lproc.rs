@@ -3,19 +3,25 @@ use super::{
     user_space::{StackID, UserSpace},
 };
 use crate::{
+    arch::within_sum,
+    consts::PAGE_SIZE,
     fs::{
         self,
         vfs::{filesystem::VfsNode, path::Path},
     },
     sync::SpinNoIrqLock,
+    syscall,
     tools::handler_pool::UsizePool,
-    trap::context::UKContext, consts::PAGE_SIZE, arch::within_sum, syscall,
+    trap::context::UKContext,
 };
 use alloc::{
     alloc::Global, boxed::Box, collections::BTreeMap, string::String, sync::Arc, sync::Weak,
     vec::Vec,
 };
-use core::{cell::SyncUnsafeCell, sync::atomic::{AtomicI32, Ordering}};
+use core::{
+    cell::SyncUnsafeCell,
+    sync::atomic::{AtomicI32, Ordering},
+};
 use log::debug;
 use riscv::register::sstatus;
 
@@ -202,7 +208,7 @@ impl LightProcess {
         let context = SyncUnsafeCell::new(Box::new(self.context().clone()));
         let status = SpinNoIrqLock::new(SyncUnsafeCell::new(self.status()));
         let exit_code = AtomicI32::new(self.exit_code());
-        
+
         let parent;
         let children;
         let group;
@@ -211,7 +217,7 @@ impl LightProcess {
             parent = self.parent.clone();
             children = self.children.clone();
             // remember to add the new lproc to group please!
-            group = self.group.clone(); 
+            group = self.group.clone();
         } else {
             parent = Some(Arc::downgrade(&self));
             children = new_shared(Vec::new());
@@ -240,16 +246,16 @@ impl LightProcess {
         } else {
             fsinfo = new_shared(FsInfo::new());
         }
-        
+
         let fdtable;
         if flags.contains(CloneFlags::FILES) {
             fdtable = self.fdtable.clone();
         } else {
             fdtable = new_shared(FdTable::new_with_std());
         }
-        
+
         // TODO: signal handler
-        
+
         let new = Self {
             id,
             parent,

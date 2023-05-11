@@ -7,9 +7,10 @@ use riscv::register::{
 use crate::{
     arch,
     boot::boot_pagetable_paddr,
-    executor::{yield_future::yield_now, hart_local::set_curr_lproc},
+    executor::{hart_local::set_curr_lproc, yield_future::yield_now},
+    process::user_space::user_area::PageFaultAccessType,
     syscall::Syscall,
-    trap::trap::run_user, process::user_space::user_area::PageFaultAccessType,
+    trap::trap::run_user,
 };
 
 use super::lproc::{LightProcess, ProcessStatus};
@@ -47,7 +48,7 @@ impl Drop for AutoSIE {
 
 pub async fn userloop(lproc: Arc<LightProcess>) {
     loop {
-        debug!("enter userloop: {:x?}", lproc.id());
+        debug!("enter userspace: {:x?}", lproc.id());
         // TODO: 处理 HART 相关问题
         let auto_sie = AutoSIE::disable_interrupt_until_drop();
         let context = lproc.context();
@@ -62,6 +63,7 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                 break;
             }
         }
+        debug!("exit userspace: {:x?}", lproc.id());
 
         let scause = scause::read().cause();
         let stval = stval::read();
@@ -92,7 +94,8 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                         _ => unreachable!(),
                     };
 
-                    let result = lproc.with_mut_memory(|m| m.handle_pagefault(stval.into(), access_type));
+                    let result =
+                        lproc.with_mut_memory(|m| m.handle_pagefault(stval.into(), access_type));
                     if let Err(_) = result {
                         is_exit = true;
                     }

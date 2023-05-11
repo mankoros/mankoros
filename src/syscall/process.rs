@@ -1,6 +1,10 @@
 use bitflags::bitflags;
 
-use crate::{axerrno::AxError, memory::address::VirtAddr, process::{user_space::user_area::UserAreaPerm, userloop, self}};
+use crate::{
+    axerrno::AxError,
+    memory::address::VirtAddr,
+    process::{self, user_space::user_area::UserAreaPerm, userloop},
+};
 
 use super::{Syscall, SyscallResult};
 use log::debug;
@@ -45,21 +49,21 @@ impl<'a> Syscall<'a> {
     ) -> SyscallResult {
         debug!("syscall: clone");
 
-        let flags = CloneFlags::from_bits(flags & !0xff)
-            .ok_or(AxError::InvalidInput)?;
+        let flags = CloneFlags::from_bits(flags & !0xff).ok_or(AxError::InvalidInput)?;
+
+        debug!("clone flags: {:#?}", flags);
 
         let old_lproc = self.lproc.clone();
-        let new_lproc = old_lproc.do_clone(flags); 
-        
+        let new_lproc = old_lproc.do_clone(flags);
+
         if flags.contains(CloneFlags::CHILD_CLEARTID) {
             todo!("clear child tid, wait for signal subsystem");
         }
 
         let checked_write_u32 = |ptr, value| -> Result<(), AxError> {
             let vaddr = VirtAddr(ptr);
-            let writeable = new_lproc.with_memory(
-                |m| m.has_perm(vaddr, UserAreaPerm::WRITE));
-            
+            let writeable = new_lproc.with_memory(|m| m.has_perm(vaddr, UserAreaPerm::WRITE));
+
             if !writeable {
                 // todo: is that right?
                 return Err(AxError::PermissionDenied);
@@ -90,11 +94,12 @@ impl<'a> Syscall<'a> {
             new_lproc.context().set_user_tp(new_thread_local_storage_ptr);
         }
 
-        // syscall clone returns 0 in child process 
+        // syscall clone returns 0 in child process
         new_lproc.context().set_user_a0(0);
-        
+
         // save the tid of the new process and add it to queue
         let new_proc_tid = new_lproc.id();
+        debug!("Spawning new process with tid {:#?}", new_proc_tid);
         process::spawn_proc(new_lproc);
         Ok(new_proc_tid.into())
     }
