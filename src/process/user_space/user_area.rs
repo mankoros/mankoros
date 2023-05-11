@@ -178,6 +178,7 @@ impl UserArea {
     pub fn page_fault(
         &self,
         page_table: &mut PageTable,
+        range_begin: VirtAddr, // Allow unaligned mmap ?
         access_vpn: VirtPageNum,
         access_type: PageFaultAccessType,
     ) -> Result<(), PageFaultErr> {
@@ -220,8 +221,10 @@ impl UserArea {
                 UserAreaType::MmapAnonymous => {}
                 // If lazy load, read from fs
                 UserAreaType::MmapPrivate { file, offset } => {
+                    let access_vaddr: VirtAddr = access_vpn.into();
+                    let real_offset = offset + (access_vaddr - range_begin);
                     let slice = unsafe { frame.as_mut_page_slice() };
-                    let read_length = file.read_at(*offset as u64, slice).expect("read file failed");
+                    let read_length = file.read_at(real_offset as u64, slice).expect("read file failed");
                     assert_eq!(read_length, consts::PAGE_SIZE);
                 }
             }
@@ -354,9 +357,9 @@ impl UserAreaManager {
     }
 
     pub fn page_fault(&mut self, page_table: &mut PageTable, access_vpn: VirtPageNum, access_type: PageFaultAccessType) -> Result<(), PageFaultErr> {
-        let (_, area) = self.map.get_mut(access_vpn.into())
+        let (range, area) = self.map.get_mut(access_vpn.into())
             .ok_or(PageFaultErr::NoSegment)?;
-        area.page_fault(page_table, access_vpn, access_type)
+        area.page_fault(page_table, range.start, access_vpn, access_type)
     }
 
     pub fn force_map_range(&mut self, page_table: &mut PageTable, range: VirtAddrRange) {
