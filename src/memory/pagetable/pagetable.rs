@@ -214,6 +214,7 @@ impl PageTable {
 
                 for (op3, np3) in Iterator::zip(op3_iter, np3_iter) {
                     if op3.is_valid() {
+                        debug_assert!(op3.is_leaf());
                         if op3.is_user() {
                             // Only user page need CoW
                             do_with_frame(op3.paddr());

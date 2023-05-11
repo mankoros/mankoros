@@ -157,12 +157,12 @@ impl<F: Future + Send + 'static> Future for OutermostFuture<F> {
         // TODO: 检查是否需要切换页表, 比如看看 hart 里的进程是不是当前进程
         // 切换页表
         let pg_paddr = this.lproc.with_memory(|m| m.page_table.root_paddr());
-        arch::switch_page_table(pg_paddr.into());
+        let old_pgtbl = arch::switch_page_table(pg_paddr.into());
         // TODO: 开中断
         // 再 poll 里边的 userloop
         let ret = unsafe { Pin::new_unchecked(&mut this.future).poll(cx) };
         // TODO: 优化, 如果下一个进程是当前进程, 就不用切回去了
-        arch::switch_page_table(boot_pagetable_paddr());
+        arch::switch_page_table(old_pgtbl);
         ret
     }
 }

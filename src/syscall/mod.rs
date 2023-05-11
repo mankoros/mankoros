@@ -12,8 +12,8 @@ mod memory;
 mod misc;
 mod process;
 
-pub use process::CloneFlags;
 use alloc::sync::Arc;
+pub use process::CloneFlags;
 
 pub struct Syscall<'a> {
     cx: &'a mut UKContext,
@@ -61,16 +61,11 @@ impl<'a> Syscall<'a> {
             SYSCALL_MOUNT => todo!(),
             SYSCALL_FSTAT => self.sys_fstat(args[0], args[1] as *mut fs::Kstat),
             // Process related
-            SYSCALL_CLONE => self.sys_clone(
-                args[0] as u32, 
-                args[1], 
-                args[2], 
-                args[3], 
-                args[4]
-            ),
+            SYSCALL_CLONE => self.sys_clone(args[0] as u32, args[1], args[2], args[3], args[4]),
             SYSCALL_EXECVE => todo!(),
             SYSCALL_WAIT => todo!(),
             SYSCALL_EXIT => {
+                debug!("syscall: exit");
                 self.do_exit = true;
                 Ok(args[0])
             }

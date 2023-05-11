@@ -40,9 +40,12 @@ pub fn get_hart_id() -> usize {
     hart_id
 }
 
+/// Switch to a new pagetable
+/// returns the old pagetable
 #[inline(always)]
-pub fn switch_page_table(paddr: usize) {
+pub fn switch_page_table(paddr: usize) -> usize {
     debug!("Switching to pagetable: 0x{:x}", paddr);
+    let old_page_table_ptr = riscv::register::satp::read();
     unsafe {
         riscv::register::satp::set(
             riscv::register::satp::Mode::Sv39,
@@ -52,6 +55,7 @@ pub fn switch_page_table(paddr: usize) {
         riscv::asm::sfence_vma_all();
     }
     debug!("Switched to pagetable: 0x{:x}", paddr);
+    old_page_table_ptr.ppn() << consts::PAGE_SIZE_BITS
 }
 
 #[inline(always)]
