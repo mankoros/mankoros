@@ -67,10 +67,13 @@ impl<'a> Syscall<'a> {
                 break child.id();
             }
         };
-        let wstatus = wstatus as *mut usize;
-        within_sum(|| {
-            unsafe { *wstatus = pid.into() };
-        });
+        if wstatus != 0 {
+            // No write to NULL
+            let wstatus = wstatus as *mut usize;
+            within_sum(|| {
+                unsafe { *wstatus = pid.into() };
+            });
+        }
         Ok(pid.into())
     }
 
