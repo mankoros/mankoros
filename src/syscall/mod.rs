@@ -70,6 +70,7 @@ impl<'a> Syscall<'a> {
                 while !self.lproc.signal().contains(signal::SignalSet::SIGCHLD) {
                     yield_now().await;
                 }
+                // TODO: return the exited pid
                 Ok(0)
             }
             SYSCALL_EXIT => {
