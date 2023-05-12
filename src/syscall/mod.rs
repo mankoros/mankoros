@@ -2,9 +2,10 @@ use core::cmp::min;
 
 use crate::arch::within_sum;
 use crate::executor::yield_future::yield_now;
-use crate::process::lproc::LightProcess;
+use crate::process::lproc::{LightProcess, ProcessStatus};
 use crate::signal;
 use crate::{axerrno::AxError, syscall::misc::UtsName, trap::context::UKContext};
+use alloc::vec::Vec;
 use log::debug;
 use log::info;
 
@@ -64,22 +65,10 @@ impl<'a> Syscall<'a> {
             // Process related
             SYSCALL_CLONE => self.sys_clone(args[0] as u32, args[1], args[2], args[3], args[4]),
             SYSCALL_EXECVE => todo!(),
-            SYSCALL_WAIT => {
-                debug!("syscall: wait");
-                // TODO: use waker
-                while !self.lproc.signal().contains(signal::SignalSet::SIGCHLD) {
-                    yield_now().await;
-                }
-                // TODO: return the exited pid
-                Ok(0)
-            }
+            SYSCALL_WAIT => self.sys_wait(args[0], args[1], args[2]).await,
             SYSCALL_EXIT => {
                 debug!("syscall: exit");
                 self.do_exit = true;
-                if let Some(parent) = self.lproc.parent() {
-                    let parent = parent.upgrade().unwrap().clone();
-                    parent.remove_child(&self.lproc);
-                }
                 Ok(args[0])
             }
             SYSCALL_GETPPID => self.sys_getppid(),

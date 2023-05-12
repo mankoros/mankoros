@@ -43,7 +43,7 @@ fn new_shared<T>(t: T) -> Shared<T> {
 
 pub struct LightProcess {
     id: PidHandler,
-    parent: Option<Weak<LightProcess>>,
+    parent: Shared<Option<Weak<LightProcess>>>,
     context: SyncUnsafeCell<Box<UKContext, Global>>,
     stack_id: StackID,
 
@@ -69,7 +69,7 @@ impl LightProcess {
     }
 
     pub fn parent_id(&self) -> Pid {
-        if let Some(p) = self.parent.as_ref() {
+        if let Some(p) = self.parent.lock(here!()).as_ref() {
             p.upgrade().unwrap().id()
         } else {
             // Return 1 if no parent
@@ -78,7 +78,7 @@ impl LightProcess {
     }
 
     pub fn parent(&self) -> Option<Weak<LightProcess>> {
-        self.parent.clone()
+        self.parent.lock(here!()).clone()
     }
 
     pub fn signal(&self) -> signal::SignalSet {
@@ -99,12 +99,23 @@ impl LightProcess {
         }
     }
 
+    pub fn set_signal(self: Arc<Self>, signal: signal::SignalSet) {
+        self.signal.lock(here!()).set(signal, true);
+    }
+    pub fn clear_signal(self: Arc<Self>, signal: signal::SignalSet) {
+        self.signal.lock(here!()).set(signal, false);
+    }
+
     pub fn context(&self) -> &mut UKContext {
         unsafe { &mut *self.context.get() }
     }
 
     pub fn exit_code(&self) -> i32 {
         self.exit_code.load(Ordering::SeqCst)
+    }
+
+    pub fn children(&self) -> Vec<Arc<LightProcess>> {
+        self.children.lock(here!()).clone()
     }
 
     pub fn add_child(self: Arc<Self>, child: Arc<LightProcess>) {
@@ -115,9 +126,19 @@ impl LightProcess {
         let mut children = self.children.lock(here!());
         let index = children.iter().position(|c| Arc::ptr_eq(c, child)).unwrap();
         children.remove(index);
-        // Remove child also sets a SIGCHLD signal
-        // TODO: use a signal manager
-        self.signal.lock(here!()).set(signal::SignalSet::SIGCHLD, true);
+    }
+    pub fn do_exit(self: Arc<Self>) {
+        if let Some(parent) = self.parent() {
+            let parent = parent.upgrade().unwrap().clone();
+            // No remove from parent here, because it will be done in the parent's wait
+            // Just send a signal to the parent
+            parent.set_signal(signal::SignalSet::SIGCHLD);
+            // Set self status
+            self.set_status(ProcessStatus::STOPPED);
+        }
+        // Set children's parent to None
+        let children = self.children.lock(here!());
+        children.iter().for_each(|c| *c.parent.lock(here!()) = self.parent().clone());
     }
 
     pub fn with_group<T>(&self, f: impl FnOnce(&ThreadGroup) -> T) -> T {
@@ -161,7 +182,7 @@ impl LightProcess {
         let mut memory = UserSpace::new();
         Arc::new(Self {
             id: alloc_pid(),
-            parent: None,
+            parent: new_shared(None),
             context: SyncUnsafeCell::new(unsafe { UKContext::new_uninit() }),
             stack_id: memory.alloc_stack_id(),
             children: new_shared(Vec::new()),
@@ -233,7 +254,7 @@ impl LightProcess {
             // remember to add the new lproc to group please!
             group = self.group.clone();
         } else {
-            parent = Some(Arc::downgrade(&self));
+            parent = new_shared(Some(Arc::downgrade(&self)));
             children = new_shared(Vec::new());
             group = new_shared(ThreadGroup::new_empty());
         }

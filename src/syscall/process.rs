@@ -1,9 +1,13 @@
+use alloc::vec::Vec;
 use bitflags::bitflags;
 
 use crate::{
+    arch::within_sum,
     axerrno::AxError,
+    executor::yield_future::yield_now,
     memory::address::VirtAddr,
-    process::{self, user_space::user_area::UserAreaPerm, userloop},
+    process::{self, lproc::ProcessStatus, user_space::user_area::UserAreaPerm, userloop},
+    signal,
 };
 
 use super::{Syscall, SyscallResult};
@@ -39,6 +43,37 @@ bitflags! {
 }
 
 impl<'a> Syscall<'a> {
+    pub async fn sys_wait(
+        &mut self,
+        pid: usize,
+        wstatus: usize, // TODO: not sure
+        options: usize,
+    ) -> SyscallResult {
+        debug!("syscall: wait");
+        let pid = loop {
+            yield_now().await;
+            // Check if the child has exited.
+            if let Some(child) = self
+                .lproc
+                .children()
+                .into_iter()
+                .filter(|lp| lp.status() == ProcessStatus::STOPPED)
+                .collect::<Vec<_>>()
+                .first()
+            {
+                self.lproc.clone().remove_child(&child.clone());
+                // Reset SIGCHLC signal
+                self.lproc.clone().clear_signal(signal::SignalSet::SIGCHLD);
+                break child.id();
+            }
+        };
+        let wstatus = wstatus as *mut usize;
+        within_sum(|| {
+            unsafe { *wstatus = pid.into() };
+        });
+        Ok(pid.into())
+    }
+
     pub fn sys_clone(
         &mut self,
         flags: u32,

@@ -9,6 +9,7 @@ use crate::{
     boot::boot_pagetable_paddr,
     executor::{hart_local::set_curr_lproc, yield_future::yield_now},
     process::user_space::user_area::PageFaultAccessType,
+    signal,
     syscall::Syscall,
     trap::trap::run_user,
 };
@@ -132,8 +133,8 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
         // Preliminary stage have no init process, so allow pid 1 to exit
         // panic!("init process exit");
     }
-
-    // TODO: 当最后一个线程去世时, 令进程去世 (消除 alive)
+    // Do exit clean up, ownership moved
+    lproc.do_exit();
 }
 
 pub struct OutermostFuture<F: Future + Send + 'static> {
