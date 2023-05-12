@@ -38,6 +38,7 @@ mod axerrno;
 mod executor;
 mod lazy_init;
 mod process;
+mod signal;
 mod tools;
 mod trap;
 
@@ -201,6 +202,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
 
     let passed_cases = [
         "/getpid", "getppid", "brk", "open", "fstat", "uname", "getcwd", "dup", "dup2", "mkdir_",
+        "fork",
     ];
 
     for case_name in passed_cases.into_iter() {

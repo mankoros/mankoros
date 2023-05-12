@@ -18,7 +18,7 @@ pub fn spawn_proc_from_file(file: Arc<dyn VfsNode>) {
     });
 
     let (r, t) = executor::spawn(future);
-    r.run();
+    r.schedule();
     t.detach();
 }
 
@@ -28,6 +28,6 @@ pub fn spawn_proc(lproc: Arc<LightProcess>) {
     });
 
     let (r, t) = executor::spawn(future);
-    r.run();
+    r.schedule();
     t.detach();
 }

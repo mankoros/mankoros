@@ -9,6 +9,7 @@ use crate::{
         self,
         vfs::{filesystem::VfsNode, path::Path},
     },
+    signal,
     sync::SpinNoIrqLock,
     syscall,
     tools::handler_pool::UsizePool,
@@ -57,7 +58,8 @@ pub struct LightProcess {
     memory: Shared<UserSpace>,
     fsinfo: Shared<FsInfo>,
     fdtable: Shared<FdTable>,
-    // TODO: signal handler
+    // TODO: use a signal manager
+    signal: SpinNoIrqLock<signal::SignalSet>,
 }
 
 impl LightProcess {
@@ -73,6 +75,14 @@ impl LightProcess {
             // Return 1 if no parent
             1.into()
         }
+    }
+
+    pub fn parent(&self) -> Option<Weak<LightProcess>> {
+        self.parent.clone()
+    }
+
+    pub fn signal(&self) -> signal::SignalSet {
+        self.signal.lock(here!()).clone()
     }
 
     pub fn tgid(&self) -> Pid {
@@ -105,6 +115,9 @@ impl LightProcess {
         let mut children = self.children.lock(here!());
         let index = children.iter().position(|c| Arc::ptr_eq(c, child)).unwrap();
         children.remove(index);
+        // Remove child also sets a SIGCHLD signal
+        // TODO: use a signal manager
+        self.signal.lock(here!()).set(signal::SignalSet::SIGCHLD, true);
     }
 
     pub fn with_group<T>(&self, f: impl FnOnce(&ThreadGroup) -> T) -> T {
@@ -158,6 +171,7 @@ impl LightProcess {
             memory: new_shared(memory),
             fsinfo: new_shared(FsInfo::new()),
             fdtable: new_shared(FdTable::new_with_std()),
+            signal: SpinNoIrqLock::new(signal::SignalSet::empty()),
         })
     }
 
@@ -268,6 +282,7 @@ impl LightProcess {
             memory,
             fsinfo,
             fdtable,
+            signal: SpinNoIrqLock::new(signal::SignalSet::empty()),
         };
         let new = Arc::new(new);
 
