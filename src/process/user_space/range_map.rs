@@ -312,16 +312,17 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
 
     /// 向后 (虚拟地址增大方向) 减少一个从 start 开始的段, 这个段必须存在. 
     /// 
-    /// 减少成功 (长度为 0 时删除该段) 返回 Ok, 越界或超出长度返回 Err
-    pub fn reduce_back(&mut self, start: U, new_end: U) -> Result<(), ()> {
+    /// 减少成功 (长度为 0 时删除该段) 返回被删除的段的范围, 越界或超出长度返回 Err
+    pub fn reduce_back(&mut self, start: U, new_end: U) -> Result<Range<U>, ()> {
         let node = self.0.get_mut(&start).unwrap();
+        let node_end = node.end;
         if start <= new_end && new_end < node.end {
             if start == new_end {
                 self.0.remove(&start).unwrap();
             } else {
                 node.end = new_end;
             }
-            Ok(())
+            Ok(new_end..node_end)
         } else {
             Err(())
         }

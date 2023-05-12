@@ -15,8 +15,7 @@ use crate::{
     },
 };
 
-use riscv::register::scause;
-use core::ops::Range;
+use riscv::register::{scause};
 use core::fmt::Debug;
 
 use crate::consts::address_space::{U_SEG_HEAP_BEG, U_SEG_FILE_END, U_SEG_FILE_BEG};
@@ -25,8 +24,21 @@ use crate::process::shared_frame_mgr::with_shared_frame_mgr;
 use crate::arch::get_curr_page_table_addr;
 use log::debug;
 use super::StackID;
+use core::ops::Range;
+use crate::memory::frame::dealloc_frame;
 
 pub type VirtAddrRange = Range<VirtAddr>;
+
+#[inline(always)]
+fn iter_vpn(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum) -> ()) {
+    let start_vpn = range.start.into();
+    let end_vpn = range.end.into();
+    let mut vpn = start_vpn;
+    while vpn < end_vpn {
+        f(vpn);
+        vpn += 1;
+    }
+}
 
 bitflags! {
     pub struct UserAreaPerm: u8 {
@@ -234,6 +246,36 @@ impl UserArea {
         page_table.map_page(access_vpn.into(), frame, self.perm().into());
         Ok(())
     }
+
+    fn split_and_make_left(&mut self, split_at: VirtAddr, range: VirtAddrRange) -> Self {
+        use UserAreaType::*;
+        // return left-hand-side area
+        match &mut self.kind {
+            MmapAnonymous => {
+                UserArea::new_anonymous(range.clone(), self.perm)
+            },
+            MmapPrivate { file, offset } => {
+                let old_offset = *offset;
+                // change self to become the new right-hand-side area
+                *offset += split_at - range.start;
+                UserArea::new_private(self.perm, file.clone(), old_offset)
+            },
+        }
+    }
+
+    fn split_and_make_right(&mut self, split_at: VirtAddr, range: VirtAddrRange) -> Self {
+        use UserAreaType::*;
+        // change self to become the new left-hand-side area: nothing need to do
+        // return right-hand-side area
+        match &self.kind {
+            MmapAnonymous => {
+                UserArea::new_anonymous(range.clone(), self.perm)
+            },
+            MmapPrivate { file, offset } => {
+                UserArea::new_private(self.perm, file.clone(), *offset + (split_at - range.start))
+            },
+        }
+    }
 }
 
 /// 管理整个用户虚拟地址空间的虚拟地址分配
@@ -297,6 +339,8 @@ impl UserAreaManager {
         } else if new_brk < end {
             // when smaller, split the area into [heap_start, new_brk), [new_brk, heap_end), then remove the second one
             self.map.reduce_back(start, new_brk)
+                .map(|_| ())
+            // TODO: release page
         } else {
             // when equal, do nothing
             Ok(())
@@ -373,5 +417,30 @@ impl UserAreaManager {
             self.page_fault(page_table, vpn, PageFaultAccessType::RO).unwrap();
             vpn += 1;
         }
+    }
+
+    pub fn unmap_range(&mut self, page_table: &mut PageTable, range: VirtAddrRange) {
+        debug!("unmap range: {:?}", range);
+        self.map.remove(range, 
+            UserArea::split_and_make_left,
+            UserArea::split_and_make_right, 
+            |_area, range| Self::release_range(page_table, range) 
+        );
+    }
+
+    fn release_range(page_table: &mut PageTable, range: VirtAddrRange) {
+        debug!("release range: {:?}", range);
+        // 释放被删除的段
+        with_shared_frame_mgr(|mgr| {
+            iter_vpn(range, |vpn| {
+                let ppn = page_table.get_paddr_from_vaddr(vpn.into()).into();
+                // 如果是共享的, 则只减少引用计数, 否则释放
+                if mgr.is_shared(ppn) {
+                    mgr.remove_ref(ppn);
+                } else {
+                    dealloc_frame(ppn.into());
+                }
+            })
+        })
     }
 }
