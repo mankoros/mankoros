@@ -13,7 +13,7 @@ pub fn spawn_proc_from_file(file: Arc<dyn VfsNode>) {
     let lproc = LightProcess::new();
 
     let future = OutermostFuture::new(lproc.clone(), async {
-        lproc.clone().exec_first(file, Vec::new(), Vec::new());
+        lproc.clone().do_exec(file, Vec::new(), Vec::new());
         userloop::userloop(lproc).await;
     });
 

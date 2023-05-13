@@ -263,3 +263,18 @@ impl UserSpace {
         }
     }
 }
+
+impl Drop for UserSpace {
+    fn drop(&mut self) {
+        let areas = &mut self.areas;
+        let page_table = &mut self.page_table;
+        debug!("drop user space with page table at {:x?}", page_table.root_paddr());
+
+        for (range, _) in areas.iter() {
+            UserAreaManager::release_range(page_table, range);
+        }
+
+        drop(areas);
+        drop(page_table);
+    }
+}

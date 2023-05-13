@@ -440,12 +440,21 @@ impl UserAreaManager {
         );
     }
 
-    fn release_range(page_table: &mut PageTable, range: VirtAddrRange) {
+    /// 释放一个虚拟地址范围内的所有页
+    /// 
+    /// **注意**: 只释放物理页, 不会管分段
+    pub fn release_range(page_table: &mut PageTable, range: VirtAddrRange) {
         debug!("release range: {:?}", range);
         // 释放被删除的段
         with_shared_frame_mgr(|mgr| {
             iter_vpn(range, |vpn| {
-                let ppn = page_table.get_paddr_from_vaddr(vpn.into()).into();
+                // TODO-PERF: 尝试在段中维护已映射的共享物理页, 以减少查询次数
+                let pte = page_table.get_pte_copied_from_vpn(vpn);
+                if pte.is_none() {
+                    return;
+                }
+
+                let ppn = pte.unwrap().ppn();
                 // 如果是共享的, 则只减少引用计数, 否则释放
                 if mgr.is_shared(ppn) {
                     mgr.remove_ref(ppn);

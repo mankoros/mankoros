@@ -3,7 +3,7 @@ use super::{
     user_space::{UserSpace},
 };
 use crate::{
-    arch::within_sum,
+    arch::{within_sum, switch_page_table},
     consts::PAGE_SIZE,
     fs::{
         self,
@@ -193,15 +193,19 @@ impl LightProcess {
         })
     }
 
-    /// 第一次 exec
-    // Big-TODO: 考虑 remap, 这里默认进程之前没有 map 过文件
-    pub fn exec_first(
+    pub fn do_exec(
         self: Arc<Self>,
         elf_file: Arc<dyn VfsNode>,
         args: Vec<String>,
         envp: Vec<String>,
     ) {
-        debug!("Exec first");
+        // create new userspace and release the old one
+        *self.memory.lock(here!()) = UserSpace::new();
+
+        let page_table_paddr = self.with_memory(|m| m.page_table.root_paddr());
+        debug!("Create new userspace with page table at {:?}", page_table_paddr);
+        switch_page_table(page_table_paddr.into());
+
         // 把 elf 的 segment 映射到用户空间
         let (entry_point, auxv) = self.with_mut_memory(|m| m.parse_and_map_elf_file(elf_file));
 
