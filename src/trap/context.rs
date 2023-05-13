@@ -66,4 +66,9 @@ impl UKContext {
         // tp == x4
         self.user_rx[4] = val;
     }
+
+    pub fn set_user_sp(&mut self, val: usize) {
+        // sp == x2
+        self.user_rx[2] = val;
+    }
 }

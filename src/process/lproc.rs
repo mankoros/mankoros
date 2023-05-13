@@ -45,7 +45,6 @@ pub struct LightProcess {
     id: PidHandler,
     parent: Shared<Option<Weak<LightProcess>>>,
     context: SyncUnsafeCell<Box<UKContext, Global>>,
-    stack_begin: VirtAddr,
 
     // 因为每个儿子自己跑来加 parent 的 children, 所以可能并发, 要加锁
     children: Arc<SpinNoIrqLock<Vec<Arc<LightProcess>>>>,
@@ -179,17 +178,15 @@ impl LightProcess {
 
     // ========================= 进程创建 =========================
     pub fn new() -> Arc<Self> {
-        let mut memory = UserSpace::new();
         Arc::new(Self {
             id: alloc_pid(),
             parent: new_shared(None),
             context: SyncUnsafeCell::new(unsafe { UKContext::new_uninit() }),
-            stack_begin: memory.areas_mut().alloc_stack(THREAD_STACK_SIZE),
             children: new_shared(Vec::new()),
             status: SpinNoIrqLock::new(SyncUnsafeCell::new(ProcessStatus::UNINIT)),
             exit_code: AtomicI32::new(0),
             group: new_shared(ThreadGroup::new_empty()),
-            memory: new_shared(memory),
+            memory: new_shared(UserSpace::new()),
             fsinfo: new_shared(FsInfo::new()),
             fdtable: new_shared(FdTable::new_with_std()),
             signal: SpinNoIrqLock::new(signal::SignalSet::empty()),
@@ -211,12 +208,16 @@ impl LightProcess {
         debug!("Parse ELF file done.");
 
         // 分配栈
-        self.with_mut_memory(|m| m.force_map_area(self.stack_begin));
+        let stack_begin = self.with_mut_memory(|m| {
+            let stack_begin = m.areas_mut().alloc_stack(THREAD_STACK_SIZE);
+            m.force_map_area(stack_begin);
+            stack_begin
+        });
 
         debug!("Stack alloc done.");
         // 将参数, auxv 和环境变量放到栈上
         let (sp, argc, argv, envp) = within_sum(
-            || init_stack(self.stack_begin, args, envp, auxv));
+            || init_stack(stack_begin, args, envp, auxv));
 
         // 为线程初始化上下文
         debug!("Entry point: {:?}", entry_point);
@@ -237,7 +238,7 @@ impl LightProcess {
         use syscall::CloneFlags;
 
         let id = alloc_pid();
-        let context = SyncUnsafeCell::new(Box::new(self.context().clone()));
+        let mut context = SyncUnsafeCell::new(Box::new(self.context().clone()));
         let status = SpinNoIrqLock::new(SyncUnsafeCell::new(self.status()));
         let exit_code = AtomicI32::new(self.exit_code());
 
@@ -277,6 +278,7 @@ impl LightProcess {
             stack_begin = memory.lock(here!())
                 .areas_mut().alloc_stack(THREAD_STACK_SIZE);
         }
+        context.get_mut().set_user_sp(stack_begin.into());
 
         let fsinfo;
         if flags.contains(CloneFlags::FS) {
@@ -298,7 +300,6 @@ impl LightProcess {
             id,
             parent,
             context,
-            stack_begin,
             children,
             status,
             exit_code,
