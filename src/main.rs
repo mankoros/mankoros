@@ -43,7 +43,7 @@ mod tools;
 mod trap;
 
 use driver::uart::Uart;
-use log::{error, info};
+use log::{error, info, warn};
 use memory::frame;
 use memory::heap;
 use memory::pagetable::pte::PTEFlags;
@@ -218,6 +218,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     ];
 
     for case_name in passed_cases.into_iter() {
+        warn!("============== Running test case: {} ================", case_name);
         run_test_case(case_name);
     }
 
