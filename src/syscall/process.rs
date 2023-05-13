@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{vec::Vec, string::String};
 use bitflags::bitflags;
 
 use crate::{
@@ -7,10 +7,11 @@ use crate::{
     executor::yield_future::yield_now,
     memory::address::VirtAddr,
     process::{self, lproc::ProcessStatus, user_space::user_area::UserAreaPerm},
-    signal,
+    signal, fs::vfs::{filesystem::VfsNode, path::Path}, tools::user_check::UserCheck,
 };
 
 use super::{Syscall, SyscallResult};
+use super::super::fs;
 use log::{debug, warn};
 
 bitflags! {
@@ -150,5 +151,57 @@ impl<'a> Syscall<'a> {
         debug!("Spawning new process with tid {:#?}", new_proc_tid);
         process::spawn_proc(new_lproc);
         Ok(new_proc_tid.into())
+    }
+
+    pub fn sys_execve(
+        &mut self,
+        path: *const u8,
+        argv: *const *const u8,
+        envp: *const *const u8,
+    ) -> SyscallResult {
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+
+        let path_str = user_check.checked_read_cstr(path)
+            .map_err(|_| AxError::InvalidInput)?;
+        let path = Path::from_string(path_str)
+            .map_err(|_| AxError::InvalidInput)?;
+        let filename = path.last().clone();
+
+        let mut argv = user_check.checked_read_2d_cstr(argv)
+            .map_err(|_| AxError::InvalidInput)?;
+        let mut envp = user_check.checked_read_2d_cstr(envp)
+            .map_err(|_| AxError::InvalidInput)?;
+
+        drop(user_check);
+        debug!("syscall: execve: path: {:?}, argv: {:?}, envp: {:?}", path, argv, envp);
+
+        // 不知道为什么要加, 从 Oops 抄过来的
+        envp.push(String::from("LD_LIBRARY_PATH=."));
+        envp.push(String::from("SHELL=/busybox"));
+        envp.push(String::from("PWD=/"));
+        envp.push(String::from("USER=root"));
+        envp.push(String::from("MOTD_SHOWN=pam"));
+        envp.push(String::from("LANG=C.UTF-8"));
+        envp.push(String::from("INVOCATION_ID=e9500a871cf044d9886a157f53826684"));
+        envp.push(String::from("TERM=vt220"));
+        envp.push(String::from("SHLVL=2"));
+        envp.push(String::from("JOURNAL_STREAM=8:9265"));
+        envp.push(String::from("OLDPWD=/root"));
+        envp.push(String::from("_=busybox"));
+        envp.push(String::from("LOGNAME=root"));
+        envp.push(String::from("HOME=/"));
+        envp.push(String::from("PATH=/"));
+
+        let file = if filename.ends_with(".sh") {
+            argv.insert(0, String::from("busybox"));
+            argv.insert(1, String::from("sh"));
+            fs::root::get_root_dir().lookup("busybox").unwrap()
+        } else {
+            fs::root::get_root_dir().lookup(&path.to_string())
+                .map_err(|_| AxError::NotFound)?
+        };
+
+        self.lproc.clone().do_exec(file, argv, envp);
+        Ok(0)
     }
 }

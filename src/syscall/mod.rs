@@ -64,7 +64,11 @@ impl<'a> Syscall<'a> {
             SYSCALL_FSTAT => self.sys_fstat(args[0], args[1] as *mut fs::Kstat),
             // Process related
             SYSCALL_CLONE => self.sys_clone(args[0] as u32, args[1], args[2], args[3], args[4]),
-            SYSCALL_EXECVE => todo!(),
+            SYSCALL_EXECVE => self.sys_execve(
+                args[0] as *const u8, 
+                args[1] as *const *const u8, 
+                args[2] as *const *const u8
+            ),
             SYSCALL_WAIT => self.sys_wait(args[0], args[1], args[2]).await,
             SYSCALL_EXIT => {
                 debug!("syscall: exit");
