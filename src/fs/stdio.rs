@@ -4,7 +4,7 @@
 //! Copyright 2022 (C) MaturinOS
 //! Copyright 2023 (C) MankorOS
 
-use crate::{axerrno::AxError, impl_vfs_non_dir_default, print};
+use crate::{axerrno::AxError, impl_vfs_non_dir_default};
 
 use super::vfs::{
     filesystem::VfsNode,

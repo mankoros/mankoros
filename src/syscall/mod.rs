@@ -51,7 +51,7 @@ impl<'a> Syscall<'a> {
                 args[2] as u32,
                 args[3] as i32,
             ),
-            SYSCALL_CHDIR => todo!(),
+            SYSCALL_CHDIR => self.sys_chdir(args[0] as *const u8),
             SYSCALL_CLOSE => self.sys_close(args[0]),
             SYSCALL_GETDENTS => todo!(),
             SYSCALL_READ => self.sys_read(args[0], args[1] as *mut u8, args[2]),
