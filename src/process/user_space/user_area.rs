@@ -18,14 +18,14 @@ use crate::{
 use riscv::register::{scause};
 use core::fmt::Debug;
 
-use crate::consts::address_space::{U_SEG_HEAP_BEG, U_SEG_FILE_END, U_SEG_FILE_BEG};
+use crate::consts::address_space::{U_SEG_HEAP_BEG, U_SEG_FILE_END, U_SEG_FILE_BEG, U_SEG_STACK_BEG, U_SEG_STACK_END};
 
 use crate::process::shared_frame_mgr::with_shared_frame_mgr;
 use crate::arch::get_curr_page_table_addr;
-use log::debug;
-use super::StackID;
+use log::{debug, trace};
 use core::ops::Range;
 use crate::memory::frame::dealloc_frame;
+use crate::consts::PAGE_SIZE;
 
 pub type VirtAddrRange = Range<VirtAddr>;
 
@@ -165,7 +165,7 @@ pub struct UserArea {
 }
 
 impl UserArea {
-    pub fn new_anonymous(_range: VirtAddrRange, perm: UserAreaPerm) -> Self {
+    pub fn new_anonymous(perm: UserAreaPerm) -> Self {
         Self {
             kind: UserAreaType::MmapAnonymous,
             perm,
@@ -252,7 +252,7 @@ impl UserArea {
         // return left-hand-side area
         match &mut self.kind {
             MmapAnonymous => {
-                UserArea::new_anonymous(range.clone(), self.perm)
+                UserArea::new_anonymous(self.perm)
             },
             MmapPrivate { file, offset } => {
                 let old_offset = *offset;
@@ -269,7 +269,7 @@ impl UserArea {
         // return right-hand-side area
         match &self.kind {
             MmapAnonymous => {
-                UserArea::new_anonymous(range.clone(), self.perm)
+                UserArea::new_anonymous(self.perm)
             },
             MmapPrivate { file, offset } => {
                 UserArea::new_private(self.perm, file.clone(), *offset + (split_at - range.start))
@@ -287,7 +287,8 @@ pub struct UserAreaManager {
 
 impl UserAreaManager {
     const HEAP_BEG: VirtAddr = U_SEG_HEAP_BEG.into();
-    const MMAP_RANGE: Range<VirtAddr> = U_SEG_FILE_BEG.into()..U_SEG_FILE_END.into();
+    const STACK_RANGE: VirtAddrRange = U_SEG_STACK_BEG.into()..U_SEG_STACK_END.into();
+    const MMAP_RANGE: VirtAddrRange = U_SEG_FILE_BEG.into()..U_SEG_FILE_END.into();
 
     pub fn new() -> Self {
         Self {
@@ -311,12 +312,23 @@ impl UserAreaManager {
         self.map.iter_mut()
     }
 
-    pub fn insert_stack_at(&mut self, stack_id: StackID) {
+    /// 返回栈的开始地址 sp_init, [sp_init - size, sp_init] 都是栈的范围.
+    /// sp_init 16 字节对齐
+    pub fn alloc_stack(&mut self, size: usize) -> VirtAddr {
+        let range = self.map
+            .find_free_range(Self::STACK_RANGE, size, |va, n| (va + n).round_up())
+            .expect("too many stack!");
+
+        // 栈要 16 字节对齐
+        let sp_init = ((range.end.0 - PAGE_SIZE) & !0xf).into();
+        trace!("alloc stack: {:x?}, sp_init: {:x?}", range, sp_init);
+
         let area = UserArea::new_anonymous(
-            stack_id.stack_range(), 
             UserAreaPerm::READ | UserAreaPerm::WRITE
         );
-        self.map.try_insert(stack_id.stack_range(), area).unwrap();
+        self.map.try_insert(range, area).unwrap();
+        
+        sp_init
     }
 
     pub fn insert_heap(&mut self, init_size: usize) {
@@ -324,7 +336,7 @@ impl UserAreaManager {
             start: Self::HEAP_BEG,
             end: Self::HEAP_BEG + init_size,
         };
-        let area = UserArea::new_anonymous(range.clone(), UserAreaPerm::READ | UserAreaPerm::WRITE);
+        let area = UserArea::new_anonymous(UserAreaPerm::READ | UserAreaPerm::WRITE);
         self.map.try_insert(range, area).unwrap();
     }
 
@@ -380,7 +392,7 @@ impl UserAreaManager {
             start: begin_vaddr,
             end: begin_vaddr + size,
         };
-        let area = UserArea::new_anonymous(range.clone(), perm);
+        let area = UserArea::new_anonymous(perm);
         self.map.try_insert(range.clone(), area).map(|v| (range, &*v)).map_err(|_| ())
     }
 

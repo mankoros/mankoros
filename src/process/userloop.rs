@@ -6,10 +6,8 @@ use riscv::register::{
 
 use crate::{
     arch,
-    boot::boot_pagetable_paddr,
     executor::{hart_local::set_curr_lproc, yield_future::yield_now},
     process::user_space::user_area::PageFaultAccessType,
-    signal,
     syscall::Syscall,
     trap::trap::run_user,
 };

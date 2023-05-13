@@ -1,6 +1,6 @@
 use super::{
     pid::{alloc_pid, Pid, PidHandler},
-    user_space::{StackID, UserSpace},
+    user_space::{UserSpace},
 };
 use crate::{
     arch::within_sum,
@@ -13,7 +13,7 @@ use crate::{
     sync::SpinNoIrqLock,
     syscall,
     tools::handler_pool::UsizePool,
-    trap::context::UKContext,
+    trap::context::UKContext, process::user_space::{THREAD_STACK_SIZE, init_stack}, memory::address::VirtAddr,
 };
 use alloc::{
     alloc::Global, boxed::Box, collections::BTreeMap, string::String, sync::Arc, sync::Weak,
@@ -45,7 +45,7 @@ pub struct LightProcess {
     id: PidHandler,
     parent: Shared<Option<Weak<LightProcess>>>,
     context: SyncUnsafeCell<Box<UKContext, Global>>,
-    stack_id: StackID,
+    stack_begin: VirtAddr,
 
     // 因为每个儿子自己跑来加 parent 的 children, 所以可能并发, 要加锁
     children: Arc<SpinNoIrqLock<Vec<Arc<LightProcess>>>>,
@@ -184,7 +184,7 @@ impl LightProcess {
             id: alloc_pid(),
             parent: new_shared(None),
             context: SyncUnsafeCell::new(unsafe { UKContext::new_uninit() }),
-            stack_id: memory.alloc_stack_id(),
+            stack_begin: memory.areas_mut().alloc_stack(THREAD_STACK_SIZE),
             children: new_shared(Vec::new()),
             status: SpinNoIrqLock::new(SyncUnsafeCell::new(ProcessStatus::UNINIT)),
             exit_code: AtomicI32::new(0),
@@ -211,15 +211,12 @@ impl LightProcess {
         debug!("Parse ELF file done.");
 
         // 分配栈
-        let stack_id = self.stack_id;
-        self.with_mut_memory(|m| {
-            m.areas_mut().insert_stack_at(stack_id);
-            m.force_map_range(stack_id.stack_range());
-        });
+        self.with_mut_memory(|m| m.force_map_area(self.stack_begin));
 
         debug!("Stack alloc done.");
         // 将参数, auxv 和环境变量放到栈上
-        let (sp, argc, argv, envp) = within_sum(|| stack_id.init_stack(args, envp, auxv));
+        let (sp, argc, argv, envp) = within_sum(
+            || init_stack(self.stack_begin, args, envp, auxv));
 
         // 为线程初始化上下文
         debug!("Entry point: {:?}", entry_point);
@@ -236,7 +233,7 @@ impl LightProcess {
         debug!("User init done.");
     }
 
-    pub fn do_clone(self: Arc<Self>, flags: syscall::CloneFlags) -> Arc<Self> {
+    pub fn do_clone(self: Arc<Self>, flags: syscall::CloneFlags, user_stack_begin: Option<VirtAddr>) -> Arc<Self> {
         use syscall::CloneFlags;
 
         let id = alloc_pid();
@@ -259,20 +256,26 @@ impl LightProcess {
             group = new_shared(ThreadGroup::new_empty());
         }
 
-        let stack_id;
         let memory;
         if flags.contains(CloneFlags::VM) {
             memory = self.memory.clone();
-            stack_id = self.with_mut_memory(|m| m.alloc_stack_id());
         } else {
             // TODO-PERF: 这里应该可以优化
             // 比如引入一个新的状态, 表示这个进程的内存是应该 CoW 的, 但是不真正去 CoW 本来的内存
             // 只是给它一个全是 Invaild 的页表, 然后如果它没有进行任何写入操作, 直接进入 syscall exec 的话,
             // 就可以直接来一个新的地址空间, 不用连累旧的进程的地址空间也来一次 CoW.
             // 反之如果在那种状态 page fault 了, 那么我们就要进行 "昂贵" 的 CoW 操作了
-            let mut raw_memory = self.with_mut_memory(|m| m.clone_cow());
+            let _raw_memory = self.with_mut_memory(|m| m.clone_cow());
             memory = new_shared(self.with_mut_memory(|m| m.clone_cow()));
-            stack_id = raw_memory.alloc_stack_id();
+        }
+
+        let stack_begin;
+        // 如果用户指定了栈, 那么就用用户指定的栈, 否则在新的地址空间里分配一个
+        if let Some(sp) = user_stack_begin {
+            stack_begin = sp; 
+        } else {
+            stack_begin = memory.lock(here!())
+                .areas_mut().alloc_stack(THREAD_STACK_SIZE);
         }
 
         let fsinfo;
@@ -295,7 +298,7 @@ impl LightProcess {
             id,
             parent,
             context,
-            stack_id,
+            stack_begin,
             children,
             status,
             exit_code,

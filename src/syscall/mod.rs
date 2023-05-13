@@ -2,10 +2,10 @@ use core::cmp::min;
 
 use crate::arch::within_sum;
 use crate::executor::yield_future::yield_now;
-use crate::process::lproc::{LightProcess, ProcessStatus};
-use crate::signal;
+use crate::process::lproc::{LightProcess};
+
 use crate::{axerrno::AxError, syscall::misc::UtsName, trap::context::UKContext};
-use alloc::vec::Vec;
+
 use log::debug;
 use log::info;
 

@@ -214,6 +214,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
         "fork",
         "test_echo",
         "yield",
+        "clone",
     ];
 
     for case_name in passed_cases.into_iter() {

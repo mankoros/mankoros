@@ -6,16 +6,12 @@ use alloc::{string::String, sync::Arc, vec::Vec};
 
 
 use crate::{
-    consts::{
-        address_space::{U_SEG_STACK_BEG},
-    },
     fs::vfs::filesystem::VfsNode,
     memory::{
         address::{VirtAddr},
         pagetable::pagetable::PageTable,
     },
-    process::{aux_vector::AuxElement, user_space::user_area::{PageFaultAccessType}},
-    tools::handler_pool::UsizePool, arch::get_curr_page_table_addr,
+    process::{aux_vector::AuxElement, user_space::user_area::{PageFaultAccessType}}, arch::get_curr_page_table_addr,
 };
 
 use super::{aux_vector::AuxVector, shared_frame_mgr::with_shared_frame_mgr};
@@ -34,165 +30,129 @@ pub struct UserSpace {
     pub page_table: PageTable,
     // 分段管理
     areas: UserAreaManager,
-    // 一个进程可能有很多栈 (各个线程都一个), 该池子维护可用的 StackID
-    // 一个已分配的 stack id 代表了栈地址区域内的一段 THREAD_STACK_SIZE 长的段
-    stack_id_pool: UsizePool,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct StackID(usize);
+pub fn init_stack(
+    sp_init: VirtAddr,
+    args: Vec<String>,
+    envp: Vec<String>,
+    auxv: AuxVector,
+) -> (usize, usize, usize, usize) {
+    // spec says:
+    //      In the standard RISC-V calling convention, the stack grows downward 
+    //      and the stack pointer is always kept 16-byte aligned.
 
-impl StackID {
-    /// 栈实际上占用的地址范围, 仅供内部使用
-    pub(crate) fn stack_range(&self) -> VirtAddrRange {
-        let start = VirtAddr(U_SEG_STACK_BEG + self.0 * THREAD_STACK_SIZE);
+    /*
+    参考: https://www.cnblogs.com/likaiming/p/11193697.html
+    初始化之后的栈应该长这样子:
+    content                         size(bytes) + comment
+    -----------------------------------------------------------------------------
 
-        VirtAddrRange {
-            start,
-            end: start + THREAD_STACK_SIZE,
-        }
-    }
+    [argc = number of args]         8
+    [argv[0](pointer)]              8
+    [argv[1](pointer)]              8
+    [argv[...](pointer)]            8 * x
+    [argv[n-1](pointer)]            8
+    [argv[n](pointer)]              8 (=NULL)
 
-    /// 栈是倒着长的 (从高地址往低地址), 
-    /// 所以 sp 的开始是这个栈里最大的, 满足对齐 (16 byte) 的地址
-    /// 一般而言, 这会导致一个栈里浪费 15 byte, 说不定可以向里面塞一些彩蛋?
-    pub fn sp_init(&self) -> VirtAddr {
-        let vaddr_max = self.stack_range().end - 1;
-        let vaddr_aligned = VirtAddr(vaddr_max.0 & !(16 - 1));
-        vaddr_aligned
-    }
+    [envp[0](pointer)]              8
+    [envp[1](pointer)]              8
+    [envp[..](pointer)]             8 * x
+    [envp[term](pointer)]           8 (=NULL)
 
-    /// 栈最后的地址, 理论上可以访问这个地址, 但是不应该访问它
-    /// 当 sp = sp_max 时, 任何 push 都应该导致 stack overflow
-    pub fn sp_max(&self) -> VirtAddr {
-        self.stack_range().start
-    }
+    [auxv[0](Elf64_auxv_t)]         16
+    [auxv[1](Elf64_auxv_t)]         16
+    [auxv[..](Elf64_auxv_t)]        16 * x
+    [auxv[term](Elf64_auxv_t)]      16 (=NULL)
 
+    [padding]                       >= 0
+    [rand bytes]                    16
+    [String identifying platform]   >= 0
+    [padding for align]             >= 0 (sp - (get_random_int() % 8192)) & (~0xf)
 
-    pub fn init_stack(
-        self,
-        args: Vec<String>,
-        envp: Vec<String>,
-        auxv: AuxVector,
-    ) -> (usize, usize, usize, usize) {
-        // spec says:
-        //      In the standard RISC-V calling convention, the stack grows downward 
-        //      and the stack pointer is always kept 16-byte aligned.
+    [argument ASCIIZ strings]       >= 0
+    [environment ASCIIZ str]        >= 0
+    --------------------------------------------------------------------------------
+    在构建栈的时候, 我们从底向上塞各个东西
+    */
 
-        /*
-        参考: https://www.cnblogs.com/likaiming/p/11193697.html
-        初始化之后的栈应该长这样子:
-        content                         size(bytes) + comment
-        -----------------------------------------------------------------------------
+    let mut sp = sp_init.0;
+    debug_assert!(sp & 0xf == 0);
 
-        [argc = number of args]         8
-        [argv[0](pointer)]              8
-        [argv[1](pointer)]              8
-        [argv[...](pointer)]            8 * x
-        [argv[n-1](pointer)]            8
-        [argv[n](pointer)]              8 (=NULL)
-
-        [envp[0](pointer)]              8
-        [envp[1](pointer)]              8
-        [envp[..](pointer)]             8 * x
-        [envp[term](pointer)]           8 (=NULL)
-
-        [auxv[0](Elf64_auxv_t)]         16
-        [auxv[1](Elf64_auxv_t)]         16
-        [auxv[..](Elf64_auxv_t)]        16 * x
-        [auxv[term](Elf64_auxv_t)]      16 (=NULL)
-
-        [padding]                       >= 0
-        [rand bytes]                    16
-        [String identifying platform]   >= 0
-        [padding for align]             >= 0 (sp - (get_random_int() % 8192)) & (~0xf)
-
-        [argument ASCIIZ strings]       >= 0
-        [environment ASCIIZ str]        >= 0
-        --------------------------------------------------------------------------------
-        在构建栈的时候, 我们从底向上塞各个东西
-        */
-
-        let mut sp = self.sp_init().0;
-
-        // 存放环境与参数的字符串本身
-        fn push_str(sp: &mut usize, s: &str) -> usize {
-            let len = s.len();
-            *sp -= len + 1; // +1 for NUL ('\0')
-            unsafe {
-                // core::ptr::copy_nonoverlapping(s.as_ptr(), *sp as *mut u8, len);
-                for (i, c) in s.bytes().enumerate() {
-                    debug!("push_str: {:x} ({:x}) <- {:?}", *sp + i, i, c);
-                    *((*sp as *mut u8).add(i)) = c;
-                }
-                *(*sp as *mut u8).add(len) = 0u8;
+    // 存放环境与参数的字符串本身
+    fn push_str(sp: &mut usize, s: &str) -> usize {
+        let len = s.len();
+        *sp -= len + 1; // +1 for NUL ('\0')
+        unsafe {
+            // core::ptr::copy_nonoverlapping(s.as_ptr(), *sp as *mut u8, len);
+            for (i, c) in s.bytes().enumerate() {
+                debug!("push_str: {:x} ({:x}) <- {:?}", *sp + i, i, c);
+                *((*sp as *mut u8).add(i)) = c;
             }
-            *sp
+            *(*sp as *mut u8).add(len) = 0u8;
         }
-
-        let env_ptrs: Vec<usize> = envp.iter().rev().map(|s| push_str(&mut sp, s)).collect();
-        let arg_ptrs: Vec<usize> = args.iter().rev().map(|s| push_str(&mut sp, s)).collect();
-
-        // 随机对齐 (我们取 0 长度的随机对齐), 平台标识符, 随机数与对齐
-        fn align16(sp: &mut usize) {
-            *sp = (*sp - 1) & !0xf;
-        }
-
-        let rand_size = 0;
-        let platform = "RISC-V64";
-        let rand_bytes = "Meow~ O4 here;D"; // 15 + 1 char for 16bytes
-
-        sp -= rand_size;
-        push_str(&mut sp, platform);
-        push_str(&mut sp, rand_bytes);
-        align16(&mut sp);
-
-        // 存放 auxv
-        fn push_aux_elm(sp: &mut usize, elm: &AuxElement) {
-            *sp -= core::mem::size_of::<AuxElement>();
-            unsafe {
-                core::ptr::write(*sp as *mut AuxElement, *elm);
-            }
-        }
-        // 注意推栈是 "倒着" 推的, 所以先放 null, 再逆着放别的
-        push_aux_elm(&mut sp, &AuxElement::NULL);
-        for aux in auxv.into_iter().rev() {
-            push_aux_elm(&mut sp, &aux);
-        }
-
-        // 存放 envp 与 argv 指针
-        fn push_usize(sp: &mut usize, ptr: usize) {
-            *sp -= core::mem::size_of::<usize>();
-            unsafe {
-                core::ptr::write(*sp as *mut usize, ptr);
-            }
-        }
-
-        push_usize(&mut sp, 0);
-        env_ptrs.iter().for_each(|ptr| push_usize(&mut sp, *ptr));
-        let env_ptr_ptr = sp;
-
-        push_usize(&mut sp, 0);
-        arg_ptrs.iter().for_each(|ptr| push_usize(&mut sp, *ptr));
-        let arg_ptr_ptr = sp;
-
-        // 存放 argc
-        let argc = args.len();
-        push_usize(&mut sp, argc);
-
-        // 返回值
-        (sp, argc, arg_ptr_ptr, env_ptr_ptr)
+        *sp
     }
+
+    let env_ptrs: Vec<usize> = envp.iter().rev().map(|s| push_str(&mut sp, s)).collect();
+    let arg_ptrs: Vec<usize> = args.iter().rev().map(|s| push_str(&mut sp, s)).collect();
+
+    // 随机对齐 (我们取 0 长度的随机对齐), 平台标识符, 随机数与对齐
+    fn align16(sp: &mut usize) {
+        *sp = (*sp - 1) & !0xf;
+    }
+
+    let rand_size = 0;
+    let platform = "RISC-V64";
+    let rand_bytes = "Meow~ O4 here;D"; // 15 + 1 char for 16bytes
+
+    sp -= rand_size;
+    push_str(&mut sp, platform);
+    push_str(&mut sp, rand_bytes);
+    align16(&mut sp);
+
+    // 存放 auxv
+    fn push_aux_elm(sp: &mut usize, elm: &AuxElement) {
+        *sp -= core::mem::size_of::<AuxElement>();
+        unsafe {
+            core::ptr::write(*sp as *mut AuxElement, *elm);
+        }
+    }
+    // 注意推栈是 "倒着" 推的, 所以先放 null, 再逆着放别的
+    push_aux_elm(&mut sp, &AuxElement::NULL);
+    for aux in auxv.into_iter().rev() {
+        push_aux_elm(&mut sp, &aux);
+    }
+
+    // 存放 envp 与 argv 指针
+    fn push_usize(sp: &mut usize, ptr: usize) {
+        *sp -= core::mem::size_of::<usize>();
+        unsafe {
+            core::ptr::write(*sp as *mut usize, ptr);
+        }
+    }
+
+    push_usize(&mut sp, 0);
+    env_ptrs.iter().for_each(|ptr| push_usize(&mut sp, *ptr));
+    let env_ptr_ptr = sp;
+
+    push_usize(&mut sp, 0);
+    arg_ptrs.iter().for_each(|ptr| push_usize(&mut sp, *ptr));
+    let arg_ptr_ptr = sp;
+
+    // 存放 argc
+    let argc = args.len();
+    push_usize(&mut sp, argc);
+
+    // 返回值
+    (sp, argc, arg_ptr_ptr, env_ptr_ptr)
 }
 
 impl UserSpace {
     pub fn new() -> Self {
-        let page_table = PageTable::new_with_kernel_seg();
-        let stack_id_pool = UsizePool::new(1);
         Self {
-            page_table,
+            page_table: PageTable::new_with_kernel_seg(),
             areas: UserAreaManager::new(),
-            stack_id_pool,
         }
     }
 
@@ -208,12 +168,6 @@ impl UserSpace {
         self.areas.get_area(vaddr)
             .map(|a| a.perm().contains(perm))
             .unwrap_or(false)
-    }
-
-    /// 为线程分配一个栈空间 ID
-    /// 该 id 只意味着某段虚拟地址的使用权被分配出去了, 不会产生真的物理页分配
-    pub fn alloc_stack_id(&mut self) -> StackID {
-        StackID(self.stack_id_pool.get())
     }
 
     /// Return: entry_point, auxv
@@ -292,6 +246,12 @@ impl UserSpace {
         self.areas.force_map_range(&mut self.page_table, range);
     }
 
+    /// 将 vaddr 所在的区域的所有页强制分配
+    pub fn force_map_area(&mut self, vaddr: VirtAddr) {
+        let (range, _) = self.areas.get(vaddr).unwrap();
+        self.force_map_range(range);
+    }
+
     pub fn clone_cow(&mut self) -> Self {
         Self {
             page_table: self.page_table.copy_table_and_mark_self_cow(|frame_paddr| {
@@ -300,7 +260,6 @@ impl UserSpace {
                 });
             }),
             areas: self.areas.clone(),
-            stack_id_pool: self.stack_id_pool.clone(),
         }
     }
 }

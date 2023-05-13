@@ -6,12 +6,12 @@ use crate::{
     axerrno::AxError,
     executor::yield_future::yield_now,
     memory::address::VirtAddr,
-    process::{self, lproc::ProcessStatus, user_space::user_area::UserAreaPerm, userloop},
+    process::{self, lproc::ProcessStatus, user_space::user_area::UserAreaPerm},
     signal,
 };
 
 use super::{Syscall, SyscallResult};
-use log::debug;
+use log::{debug, warn};
 
 bitflags! {
     pub struct CloneFlags: u32 {
@@ -45,9 +45,9 @@ bitflags! {
 impl<'a> Syscall<'a> {
     pub async fn sys_wait(
         &mut self,
-        pid: usize,
+        _pid: usize,
         wstatus: usize, // TODO: not sure
-        options: usize,
+        _options: usize,
     ) -> SyscallResult {
         debug!("syscall: wait");
         let pid = loop {
@@ -91,8 +91,22 @@ impl<'a> Syscall<'a> {
 
         debug!("clone flags: {:#?}", flags);
 
+        let stack_begin = 
+            if child_stack != 0 {
+                if child_stack % 16 != 0 {
+                    warn!("child stack is not aligned: {:#x}", child_stack);
+                    // TODO: 跟组委会确认这种情况是不是要返回错误
+                    // return Err(AxError::InvalidInput);
+                    Some((child_stack - 8).into())
+                } else {
+                    Some(child_stack.into()) 
+                }
+            } else {
+                None
+            };
+        
         let old_lproc = self.lproc.clone();
-        let new_lproc = old_lproc.do_clone(flags);
+        let new_lproc = old_lproc.do_clone(flags, stack_begin);
 
         if flags.contains(CloneFlags::CHILD_CLEARTID) {
             todo!("clear child tid, wait for signal subsystem");
@@ -122,10 +136,6 @@ impl<'a> Syscall<'a> {
         if flags.contains(CloneFlags::PARENT_SETTID) {
             let parent_tid = Into::<usize>::into(new_lproc.parent_id()) as u32;
             checked_write_u32(parent_tid_ptr, parent_tid)?;
-        }
-
-        if child_stack != 0 {
-            todo!("refactor thread stack allocation, use find_vma in stack segment instead of an id-based approach");
         }
 
         if flags.contains(CloneFlags::SETTLS) {
