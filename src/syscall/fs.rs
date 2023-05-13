@@ -10,7 +10,7 @@ use crate::{
         self,
         vfs::{filesystem::VfsNode, path::Path},
     },
-    utils,
+    utils, tools::user_check::{UserCheck},
 };
 
 use crate::arch::within_sum;
@@ -185,5 +185,26 @@ impl<'a> Syscall<'a> {
                 Err(AxError::InvalidInput)
             }
         })
+    }
+
+    pub fn sys_chdir(&mut self, path: *const u8) -> SyscallResult {
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+        let path = user_check.checked_read_cstr(path)
+            .map_err(|_| AxError::InvalidInput)?;
+        let path = Path::from_string(path)
+            .map_err(|_| AxError::InvalidInput)?;
+
+        // check whether the path is a directory
+        let root_fs = fs::root::get_root_dir();
+        let node = root_fs.lookup(&path.to_string())?;
+        let node_stat = node.stat()?;
+        if node_stat.type_() != fs::vfs::node::VfsNodeType::Dir {
+            return Err(AxError::NotADirectory);
+        }
+
+        // change the cwd
+        self.lproc.with_mut_fsinfo(|f| f.cwd = path);
+
+        Ok(0)
     }
 }

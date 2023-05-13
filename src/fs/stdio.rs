@@ -11,6 +11,7 @@ use super::vfs::{
     node::{VfsNodeAttr, VfsNodePermission, VfsNodeType},
     VfsResult,
 };
+use log::warn;
 
 /// 标准输入流
 pub struct Stdin;
@@ -60,7 +61,7 @@ impl VfsNode for Stdout {
 
     fn write_at(&self, _offset: u64, buf: &[u8]) -> VfsResult<usize> {
         if let Ok(data) = core::str::from_utf8(buf) {
-            print!("{}", data);
+            warn!("User stdout: {}", data);
             Ok(buf.len())
         } else {
             Err(AxError::InvalidData)
@@ -94,11 +95,11 @@ impl VfsNode for Stderr {
 
     fn write_at(&self, _offset: u64, buf: &[u8]) -> VfsResult<usize> {
         if let Ok(data) = core::str::from_utf8(buf) {
-            print!("{}", data);
+            warn!("User stderr: {}", data);
             Ok(buf.len())
         } else {
             for i in 0..buf.len() {
-                print!("{} ", buf[i]);
+                warn!("User stderr (non-utf8): {} ", buf[i]);
             }
             Ok(buf.len())
         }
