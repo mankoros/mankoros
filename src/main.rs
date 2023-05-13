@@ -217,6 +217,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
         "clone",
         "execve",
         "chdir",
+        // "munmap",
     ];
 
     for case_name in passed_cases.into_iter() {

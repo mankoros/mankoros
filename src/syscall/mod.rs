@@ -79,7 +79,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_GETPID => self.sys_getpid(),
             // Memory related
             SYSCALL_BRK => self.sys_brk(args[0]),
-            SYSCALL_MUNMAP => todo!(),
+            SYSCALL_MUNMAP => self.sys_munmap(args[0], args[1]),
             SYSCALL_MMAP => self.sys_mmap(
                 args[0],
                 args[1],

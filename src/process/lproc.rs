@@ -13,7 +13,7 @@ use crate::{
     sync::SpinNoIrqLock,
     syscall,
     tools::handler_pool::UsizePool,
-    trap::context::UKContext, process::user_space::{THREAD_STACK_SIZE, init_stack}, memory::address::VirtAddr,
+    trap::context::UKContext, process::user_space::{THREAD_STACK_SIZE, init_stack}, memory::{address::VirtAddr},
 };
 use alloc::{
     alloc::Global, boxed::Box, collections::BTreeMap, string::String, sync::Arc, sync::Weak,

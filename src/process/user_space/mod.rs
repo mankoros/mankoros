@@ -262,6 +262,10 @@ impl UserSpace {
             areas: self.areas.clone(),
         }
     }
+
+    pub fn unmap_range(&mut self, range: VirtAddrRange) {
+        self.areas.unmap_range(&mut self.page_table, range);
+    }
 }
 
 impl Drop for UserSpace {

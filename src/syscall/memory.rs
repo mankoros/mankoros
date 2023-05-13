@@ -5,7 +5,7 @@ use bitflags::bitflags;
 use log::info;
 
 use crate::{
-    axerrno::AxError, memory::pagetable::pte::PTEFlags, process::user_space::user_area::UserAreaPerm,
+    axerrno::AxError, memory::pagetable::pte::PTEFlags, process::user_space::user_area::UserAreaPerm, consts::PAGE_MASK,
 };
 
 use super::{Syscall, SyscallResult};
@@ -119,5 +119,18 @@ impl<'a> Syscall<'a> {
         }
 
         Err(AxError::InvalidInput)
+    }
+
+    pub fn sys_munmap(&mut self, start: usize, len: usize) -> SyscallResult {
+        info!("Syscall munmap: munmap start={:x} len={:x}", start, len);
+
+        if start & PAGE_MASK != 0 {
+            return Err(AxError::InvalidInput);
+        }
+
+        let range = start.into()..(start + len).into();
+        self.lproc.with_mut_memory(|m| m.unmap_range(range));
+
+        Ok(0)
     }
 }
