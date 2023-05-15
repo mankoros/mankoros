@@ -237,7 +237,7 @@ impl UserArea {
                     let real_offset = offset + (access_vaddr - range_begin);
                     let slice = unsafe { frame.as_mut_page_slice() };
                     let read_length = file.read_at(real_offset as u64, slice).expect("read file failed");
-                    assert_eq!(read_length, consts::PAGE_SIZE);
+                    // Read length may be less than PAGE_SIZE, due to file mmap
                 }
             }
         }

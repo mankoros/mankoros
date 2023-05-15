@@ -83,12 +83,12 @@ impl<'a> Syscall<'a> {
             Ok(cur_brk.into())
         } else {
             self.lproc.with_mut_memory(|m| {
-                m.areas_mut().reset_heap_break(brk.into())
+                m.areas_mut()
+                    .reset_heap_break(brk.into())
                     .map(|_| 0)
                     .map_err(|_| AxError::NoMemory)
             })
         }
-
     }
 
     pub fn sys_mmap(
@@ -101,7 +101,7 @@ impl<'a> Syscall<'a> {
         offset: usize,
     ) -> SyscallResult {
         info!(
-            "Syscall mmap: mmap start={:x} len={:x} prot=[{:#?}] flags=[{:#?}] fd={} offset={:x}",
+            "Syscall mmap: mmap start={:x} len={:} prot=[{:#?}] flags=[{:#?}] fd={} offset={:x}",
             start, len, prot, flags, fd, offset
         );
 
@@ -123,7 +123,22 @@ impl<'a> Syscall<'a> {
                 });
             }
         } else {
-            todo!();
+            // File
+            if fd >= 0 {
+                let fd = fd as usize;
+                return self.lproc.with_mut_fdtable(|f| {
+                    if let Some(fd) = f.get(fd) {
+                        // Currently, we don't support shared mappings.
+                        return self.lproc.with_mut_memory(|m| {
+                            m.areas_mut()
+                                .insert_mmap_private(len, prot.into(), fd.file.clone(), offset)
+                                .map(|(r, _)| r.start.into())
+                                .map_err(|_| AxError::NoMemory)
+                        });
+                    }
+                    Err(AxError::NotFound)
+                });
+            }
         }
 
         Err(AxError::InvalidInput)
