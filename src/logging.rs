@@ -43,7 +43,14 @@ fn __print_impl(args: fmt::Arguments) {
 
 // Currently only error, warn, info and debug is used
 // Any lower level is ignored
-const LOG_LEVEL: &str = "debug";
+cfg_if::cfg_if! {
+    // See https://doc.rust-lang.org/reference/conditional-compilation.html#debug_assertions
+    if #[cfg(debug_assertions)] {
+        const LOG_LEVEL: &str = "debug";
+    } else {
+        const LOG_LEVEL: &str = "fatal";
+    }
+}
 
 pub fn init() {
     static LOGGER: SimpleLogger = SimpleLogger;

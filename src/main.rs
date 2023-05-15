@@ -221,11 +221,13 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     ];
 
     for case_name in passed_cases.into_iter() {
-        warn!("============== Running test case: {} ================", case_name);
+        warn!(
+            "============== Running test case: {} ================",
+            case_name
+        );
         run_test_case(case_name);
+        executor::run_until_idle();
     }
-
-    executor::run_until_idle();
 
     // Shutdown
     sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);

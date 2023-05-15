@@ -15,5 +15,9 @@ Cargo.lock
 # Tmp file
 tmp
 
+# Release output
+kernel-qemu
+sbi-qemu
+
 # Testing filesystem image
 fs.img

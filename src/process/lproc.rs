@@ -1,19 +1,21 @@
 use super::{
     pid::{alloc_pid, Pid, PidHandler},
-    user_space::{UserSpace},
+    user_space::UserSpace,
 };
 use crate::{
-    arch::{within_sum, switch_page_table},
+    arch::{switch_page_table, within_sum},
     consts::PAGE_SIZE,
     fs::{
         self,
         vfs::{filesystem::VfsNode, path::Path},
     },
+    memory::address::VirtAddr,
+    process::user_space::{init_stack, THREAD_STACK_SIZE},
     signal,
     sync::SpinNoIrqLock,
     syscall,
     tools::handler_pool::UsizePool,
-    trap::context::UKContext, process::user_space::{THREAD_STACK_SIZE, init_stack}, memory::{address::VirtAddr},
+    trap::context::UKContext,
 };
 use alloc::{
     alloc::Global, boxed::Box, collections::BTreeMap, string::String, sync::Arc, sync::Weak,
@@ -203,7 +205,10 @@ impl LightProcess {
         *self.memory.lock(here!()) = UserSpace::new();
 
         let page_table_paddr = self.with_memory(|m| m.page_table.root_paddr());
-        debug!("Create new userspace with page table at {:?}", page_table_paddr);
+        debug!(
+            "Create new userspace with page table at {:?}",
+            page_table_paddr
+        );
         switch_page_table(page_table_paddr.into());
 
         // 把 elf 的 segment 映射到用户空间
@@ -220,8 +225,7 @@ impl LightProcess {
 
         debug!("Stack alloc done.");
         // 将参数, auxv 和环境变量放到栈上
-        let (sp, argc, argv, envp) = within_sum(
-            || init_stack(stack_begin, args, envp, auxv));
+        let (sp, argc, argv, envp) = within_sum(|| init_stack(stack_begin, args, envp, auxv));
 
         // 为线程初始化上下文
         debug!("Entry point: {:?}", entry_point);
@@ -238,7 +242,11 @@ impl LightProcess {
         debug!("User init done.");
     }
 
-    pub fn do_clone(self: Arc<Self>, flags: syscall::CloneFlags, user_stack_begin: Option<VirtAddr>) -> Arc<Self> {
+    pub fn do_clone(
+        self: Arc<Self>,
+        flags: syscall::CloneFlags,
+        user_stack_begin: Option<VirtAddr>,
+    ) -> Arc<Self> {
         use syscall::CloneFlags;
 
         let id = alloc_pid();
@@ -277,10 +285,9 @@ impl LightProcess {
         let stack_begin;
         // 如果用户指定了栈, 那么就用用户指定的栈, 否则在新的地址空间里分配一个
         if let Some(sp) = user_stack_begin {
-            stack_begin = sp; 
+            stack_begin = sp;
         } else {
-            stack_begin = memory.lock(here!())
-                .areas_mut().alloc_stack(THREAD_STACK_SIZE);
+            stack_begin = memory.lock(here!()).areas_mut().alloc_stack(THREAD_STACK_SIZE);
         }
         context.get_mut().set_user_sp(stack_begin.into());
 
@@ -363,9 +370,12 @@ impl FdTable {
 
     pub fn new_with_std() -> Self {
         let mut t = Self::new_empty();
-        debug_assert_eq!(t.alloc(Arc::new(fs::stdio::Stdin)), 0);
-        debug_assert_eq!(t.alloc(Arc::new(fs::stdio::Stdout)), 1);
-        debug_assert_eq!(t.alloc(Arc::new(fs::stdio::Stderr)), 2);
+        let fd = t.alloc(Arc::new(fs::stdio::Stdin));
+        debug_assert_eq!(fd, 0);
+        let fd = t.alloc(Arc::new(fs::stdio::Stdout));
+        debug_assert_eq!(fd, 1);
+        let fd = t.alloc(Arc::new(fs::stdio::Stderr));
+        debug_assert_eq!(fd, 2);
         t
     }
 

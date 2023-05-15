@@ -75,5 +75,23 @@ debug: build
 			$(QEMU_DEVICES)		\
 			-s -d int
 
+release-qemu: release
+	@qemu-system-riscv64 		\
+            -machine virt 		\
+            -nographic 			\
+            -bios default 		\
+			-m $(MEM_SIZE)		\
+			-smp $(CPUS) 		\
+			$(QEMU_DEVICES)		\
+			-kernel $(BIN_FILE)
+
+# First set release mode
+release: MODE = release
+release: CARGO_BUILD_ARGS += --release
+release: KERNEL_FILE = target/$(TARGET)/$(MODE)/mankoros
+# Then build
+release: build
+	cp $(BIN_FILE) kernel-qemu
+
 # build and run
 run: build qemu
