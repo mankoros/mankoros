@@ -304,7 +304,10 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
 
     /// 向后 (虚拟地址增大方向) 扩展一个从 start 开始的段, 这个段必须存在. 扩展成功返回 Ok, 否则 Err
     pub fn extend_back(&mut self, start: U, new_end: U) -> Result<(), ()> {
-        self.range_is_free(start..new_end)?;
+        // TODO-PERF: 看看如何说服 rust 让它能只让我查一次
+        let node = self.0.get(&start).unwrap();
+        self.range_is_free(node.end..new_end)?;
+
         let node = self.0.get_mut(&start).unwrap();
         node.end = new_end;
         Ok(())
