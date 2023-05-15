@@ -195,31 +195,39 @@ impl<'a> Syscall<'a> {
         })
     }
 
-    pub fn sys_fstat(&self, _fd: usize, kstat: *mut Kstat) -> SyscallResult {
+    pub fn sys_fstat(&self, fd: usize, kstat: *mut Kstat) -> SyscallResult {
         info!("Syscall: fstat");
-        within_sum(|| unsafe {
-            *kstat = Kstat {
-                st_dev: 0,
-                st_ino: 0,
-                st_mode: 0,
-                st_nlink: 0,
-                st_uid: 0,
-                st_gid: 0,
-                st_rdev: 0,
-                _pad0: 0,
-                st_size: 0,
-                st_blksize: 0,
-                _pad1: 0,
-                st_blocks: 0,
-                st_atime_sec: 0,
-                st_atime_nsec: 0,
-                st_mtime_sec: 0,
-                st_mtime_nsec: 0,
-                st_ctime_sec: 0,
-                st_ctime_nsec: 0,
+        self.lproc.with_mut_fdtable(|f| {
+            if let Some(fd) = f.get(fd) {
+                // TODO: check stat() returned error
+                let fstat = fd.file.stat().unwrap();
+
+                within_sum(|| unsafe {
+                    *kstat = Kstat {
+                        st_dev: 0,
+                        st_ino: 0,
+                        st_mode: 0,
+                        st_nlink: 0,
+                        st_uid: 0,
+                        st_gid: 0,
+                        st_rdev: 0,
+                        _pad0: 0,
+                        st_size: fstat.size(),
+                        st_blksize: 0,
+                        _pad1: 0,
+                        st_blocks: 0,
+                        st_atime_sec: 0,
+                        st_atime_nsec: 0,
+                        st_mtime_sec: 0,
+                        st_mtime_nsec: 0,
+                        st_ctime_sec: 0,
+                        st_ctime_nsec: 0,
+                    }
+                });
+                return Ok(0);
             }
-        });
-        Ok(0)
+            Err(AxError::NotFound)
+        })
     }
 
     pub fn sys_mkdir(&self, _dir_fd: usize, path: *const u8, _user_mode: usize) -> SyscallResult {
