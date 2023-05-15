@@ -66,7 +66,7 @@ impl VfsNode for Stdout {
                 if #[cfg(debug_assertions)] {
                     warn!("User stdout: {}", data);
                 } else {
-                    print!("asdafsdf");
+                    print!("{}", data);
                 }
             }
             Ok(buf.len())
