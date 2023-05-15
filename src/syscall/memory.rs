@@ -77,9 +77,18 @@ bitflags! {
 impl<'a> Syscall<'a> {
     pub fn sys_brk(&mut self, brk: usize) -> SyscallResult {
         info!("Syscall brk: brk {}", brk);
-        self.lproc.with_mut_memory(|m| {
-            m.areas_mut().reset_heap_break(brk.into()).map_err(|_| AxError::NoMemory)
-        })
+
+        if brk == 0 {
+            let cur_brk = self.lproc.with_memory(|m| m.areas().get_heap_break());
+            Ok(cur_brk.into())
+        } else {
+            self.lproc.with_mut_memory(|m| {
+                m.areas_mut().reset_heap_break(brk.into())
+                    .map(|_| 0)
+                    .map_err(|_| AxError::NoMemory)
+            })
+        }
+
     }
 
     pub fn sys_mmap(
