@@ -60,17 +60,15 @@ impl VfsNode for Stdout {
     impl_vfs_non_dir_default! {}
 
     fn write_at(&self, _offset: u64, buf: &[u8]) -> VfsResult<usize> {
-        warn!("??");
         if let Ok(data) = core::str::from_utf8(buf) {
-            // cfg_if::cfg_if! {
-            //     // See https://doc.rust-lang.org/reference/conditional-compilation.html#debug_assertions
-            //     if #[cfg(debug_assertions)] {
-            //         warn!("User stdout: {}", data);
-            //     } else {
-            //         print!("asdafsdf");
-            //     }
-            // }
-            print!("{}", data);
+            cfg_if::cfg_if! {
+                // See https://doc.rust-lang.org/reference/conditional-compilation.html#debug_assertions
+                if #[cfg(debug_assertions)] {
+                    warn!("User stdout: {}", data);
+                } else {
+                    print!("asdafsdf");
+                }
+            }
             Ok(buf.len())
         } else {
             Err(AxError::InvalidData)
