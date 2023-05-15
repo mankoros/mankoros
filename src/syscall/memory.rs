@@ -5,7 +5,8 @@ use bitflags::bitflags;
 use log::info;
 
 use crate::{
-    axerrno::AxError, memory::pagetable::pte::PTEFlags, process::user_space::user_area::UserAreaPerm, consts::PAGE_MASK,
+    axerrno::AxError, consts::PAGE_MASK, memory::pagetable::pte::PTEFlags,
+    process::user_space::user_area::UserAreaPerm,
 };
 
 use super::{Syscall, SyscallResult};
@@ -77,10 +78,7 @@ impl<'a> Syscall<'a> {
     pub fn sys_brk(&mut self, brk: usize) -> SyscallResult {
         info!("Syscall brk: brk {}", brk);
         self.lproc.with_mut_memory(|m| {
-            m.areas_mut().reset_heap_break(brk.into())
-            // 当设置新的 brk 成功时, syscall 要返回 0
-            .map(|_| 0)
-            .map_err(|_| AxError::NoMemory)
+            m.areas_mut().reset_heap_break(brk.into()).map_err(|_| AxError::NoMemory)
         })
     }
 
@@ -109,10 +107,11 @@ impl<'a> Syscall<'a> {
             // 根据linux规范需要 fd 设为 -1 且 offset 设为 0
             if fd == -1 && offset == 0 {
                 return self.lproc.with_mut_memory(|m| {
-                    m.areas_mut().insert_mmap_anonymous(len, prot.into())
+                    m.areas_mut()
+                        .insert_mmap_anonymous(len, prot.into())
                         .map(|(r, _)| r.start.into())
                         .map_err(|_| AxError::NoMemory)
-                })
+                });
             }
         } else {
             todo!();

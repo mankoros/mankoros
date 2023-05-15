@@ -340,22 +340,27 @@ impl UserAreaManager {
         self.map.try_insert(range, area).unwrap();
     }
 
-    pub fn reset_heap_break(&mut self, new_brk: VirtAddr) -> Result<(), ()> {
+    pub fn reset_heap_break(&mut self, new_brk: VirtAddr) -> Result<usize, ()> {
         // TODO-PERF: 缓存 heap 的位置, 减少一次查询
         let (Range { start, end }, _) = self.map.get(Self::HEAP_BEG)
             .expect("brk without heap");
 
-        if end < new_brk {
+        if new_brk == 0.into() {
+            // Return current heap end when new_brk == 0
+            Ok(end.into())
+        } else if end < new_brk {
             // when larger, create a new area [heap_end, new_brk), then merge it with current heap
-            self.map.extend_back(start, new_brk)
+            self.map.extend_back(start, new_brk)?;
+            // Return 0 when success
+            Ok(0)
         } else if new_brk < end {
             // when smaller, split the area into [heap_start, new_brk), [new_brk, heap_end), then remove the second one
             self.map.reduce_back(start, new_brk)
-                .map(|_| ())
+                .map(|_| (0))
             // TODO: release page
         } else {
             // when equal, do nothing
-            Ok(())
+            Ok(0)
         }
     }
 
