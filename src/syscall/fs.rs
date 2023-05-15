@@ -1,7 +1,7 @@
 //! Filesystem related syscall
 //!
 
-use alloc::borrow::ToOwned;
+use alloc::{borrow::ToOwned, string::ToString};
 use log::{debug, info};
 
 use crate::{
@@ -10,11 +10,12 @@ use crate::{
         self,
         vfs::{filesystem::VfsNode, path::Path},
     },
-    utils, tools::user_check::{UserCheck},
+    tools::user_check::UserCheck,
+    utils,
 };
 
-use crate::arch::within_sum;
 use super::{Syscall, SyscallResult};
+use crate::arch::within_sum;
 
 /// 文件信息类
 #[repr(C)]
@@ -55,6 +56,61 @@ pub struct Kstat {
     pub st_ctime_nsec: isize,
 }
 
+bitflags::bitflags! {
+    /// 指定文件打开时的权限
+    pub struct OpenFlags: u32 {
+        /// 只读
+        const RDONLY = 0;
+        /// 只能写入
+        const WRONLY = 1 << 0;
+        /// 读写
+        const RDWR = 1 << 1;
+        /// 如文件不存在，可创建它
+        const CREATE = 1 << 6;
+        /// 确认一定是创建文件。如文件已存在，返回 EEXIST。
+        const EXCLUSIVE = 1 << 7;
+        /// 使打开的文件不会成为该进程的控制终端。目前没有终端设置，不处理
+        const NOCTTY = 1 << 8;
+        /// 同上，在不同的库中可能会用到这个或者上一个
+        const EXCL = 1 << 9;
+        /// 非阻塞读写?(虽然不知道为什么但 date.lua 也要)
+        const NON_BLOCK = 1 << 11;
+        /// 要求把 CR-LF 都换成 LF
+        const TEXT = 1 << 14;
+        /// 和上面不同，要求输入输出都不进行这个翻译
+        const BINARY = 1 << 15;
+        /// 对这个文件的输出需符合 IO 同步一致性。可以理解为随时 fsync
+        const DSYNC = 1 << 16;
+        /// 如果是符号链接，不跟随符号链接去寻找文件，而是针对连接本身
+        const NOFOLLOW = 1 << 17;
+        /// 在 exec 时需关闭
+        const CLOEXEC = 1 << 19;
+        /// 是否是目录
+        const DIR = 1 << 21;
+    }
+}
+
+impl OpenFlags {
+    /// 获得文件的读/写权限
+    pub fn read_write(&self) -> (bool, bool) {
+        if self.is_empty() {
+            (true, false)
+        } else if self.contains(Self::WRONLY) {
+            (false, true)
+        } else {
+            (true, true)
+        }
+    }
+    /// 获取读权限
+    pub fn readable(&self) -> bool {
+        !self.contains(Self::WRONLY)
+    }
+    /// 获取写权限
+    pub fn writable(&self) -> bool {
+        self.contains(Self::WRONLY) || self.contains(Self::RDWR)
+    }
+}
+
 impl<'a> Syscall<'a> {
     pub fn sys_write(&mut self, fd: usize, buf: *const u8, len: usize) -> SyscallResult {
         info!("Syscall: write, fd {fd}, len: {len}");
@@ -91,15 +147,36 @@ impl<'a> Syscall<'a> {
         &mut self,
         _dir_fd: i32,
         path: *const u8,
-        _flags: u32,
+        raw_flags: u32,
         _user_mode: i32,
     ) -> SyscallResult {
         info!("Syscall: openat");
 
-        // TODO: parse flags
+        // Parse flags
+        let flags = OpenFlags::from_bits_truncate(raw_flags);
+
         let root_fs = fs::root::get_root_dir();
-        let file = within_sum(|| root_fs.lookup(unsafe { utils::raw_ptr_to_ref_str(path) }))
-            .expect("Error looking up file");
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+        let path = user_check.checked_read_cstr(path).map_err(|_| AxError::InvalidInput)?;
+        let path = Path::from_string(path).expect("Error parsing path");
+        let file = match within_sum(|| root_fs.clone().lookup(&path.to_string())) {
+            Ok(file) => file,
+            Err(AxError::NotFound) => {
+                // Check if CREATE flag is set
+                if !flags.contains(OpenFlags::CREATE) {
+                    return Err(AxError::NotFound);
+                }
+                // Create file
+                root_fs.create(path.to_string().as_str(), fs::vfs::node::VfsNodeType::File)?;
+                let file = root_fs
+                    .lookup(&path.to_string())
+                    .expect("File just created is not found, very wrong");
+                file
+            }
+            Err(_) => {
+                return Err(AxError::NotFound);
+            }
+        };
 
         self.lproc.with_mut_fdtable(|f| Ok(f.alloc(file) as usize))
     }
@@ -109,7 +186,9 @@ impl<'a> Syscall<'a> {
 
         self.lproc.with_mut_fdtable(|m| {
             if let Some(_) = m.remove(fd) {
-                Ok(fd)
+                // close() returns zero on success.  On error, -1 is returned
+                // https://man7.org/linux/man-pages/man2/close.2.html
+                Ok(0)
             } else {
                 Err(AxError::InvalidInput)
             }
@@ -145,7 +224,8 @@ impl<'a> Syscall<'a> {
 
     pub fn sys_mkdir(&self, _dir_fd: usize, path: *const u8, _user_mode: usize) -> SyscallResult {
         info!("Syscall: mkdir");
-        let path = within_sum(|| unsafe { utils::raw_ptr_to_ref_str(path) }.clone().to_owned());
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+        let path = user_check.checked_read_cstr(path).map_err(|_| AxError::InvalidInput)?;
         let mut path = Path::from_string(path).expect("Error parsing path");
 
         let root_fs = fs::root::get_root_dir();
@@ -189,10 +269,8 @@ impl<'a> Syscall<'a> {
 
     pub fn sys_chdir(&mut self, path: *const u8) -> SyscallResult {
         let user_check = UserCheck::new_with_sum(&self.lproc);
-        let path = user_check.checked_read_cstr(path)
-            .map_err(|_| AxError::InvalidInput)?;
-        let path = Path::from_string(path)
-            .map_err(|_| AxError::InvalidInput)?;
+        let path = user_check.checked_read_cstr(path).map_err(|_| AxError::InvalidInput)?;
+        let path = Path::from_string(path).map_err(|_| AxError::InvalidInput)?;
 
         // check whether the path is a directory
         let root_fs = fs::root::get_root_dir();
