@@ -1,6 +1,7 @@
-use riscv::register::{scause};
+use riscv::register::scause;
 
-use super::timer;
+// use super::timer;
+use crate::timer;
 
 #[no_mangle]
 pub fn kernel_default_interrupt() {
