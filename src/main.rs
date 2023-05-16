@@ -39,6 +39,7 @@ mod executor;
 mod lazy_init;
 mod process;
 mod signal;
+mod timer;
 mod tools;
 mod trap;
 
