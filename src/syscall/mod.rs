@@ -2,7 +2,8 @@ use core::cmp::min;
 
 use crate::arch::within_sum;
 use crate::executor::yield_future::yield_now;
-use crate::process::lproc::{LightProcess};
+use crate::memory::{UserReadPtr, UserWritePtr};
+use crate::process::lproc::LightProcess;
 
 use crate::{axerrno::AxError, syscall::misc::UtsName, trap::context::UKContext};
 
@@ -54,8 +55,12 @@ impl<'a> Syscall<'a> {
             SYSCALL_CHDIR => self.sys_chdir(args[0] as *const u8),
             SYSCALL_CLOSE => self.sys_close(args[0]),
             SYSCALL_GETDENTS => todo!(),
-            SYSCALL_READ => self.sys_read(args[0], args[1] as *mut u8, args[2]),
-            SYSCALL_WRITE => self.sys_write(args[0], args[1] as *const u8, args[2]),
+            SYSCALL_READ => {
+                self.sys_read(args[0], UserWritePtr::from_usize(args[1]), args[2]).await
+            }
+            SYSCALL_WRITE => {
+                self.sys_write(args[0], UserReadPtr::from_usize(args[1]), args[2]).await
+            }
             SYSCALL_LINKAT => todo!(),
             SYSCALL_UNLINKAT => todo!(),
             SYSCALL_MKDIRAT => self.sys_mkdir(args[0], args[1] as *const u8, args[2]),
@@ -65,9 +70,9 @@ impl<'a> Syscall<'a> {
             // Process related
             SYSCALL_CLONE => self.sys_clone(args[0] as u32, args[1], args[2], args[3], args[4]),
             SYSCALL_EXECVE => self.sys_execve(
-                args[0] as *const u8, 
-                args[1] as *const *const u8, 
-                args[2] as *const *const u8
+                args[0] as *const u8,
+                args[1] as *const *const u8,
+                args[2] as *const *const u8,
             ),
             SYSCALL_WAIT => self.sys_wait(args[0], args[1], args[2]).await,
             SYSCALL_EXIT => {

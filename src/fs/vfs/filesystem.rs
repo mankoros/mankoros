@@ -1,8 +1,10 @@
+use alloc::boxed::Box;
 use alloc::sync::Arc;
 
 use crate::ax_err;
 
 use super::node::{VfsDirEntry, VfsNodeAttr, VfsNodeType};
+use super::AVfsResult;
 use super::VfsResult;
 
 pub struct FileSystemInfo;
@@ -32,7 +34,7 @@ pub trait Vfs: Send + Sync {
     }
 }
 
-pub trait VfsNode: Send + Sync {
+pub trait VfsNode: Send + Sync + 'static {
     /// open operation
     fn open(&self) -> VfsResult {
         Ok(())
@@ -48,14 +50,28 @@ pub trait VfsNode: Send + Sync {
 
     // file operations
 
-    /// Read data from the file at the given offset.
-    fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> VfsResult<usize> {
+    /// Read data from the file at the given offset
+    /// Sync
+    fn sync_read_at(&self, _offset: u64, _buf: &mut [u8]) -> VfsResult<usize> {
         ax_err!(InvalidInput)
     }
 
-    /// Write data to the file at the given offset.
-    fn write_at(&self, _offset: u64, _buf: &[u8]) -> VfsResult<usize> {
+    /// Write data from the file at the given offset
+    /// Sync
+    fn sync_write_at(&self, _offset: u64, _buf: &[u8]) -> VfsResult<usize> {
         ax_err!(InvalidInput)
+    }
+
+    /// Read data from the file at the given offset.
+    /// Async
+    fn read_at<'a>(&'a self, _offset: u64, _buf: &'a mut [u8]) -> AVfsResult<usize> {
+        Box::pin(async move { ax_err!(InvalidInput) })
+    }
+
+    /// Write data to the file at the given offset.
+    /// Async
+    fn write_at<'a>(&'a self, _offset: u64, _buf: &'a [u8]) -> AVfsResult<usize> {
+        Box::pin(async move { ax_err!(InvalidInput) })
     }
 
     /// Flush the file, synchronize the data to disk.
@@ -107,12 +123,18 @@ pub trait VfsNode: Send + Sync {
 #[macro_export]
 macro_rules! impl_vfs_dir_default {
     () => {
-        fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> crate::fs::vfs::VfsResult<usize> {
+        fn sync_read_at(&self, _offset: u64, _buf: &mut [u8]) -> crate::fs::vfs::VfsResult<usize> {
             crate::ax_err!(IsADirectory)
         }
-
-        fn write_at(&self, _offset: u64, _buf: &[u8]) -> crate::fs::vfs::VfsResult<usize> {
+        fn sync_write_at(&self, _offset: u64, _buf: &[u8]) -> crate::fs::vfs::VfsResult<usize> {
             crate::ax_err!(IsADirectory)
+        }
+        fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> crate::fs::vfs::AVfsResult<usize> {
+            alloc::boxed::Box::pin(async move { crate::ax_err!(IsADirectory) })
+        }
+
+        fn write_at(&self, _offset: u64, _buf: &[u8]) -> crate::fs::vfs::AVfsResult<usize> {
+            alloc::boxed::Box::pin(async move { crate::ax_err!(IsADirectory) })
         }
 
         fn fsync(&self) -> crate::fs::vfs::VfsResult {

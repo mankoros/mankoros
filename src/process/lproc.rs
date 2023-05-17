@@ -219,6 +219,7 @@ impl LightProcess {
         // 分配栈
         let stack_begin = self.with_mut_memory(|m| {
             let stack_begin = m.areas_mut().alloc_stack(THREAD_STACK_SIZE);
+            // Force map since kernel need to init it
             m.force_map_area(stack_begin);
             stack_begin
         });

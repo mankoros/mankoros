@@ -1,18 +1,22 @@
-use crate::{process::{lproc::LightProcess, user_space::user_area::UserAreaPerm}, memory::address::VirtAddr};
+use crate::{
+    memory::address::VirtAddr,
+    process::{lproc::LightProcess, user_space::user_area::UserAreaPerm},
+};
 use alloc::{string::String, vec::Vec};
-use log::{trace};
+use log::trace;
 
 pub struct UserCheck<'a> {
-    lproc: &'a LightProcess
+    lproc: &'a LightProcess,
 }
+
+unsafe impl Send for UserCheck<'_> {}
+unsafe impl Sync for UserCheck<'_> {}
 
 impl<'a> UserCheck<'a> {
     /// 创建一个用户态指针检查器, 同时设置 SUM 模式, 直到检查器被 drop 时关闭
     pub fn new_with_sum(lproc: &'a LightProcess) -> Self {
         unsafe { riscv::register::sstatus::set_sum() };
-        Self {
-            lproc
-        }
+        Self { lproc }
     }
 
     fn has_perm(&self, vaddr: VirtAddr, perm: UserAreaPerm) -> bool {
@@ -22,9 +26,7 @@ impl<'a> UserCheck<'a> {
     pub fn checked_read<T>(&self, ptr: *const T) -> Result<T, ()> {
         let vaddr = (ptr as usize).into();
         if self.has_perm(vaddr, UserAreaPerm::READ) {
-            unsafe {
-                Ok(ptr.read())
-            }
+            unsafe { Ok(ptr.read()) }
         } else {
             Err(())
         }
@@ -70,7 +72,11 @@ impl<'a> UserCheck<'a> {
                 break;
             }
 
-            trace!("checked_read_2d_cstr: p: {:?}, ptr_s: {:#x}", p, ptr_s as usize);
+            trace!(
+                "checked_read_2d_cstr: p: {:?}, ptr_s: {:#x}",
+                p,
+                ptr_s as usize
+            );
 
             let s = self.checked_read_cstr(ptr_s)?;
             v.push(s);

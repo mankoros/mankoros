@@ -5,17 +5,18 @@ use alloc::{borrow::ToOwned, string::ToString};
 use log::{debug, info};
 
 use crate::{
+    arch::within_sum,
     axerrno::AxError,
     fs::{
         self,
         vfs::{filesystem::VfsNode, path::Path},
     },
+    memory::{UserPtr, UserReadPtr, UserWritePtr},
     tools::user_check::UserCheck,
     utils,
 };
 
 use super::{Syscall, SyscallResult};
-use crate::arch::within_sum;
 
 /// 文件信息类
 #[repr(C)]
@@ -112,35 +113,50 @@ impl OpenFlags {
 }
 
 impl<'a> Syscall<'a> {
-    pub fn sys_write(&mut self, fd: usize, buf: *const u8, len: usize) -> SyscallResult {
+    pub async fn sys_write(
+        &mut self,
+        fd: usize,
+        buf: UserReadPtr<u8>,
+        len: usize,
+    ) -> SyscallResult {
         info!("Syscall: write, fd {fd}, len: {len}");
 
-        self.lproc.with_mut_fdtable(|f| {
-            if let Some(fd) = f.get(fd) {
-                let write_len = within_sum(|| {
-                    fd.file.write_at(0, unsafe { core::slice::from_raw_parts(buf, len) })
-                })?;
-
-                Ok(write_len)
-            } else {
-                Err(AxError::InvalidInput)
-            }
-        })
+        let buf = unsafe { core::slice::from_raw_parts(buf.raw_ptr(), len) };
+        let fd = self.lproc.with_mut_fdtable(|f| f.get(fd));
+        // TODO: is it safe ?
+        if let Some(fd) = fd {
+            // TODO: within_sum need to be async
+            // Currently, within_sum is not async, causing sum to be clear before write
+            unsafe { riscv::register::sstatus::set_sum() };
+            let write_len = fd.file.write_at(0, buf).await?;
+            unsafe { riscv::register::sstatus::clear_sum() };
+            Ok(write_len)
+        } else {
+            Err(AxError::InvalidInput)
+        }
     }
-    pub fn sys_read(&mut self, fd: usize, buf: *mut u8, len: usize) -> SyscallResult {
+    pub async fn sys_read(
+        &mut self,
+        fd: usize,
+        buf: UserWritePtr<u8>,
+        len: usize,
+    ) -> SyscallResult {
         info!("Syscall: read, fd {fd}");
 
-        self.lproc.with_mut_fdtable(|f| {
-            if let Some(fd) = f.get(fd) {
-                let read_len = within_sum(|| {
-                    fd.file.read_at(0, unsafe { core::slice::from_raw_parts_mut(buf, len) })
-                })?;
+        // *mut u8 does not implement Send
+        let buf = unsafe { core::slice::from_raw_parts_mut(buf.raw_ptr_mut(), len) };
 
-                Ok(read_len)
-            } else {
-                Err(AxError::InvalidInput)
-            }
-        })
+        let fd = self.lproc.with_mut_fdtable(|f| f.get(fd));
+        if let Some(fd) = fd {
+            // TODO: see above
+            unsafe { riscv::register::sstatus::set_sum() };
+            let read_len = fd.file.read_at(0, buf).await?;
+            unsafe { riscv::register::sstatus::clear_sum() };
+
+            Ok(read_len)
+        } else {
+            Err(AxError::InvalidInput)
+        }
     }
 
     pub fn sys_openat(

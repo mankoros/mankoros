@@ -9,8 +9,9 @@ use crate::{axerrno::AxError, impl_vfs_non_dir_default, print};
 use super::vfs::{
     filesystem::VfsNode,
     node::{VfsNodeAttr, VfsNodePermission, VfsNodeType},
-    VfsResult,
+    AVfsResult, VfsResult,
 };
+use alloc::boxed::Box;
 use log::warn;
 
 /// 标准输入流
@@ -24,9 +25,9 @@ pub struct Stderr;
 impl VfsNode for Stdin {
     impl_vfs_non_dir_default! {}
 
-    fn write_at(&self, _offset: u64, _buf: &[u8]) -> VfsResult<usize> {
+    fn write_at(&self, _offset: u64, _buf: &[u8]) -> AVfsResult<usize> {
         // Stdin is not writable
-        crate::ax_err!(Unsupported)
+        Box::pin(async move { crate::ax_err!(Unsupported) })
     }
 
     fn fsync(&self) -> VfsResult {
@@ -36,14 +37,15 @@ impl VfsNode for Stdin {
     fn truncate(&self, _size: u64) -> VfsResult {
         crate::ax_err!(Unsupported)
     }
-    fn read_at(&self, _offset: u64, buf: &mut [u8]) -> VfsResult<usize> {
+    fn read_at<'a>(&'a self, _offset: u64, buf: &'a mut [u8]) -> AVfsResult<usize> {
         // Offset is ignored
-
-        if buf.len() == 0 {
-            return Ok(0);
-        }
-        // TODO: implement read
-        Ok(1)
+        Box::pin(async move {
+            if buf.len() == 0 {
+                return Ok(0);
+            }
+            // TODO: implement read
+            Ok(1)
+        })
     }
     /// 文件属性
     fn stat(&self) -> VfsResult<VfsNodeAttr> {
@@ -59,20 +61,22 @@ impl VfsNode for Stdin {
 impl VfsNode for Stdout {
     impl_vfs_non_dir_default! {}
 
-    fn write_at(&self, _offset: u64, buf: &[u8]) -> VfsResult<usize> {
-        if let Ok(data) = core::str::from_utf8(buf) {
-            cfg_if::cfg_if! {
-                // See https://doc.rust-lang.org/reference/conditional-compilation.html#debug_assertions
-                if #[cfg(debug_assertions)] {
-                    warn!("User stdout: {}", data);
-                } else {
-                    print!("{}", data);
+    fn write_at<'a>(&'a self, _offset: u64, buf: &'a [u8]) -> AVfsResult<usize> {
+        Box::pin(async move {
+            if let Ok(data) = core::str::from_utf8(buf) {
+                cfg_if::cfg_if! {
+                    // See https://doc.rust-lang.org/reference/conditional-compilation.html#debug_assertions
+                    if #[cfg(debug_assertions)] {
+                        warn!("User stdout: {}", data);
+                    } else {
+                        print!("{}", data);
+                    }
                 }
+                Ok(buf.len())
+            } else {
+                Err(AxError::InvalidData)
             }
-            Ok(buf.len())
-        } else {
-            Err(AxError::InvalidData)
-        }
+        })
     }
 
     fn fsync(&self) -> VfsResult {
@@ -82,9 +86,9 @@ impl VfsNode for Stdout {
     fn truncate(&self, _size: u64) -> VfsResult {
         crate::ax_err!(Unsupported)
     }
-    fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> VfsResult<usize> {
+    fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> AVfsResult<usize> {
         // Stdout is not readable
-        crate::ax_err!(Unsupported)
+        Box::pin(async move { crate::ax_err!(Unsupported) })
     }
     /// 文件属性
     fn stat(&self) -> VfsResult<VfsNodeAttr> {
@@ -100,16 +104,18 @@ impl VfsNode for Stdout {
 impl VfsNode for Stderr {
     impl_vfs_non_dir_default! {}
 
-    fn write_at(&self, _offset: u64, buf: &[u8]) -> VfsResult<usize> {
-        if let Ok(data) = core::str::from_utf8(buf) {
-            warn!("User stderr: {}", data);
-            Ok(buf.len())
-        } else {
-            for i in 0..buf.len() {
-                warn!("User stderr (non-utf8): {} ", buf[i]);
+    fn write_at<'a>(&'a self, _offset: u64, buf: &'a [u8]) -> AVfsResult<usize> {
+        Box::pin(async move {
+            if let Ok(data) = core::str::from_utf8(buf) {
+                warn!("User stderr: {}", data);
+                Ok(buf.len())
+            } else {
+                for i in 0..buf.len() {
+                    warn!("User stderr (non-utf8): {} ", buf[i]);
+                }
+                Ok(buf.len())
             }
-            Ok(buf.len())
-        }
+        })
     }
 
     fn fsync(&self) -> VfsResult {
@@ -119,9 +125,9 @@ impl VfsNode for Stderr {
     fn truncate(&self, _size: u64) -> VfsResult {
         crate::ax_err!(Unsupported)
     }
-    fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> VfsResult<usize> {
-        // Stdout is not readable
-        crate::ax_err!(Unsupported)
+    fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> AVfsResult<usize> {
+        // Stderr is not readable
+        Box::pin(async move { crate::ax_err!(Unsupported) })
     }
     /// 文件属性
     fn stat(&self) -> VfsResult<VfsNodeAttr> {

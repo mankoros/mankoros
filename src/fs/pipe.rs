@@ -3,6 +3,7 @@
 //! 相当于两个文件，其中一个只读，一个只可写，但指向同一片内存。
 //! Pipe 的读写可能会触发进程切换。
 //! 目前的实现中，Pipe位于内核堆
+//! Adapted from Maturin OS.
 
 use alloc::sync::Arc;
 use ringbuffer::AllocRingBuffer;

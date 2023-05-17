@@ -12,6 +12,7 @@ use super::{
     partition::Partition,
     vfs::{self, filesystem::VfsNode},
 };
+use alloc::boxed::Box;
 use alloc::sync::Arc;
 use fatfs::{self, Read, Seek, Write};
 use log::{trace, warn};
@@ -165,7 +166,7 @@ impl VfsNode for FileWrapper<'static> {
         Ok(VfsNodeAttr::new(perm, VfsNodeType::File, size, blocks))
     }
 
-    fn read_at(&self, offset: u64, mut buf: &mut [u8]) -> VfsResult<usize> {
+    fn sync_read_at(&self, offset: u64, mut buf: &mut [u8]) -> VfsResult<usize> {
         let mut file = self.0.lock(here!());
         let mut read_len = 0;
         let mut file_end = false;
@@ -182,11 +183,19 @@ impl VfsNode for FileWrapper<'static> {
         Ok(read_len)
     }
 
-    fn write_at(&self, offset: u64, buf: &[u8]) -> VfsResult<usize> {
+    fn sync_write_at(&self, offset: u64, buf: &[u8]) -> VfsResult<usize> {
         let mut file = self.0.lock(here!());
         // TODO: impl a read_at like write, not sure how long fatfs can write
         file.seek(fatfs::SeekFrom::Start(offset)).map_err(as_vfs_err)?;
         file.write(buf).map_err(as_vfs_err)
+    }
+
+    fn read_at<'a>(&'a self, offset: u64, mut buf: &'a mut [u8]) -> AVfsResult<usize> {
+        Box::pin(async move { self.sync_read_at(offset, buf) })
+    }
+
+    fn write_at<'a>(&'a self, offset: u64, buf: &'a [u8]) -> AVfsResult<usize> {
+        Box::pin(async move { self.sync_write_at(offset, buf) })
     }
 
     fn truncate(&self, size: u64) -> VfsResult {

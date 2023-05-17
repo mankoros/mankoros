@@ -1,25 +1,19 @@
-pub mod user_area;
 pub mod range_map;
+pub mod user_area;
 
 use alloc::{string::String, sync::Arc, vec::Vec};
 
-
-
 use crate::{
+    arch::get_curr_page_table_addr,
     fs::vfs::filesystem::VfsNode,
-    memory::{
-        address::{VirtAddr},
-        pagetable::pagetable::PageTable,
-    },
-    process::{aux_vector::AuxElement, user_space::user_area::{PageFaultAccessType}}, arch::get_curr_page_table_addr,
+    memory::{address::VirtAddr, pagetable::pagetable::PageTable},
+    process::{aux_vector::AuxElement, user_space::user_area::PageFaultAccessType},
 };
 
 use super::{aux_vector::AuxVector, shared_frame_mgr::with_shared_frame_mgr};
 
-
-use self::{user_area::{UserAreaManager, PageFaultErr, VirtAddrRange, UserAreaPerm}};
+use self::user_area::{PageFaultErr, UserAreaManager, UserAreaPerm, VirtAddrRange};
 use log::debug;
-
 
 pub const THREAD_STACK_SIZE: usize = 4 * 1024;
 
@@ -39,7 +33,7 @@ pub fn init_stack(
     auxv: AuxVector,
 ) -> (usize, usize, usize, usize) {
     // spec says:
-    //      In the standard RISC-V calling convention, the stack grows downward 
+    //      In the standard RISC-V calling convention, the stack grows downward
     //      and the stack pointer is always kept 16-byte aligned.
 
     /*
@@ -165,16 +159,16 @@ impl UserSpace {
     }
 
     pub fn has_perm(&self, vaddr: VirtAddr, perm: UserAreaPerm) -> bool {
-        self.areas.get_area(vaddr)
-            .map(|a| a.perm().contains(perm))
-            .unwrap_or(false)
+        self.areas.get_area(vaddr).map(|a| a.perm().contains(perm)).unwrap_or(false)
     }
 
     /// Return: entry_point, auxv
     pub fn parse_and_map_elf_file(&mut self, elf_file: Arc<dyn VfsNode>) -> (VirtAddr, AuxVector) {
         const HEADER_LEN: usize = 1024;
         let mut header_data = [0u8; HEADER_LEN];
-        elf_file.read_at(0, header_data.as_mut()).expect("failed to read elf header");
+        elf_file
+            .sync_read_at(0, header_data.as_mut())
+            .expect("failed to read elf header");
 
         let elf = xmas_elf::ElfFile::new(&header_data.as_slice()).expect("failed to parse elf");
         let elf_header = elf.header;
@@ -199,11 +193,17 @@ impl UserSpace {
             let area_size = ph.mem_size() as usize;
 
             if ph.file_size() == ph.mem_size() {
-                // 如果该段在文件中的大小与其被载入内存后应有的大小相同, 
+                // 如果该段在文件中的大小与其被载入内存后应有的大小相同,
                 // 我们可以直接采用类似 mmap private 的方式来加载它
                 // 此时, 该段的内容将会被懒加载
                 self.areas_mut()
-                    .insert_mmap_private_at(area_begin, area_size, area_perm, elf_file.clone(), offset)
+                    .insert_mmap_private_at(
+                        area_begin,
+                        area_size,
+                        area_perm,
+                        elf_file.clone(),
+                        offset,
+                    )
                     .expect("failed to map elf file in a mmap-private-like way");
             } else {
                 // 否则, 我们就采用类似 mmap anonymous 的方式来创建一个空白的匿名区域
@@ -214,7 +214,8 @@ impl UserSpace {
                 // copy data
                 debug_assert!(self.page_table.root_paddr() == get_curr_page_table_addr().into());
                 let area_slice = unsafe { area_begin.as_mut_slice(area_size) };
-                elf_file.read_at(offset as u64, area_slice)
+                elf_file
+                    .sync_read_at(offset as u64, area_slice)
                     .expect("failed to copy elf data");
             }
 
@@ -238,7 +239,11 @@ impl UserSpace {
         (entry_point, auxv)
     }
 
-    pub fn handle_pagefault(&mut self, vaddr: VirtAddr, access_type: PageFaultAccessType) -> Result<(), PageFaultErr> {
+    pub fn handle_pagefault(
+        &mut self,
+        vaddr: VirtAddr,
+        access_type: PageFaultAccessType,
+    ) -> Result<(), PageFaultErr> {
         self.areas.page_fault(&mut self.page_table, vaddr.into(), access_type)
     }
 
@@ -272,7 +277,10 @@ impl Drop for UserSpace {
     fn drop(&mut self) {
         let areas = &mut self.areas;
         let page_table = &mut self.page_table;
-        debug!("drop user space with page table at {:x?}", page_table.root_paddr());
+        debug!(
+            "drop user space with page table at {:x?}",
+            page_table.root_paddr()
+        );
 
         for (range, _) in areas.iter() {
             UserAreaManager::release_range(page_table, range);
