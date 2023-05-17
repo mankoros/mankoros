@@ -13,7 +13,7 @@ use crate::{
     },
     memory::{UserPtr, UserReadPtr, UserWritePtr},
     tools::user_check::UserCheck,
-    utils,
+    utils, executor::util_futures::within_sum_async,
 };
 
 use super::{Syscall, SyscallResult};
@@ -125,11 +125,7 @@ impl<'a> Syscall<'a> {
         let fd = self.lproc.with_mut_fdtable(|f| f.get(fd));
         // TODO: is it safe ?
         if let Some(fd) = fd {
-            // TODO: within_sum need to be async
-            // Currently, within_sum is not async, causing sum to be clear before write
-            unsafe { riscv::register::sstatus::set_sum() };
-            let write_len = fd.file.write_at(0, buf).await?;
-            unsafe { riscv::register::sstatus::clear_sum() };
+            let write_len = within_sum_async(fd.file.write_at(0, buf)).await?;
             Ok(write_len)
         } else {
             Err(AxError::InvalidInput)
@@ -148,11 +144,7 @@ impl<'a> Syscall<'a> {
 
         let fd = self.lproc.with_mut_fdtable(|f| f.get(fd));
         if let Some(fd) = fd {
-            // TODO: see above
-            unsafe { riscv::register::sstatus::set_sum() };
-            let read_len = fd.file.read_at(0, buf).await?;
-            unsafe { riscv::register::sstatus::clear_sum() };
-
+            let read_len = within_sum_async(fd.file.read_at(0, buf)).await?;
             Ok(read_len)
         } else {
             Err(AxError::InvalidInput)

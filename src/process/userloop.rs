@@ -6,7 +6,7 @@ use riscv::register::{
 
 use crate::{
     arch,
-    executor::{hart_local::set_curr_lproc, yield_future::yield_now},
+    executor::{hart_local::set_curr_lproc, util_futures::yield_now},
     process::user_space::user_area::PageFaultAccessType,
     syscall::Syscall,
     trap::trap::run_user,

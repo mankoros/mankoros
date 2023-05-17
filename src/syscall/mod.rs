@@ -1,7 +1,7 @@
 use core::cmp::min;
 
 use crate::arch::within_sum;
-use crate::executor::yield_future::yield_now;
+use crate::executor::util_futures::yield_now;
 use crate::memory::{UserReadPtr, UserWritePtr};
 use crate::process::lproc::LightProcess;
 

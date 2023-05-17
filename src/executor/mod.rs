@@ -11,7 +11,7 @@ use crate::lazy_static;
 
 pub mod hart_local;
 pub mod task_queue;
-pub mod yield_future;
+pub mod util_futures;
 
 lazy_static! {
     // 这个 Queue 要用到 VecDeque, 需要内存系统初始化完成才能被初始化

@@ -3,6 +3,7 @@ use core::{
     pin::Pin,
     task::{Context, Poll},
 };
+use crate::arch::within_sum;
 
 pub struct YieldFuture(bool);
 
@@ -22,4 +23,22 @@ impl Future for YieldFuture {
 
 pub fn yield_now() -> YieldFuture {
     YieldFuture(false)
+}
+
+pub struct SumFuture<F: Future> {
+    future: F
+}
+
+impl<F: Future> Future for SumFuture<F> {
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        within_sum(|| unsafe {
+            Pin::new_unchecked(&mut self.get_unchecked_mut().future).poll(cx)
+        })
+    }
+}
+
+pub fn within_sum_async<F: Future>(future: F) -> SumFuture<F> {
+    SumFuture { future }
 }

@@ -4,7 +4,7 @@ use bitflags::bitflags;
 use crate::{
     arch::within_sum,
     axerrno::AxError,
-    executor::yield_future::yield_now,
+    executor::util_futures::yield_now,
     memory::address::VirtAddr,
     process::{self, lproc::ProcessStatus, user_space::user_area::UserAreaPerm},
     signal, fs::vfs::{filesystem::VfsNode, path::Path}, tools::user_check::UserCheck,
