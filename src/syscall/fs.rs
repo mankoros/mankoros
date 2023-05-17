@@ -2,6 +2,7 @@
 //!
 
 use alloc::{borrow::ToOwned, string::ToString};
+use core::cmp::min;
 use log::{debug, info};
 
 use crate::{
@@ -12,7 +13,7 @@ use crate::{
         vfs::{filesystem::VfsNode, path::Path},
     },
     memory::{UserPtr, UserReadPtr, UserWritePtr},
-    tools::user_check::UserCheck,
+    tools::user_check::{UserCheck, self},
     utils, executor::util_futures::within_sum_async,
 };
 
@@ -300,5 +301,16 @@ impl<'a> Syscall<'a> {
         self.lproc.with_mut_fsinfo(|f| f.cwd = path);
 
         Ok(0)
+    }
+
+    pub fn sys_getcwd(&mut self, buf: *mut u8, len: usize) -> SyscallResult {
+        info!("Syscall: getcwd");
+        let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone()).to_string();
+        let length = min(cwd.len(), len);
+        within_sum(|| unsafe {
+            core::ptr::copy_nonoverlapping(cwd.as_ptr(), buf, length);
+            *buf.add(length) = 0;
+        });
+        Ok(buf as usize)
     }
 }

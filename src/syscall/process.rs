@@ -12,7 +12,7 @@ use crate::{
 
 use super::{Syscall, SyscallResult};
 use super::super::fs;
-use log::{debug, warn};
+use log::{debug, warn, info};
 
 bitflags! {
     pub struct CloneFlags: u32 {
@@ -86,7 +86,7 @@ impl<'a> Syscall<'a> {
         child_tid_ptr: usize,
         new_thread_local_storage_ptr: usize,
     ) -> SyscallResult {
-        debug!("syscall: clone");
+        info!("syscall: clone");
 
         let flags = CloneFlags::from_bits(flags & !0xff).ok_or(AxError::InvalidInput)?;
 
@@ -173,7 +173,7 @@ impl<'a> Syscall<'a> {
             .map_err(|_| AxError::InvalidInput)?;
 
         drop(user_check);
-        debug!("syscall: execve: path: {:?}, argv: {:?}, envp: {:?}", path, argv, envp);
+        info!("syscall: execve: path: {:?}, argv: {:?}, envp: {:?}", path, argv, envp);
 
         // 不知道为什么要加, 从 Oops 抄过来的
         envp.push(String::from("LD_LIBRARY_PATH=."));
@@ -203,5 +203,15 @@ impl<'a> Syscall<'a> {
 
         self.lproc.clone().do_exec(file, argv, envp);
         Ok(0)
+    }
+
+    pub fn sys_getpid(&mut self) -> SyscallResult {
+        info!("Syscall: getpid");
+        Ok(self.lproc.id().into())
+    }
+    
+    pub fn sys_getppid(&mut self) -> SyscallResult {
+        info!("Syscall: getppid");
+        Ok(self.lproc.parent_id().into())
     }
 }

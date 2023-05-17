@@ -1,4 +1,4 @@
-use core::cmp::min;
+
 
 use crate::arch::within_sum;
 use crate::executor::util_futures::yield_now;
@@ -116,28 +116,6 @@ impl<'a> Syscall<'a> {
 
         self.cx.set_user_a0(ret);
         self.do_exit
-    }
-
-    #[inline(always)]
-    pub fn sys_getpid(&mut self) -> SyscallResult {
-        info!("Syscall: getpid");
-        Ok(self.lproc.id().into())
-    }
-    #[inline(always)]
-    pub fn sys_getppid(&mut self) -> SyscallResult {
-        info!("Syscall: getppid");
-        Ok(self.lproc.parent_id().into())
-    }
-    #[inline(always)]
-    pub fn sys_getcwd(&mut self, buf: *mut u8, len: usize) -> SyscallResult {
-        info!("Syscall: getcwd");
-        let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone()).to_string();
-        let length = min(cwd.len(), len);
-        within_sum(|| unsafe {
-            core::ptr::copy_nonoverlapping(cwd.as_ptr(), buf, length);
-            *buf.add(length) = 0;
-        });
-        Ok(buf as usize)
     }
 }
 
