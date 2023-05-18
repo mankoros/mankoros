@@ -3,7 +3,7 @@
 
 use alloc::{borrow::ToOwned, string::ToString, sync::Arc};
 use core::cmp::min;
-use log::{debug, info};
+use log::{debug, info, warn};
 
 use crate::{
     arch::within_sum,
@@ -367,6 +367,58 @@ impl<'a> Syscall<'a> {
         }
 
         Ok(wroten_len)
+    }
+
+    pub fn sys_unlinkat(&mut self, dir_fd: usize, path_name: *const u8, flags: usize) -> SyscallResult {
+        info!("Syscall: unlinkat (dir_fd: {:?}, path_name: {:?}, flags: {:?})", 
+            dir_fd, path_name, flags);
+
+        const AT_REMOVEDIR: usize = 1 << 9;
+        const AT_FDCWD: usize = -100isize as usize;
+
+        let need_to_be_dir = (flags & AT_REMOVEDIR) != 0;
+
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+        let path_name = user_check.checked_read_cstr(path_name)
+            .map_err(|_| AxError::InvalidInput)?;
+
+        debug!("unlinkat: path_name: {:?}", path_name);
+
+        let path = Path::from_string(path_name)
+            .map_err(|_| AxError::InvalidInput)?;
+
+        let dir; 
+        let file_name;
+        if path.is_absolute {
+            let dir_path = path.remove_tail();
+            dir = fs::root::get_root_dir().lookup(&dir_path.to_string())?;
+            file_name = path.last();
+        } else {
+            let fd_dir = 
+            if dir_fd == AT_FDCWD {
+                let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone());
+                fs::root::get_root_dir().lookup(&cwd.to_string())?
+            } else {
+                self.lproc.with_fdtable(|f| f.get(dir_fd))
+                    .ok_or(AxError::InvalidInput)?.file.clone()
+            };
+
+            let rel_dir_path = path.remove_tail();
+            dir = fd_dir.lookup(&rel_dir_path.to_string())?;
+            file_name = path.last();
+        }
+
+        let file_type = dir.clone().lookup(file_name)?.stat()?.type_();
+        if need_to_be_dir && file_type != fs::vfs::node::VfsNodeType::Dir {
+            return Err(AxError::NotADirectory);
+        }
+        if !need_to_be_dir && file_type == fs::vfs::node::VfsNodeType::Dir {
+            return Err(AxError::IsADirectory);
+        }
+
+        // TODO: 延迟删除: 这个操作会直接让底层 FS 删除文件, 但是如果有其他进程正在使用这个文件, 应该延迟删除
+        // 已知 fat32 fs 要求被删除的文件夹是空的, 不然会返回错误, 可能该行为需要被明确到 VFS 层
+        dir.remove(&file_name).map(|_| 0)
     }
 }
 

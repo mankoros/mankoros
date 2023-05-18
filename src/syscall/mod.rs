@@ -62,7 +62,7 @@ impl<'a> Syscall<'a> {
                 self.sys_write(args[0], UserReadPtr::from_usize(args[1]), args[2]).await
             }
             SYSCALL_LINKAT => todo!(),
-            SYSCALL_UNLINKAT => todo!(),
+            SYSCALL_UNLINKAT => self.sys_unlinkat(args[0], args[1] as *const u8, args[2]),
             SYSCALL_MKDIRAT => self.sys_mkdir(args[0], args[1] as *const u8, args[2]),
             SYSCALL_UMOUNT => todo!(),
             SYSCALL_MOUNT => todo!(),
