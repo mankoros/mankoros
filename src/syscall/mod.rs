@@ -54,7 +54,7 @@ impl<'a> Syscall<'a> {
             ),
             SYSCALL_CHDIR => self.sys_chdir(args[0] as *const u8),
             SYSCALL_CLOSE => self.sys_close(args[0]),
-            SYSCALL_GETDENTS => todo!(),
+            SYSCALL_GETDENTS => self.sys_getdents(args[0], args[1] as *mut u8, args[2]),
             SYSCALL_READ => {
                 self.sys_read(args[0], UserWritePtr::from_usize(args[1]), args[2]).await
             }

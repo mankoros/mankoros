@@ -1,7 +1,7 @@
 //! Filesystem related syscall
 //!
 
-use alloc::{borrow::ToOwned, string::ToString};
+use alloc::{borrow::ToOwned, string::ToString, sync::Arc};
 use core::cmp::min;
 use log::{debug, info};
 
@@ -10,7 +10,7 @@ use crate::{
     axerrno::AxError,
     fs::{
         self,
-        vfs::{filesystem::VfsNode, path::Path},
+        vfs::{filesystem::VfsNode, path::Path, node::VfsDirEntry},
     },
     memory::{UserPtr, UserReadPtr, UserWritePtr},
     tools::user_check::{UserCheck, self},
@@ -312,5 +312,94 @@ impl<'a> Syscall<'a> {
             *buf.add(length) = 0;
         });
         Ok(buf as usize)
+    }
+
+    pub fn sys_getdents(&mut self, fd: usize, buf: *mut u8, len: usize) -> SyscallResult {
+        info!("Syscall: getdents (fd: {:?}, buf: {:?}, len: {:?})", fd, buf, len);
+        
+        // TODO: should return EBADF
+        let fd_obj = self.lproc.with_fdtable(|f| f.get(fd))
+            .ok_or(AxError::InvalidInput)?;
+        let file = fd_obj.file.clone();
+
+        /// 目录信息类
+        #[repr(C)]
+        struct DirentFront {
+            d_ino: u64,
+            d_off: u64,
+            d_reclen: u16,
+            d_type: u8,
+            // dynmaic-len cstr d_name followsing here
+        }
+
+        let mut wroten_len = 0;
+
+        let vfs_entry_iter = VfsDirEntryIter::new(file);
+        for vfs_entry in vfs_entry_iter {
+            let this_entry_len = core::mem::size_of::<DirentFront>() + vfs_entry.d_name().len() + 1;
+            if wroten_len + this_entry_len > len {
+                break;
+            }
+
+            let dirent_front = DirentFront {
+                d_ino: 1,
+                d_off: this_entry_len as u64,
+                d_reclen: this_entry_len as u16,
+                d_type: vfs_entry.d_type().as_char() as u8,
+            };
+
+            // TODO: check user memory
+            within_sum(|| unsafe {
+                core::ptr::copy_nonoverlapping(
+                    &dirent_front as *const _ as *const u8, 
+                    buf.add(wroten_len), 
+                    core::mem::size_of::<DirentFront>()
+                );
+                core::ptr::copy_nonoverlapping(
+                    vfs_entry.d_name().as_ptr(), 
+                    buf.add(wroten_len + core::mem::size_of::<DirentFront>()), 
+                    vfs_entry.d_name().len()
+                );
+                *buf.add(wroten_len + this_entry_len) = 0;
+            });
+
+            wroten_len += this_entry_len;
+        }
+
+        Ok(wroten_len)
+    }
+}
+
+// 下面是用来实现 getdents 的基建, 可能需要修改 VFS 的接口
+struct VfsDirEntryIter {
+    dir: Arc<dyn VfsNode>,
+    vfs_ent_cnt: usize,
+}
+
+impl Iterator for VfsDirEntryIter {
+    type Item = VfsDirEntry;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        #[allow(invalid_value)]
+        let mut vfs_entries: [VfsDirEntry; 1] = unsafe {
+            core::mem::MaybeUninit::uninit().assume_init()
+        };
+
+        let read_cnt = self.dir.read_dir(self.vfs_ent_cnt, &mut vfs_entries).unwrap();
+        if read_cnt == 0 {
+            return None;
+        }
+
+        self.vfs_ent_cnt += 1;
+        Some(vfs_entries[0].clone())
+    }
+}
+
+impl VfsDirEntryIter {
+    fn new(dir: Arc<dyn VfsNode>) -> Self {
+        Self {
+            dir,
+            vfs_ent_cnt: 0,
+        }
     }
 }
