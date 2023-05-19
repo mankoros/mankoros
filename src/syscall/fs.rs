@@ -373,8 +373,8 @@ impl<'a> Syscall<'a> {
         let file = fd_obj.file.clone();
 
         /// 目录信息类
-        #[repr(C)]
-        #[derive(Clone)]
+        #[repr(packed)]
+        #[derive(Clone, Copy)]
         struct DirentFront {
             d_ino: u64,
             d_off: u64,
@@ -387,6 +387,8 @@ impl<'a> Syscall<'a> {
 
         let vfs_entry_iter = VfsDirEntryIter::new(file);
         for vfs_entry in vfs_entry_iter {
+            // TODO-BUG: 检查写入后的长度是否满足 u64 的对齐要求, 不满足补 0
+            // TODO: d_name 是 &str, 末尾可能会有很多 \0, 想办法去掉它们
             let this_entry_len = core::mem::size_of::<DirentFront>() + vfs_entry.d_name().len() + 1;
             if wroten_len + this_entry_len > len {
                 break;
