@@ -45,6 +45,14 @@ impl Pipe {
             },
         )
     }
+
+    fn is_hang_up(&self) -> bool {
+        if self.is_read {
+            self.data.lock(here!()).is_empty() && Arc::strong_count(&self.data) < 2
+        } else {
+            Arc::strong_count(&self.data) < 2
+        }
+    }
 }
 
 impl VfsNode for Pipe {
@@ -55,6 +63,10 @@ impl VfsNode for Pipe {
             // Check if the pipe is writable
             if self.is_read {
                 return Err(AxError::Unsupported);
+            }
+            // Check if the pipe is hang up
+            if self.is_hang_up() {
+                return Ok(0);
             }
 
             let buf_len = buf.len();
@@ -92,6 +104,11 @@ impl VfsNode for Pipe {
             if !self.is_read {
                 return Err(AxError::Unsupported);
             }
+            // Check if the pipe is hang up
+            if self.is_hang_up() {
+                return Ok(0);
+            }
+
             let buf_len = buf.len();
             let mut data = loop {
                 // Acquire the lock

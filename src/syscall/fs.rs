@@ -1,19 +1,25 @@
 //! Filesystem related syscall
 //!
 
-use alloc::{sync::Arc};
-use core::{cmp::min};
+use alloc::sync::Arc;
+use core::cmp::min;
 use log::{debug, info};
 
 use crate::{
     arch::within_sum,
     axerrno::AxError,
+    executor::util_futures::within_sum_async,
     fs::{
         self,
-        vfs::{filesystem::VfsNode, path::Path, node::{VfsDirEntry, VfsNodeType}},
+        pipe::Pipe,
+        vfs::{
+            filesystem::VfsNode,
+            node::{VfsDirEntry, VfsNodeType},
+            path::Path,
+        },
     },
     memory::{UserReadPtr, UserWritePtr},
-    tools::user_check::{UserCheck}, executor::util_futures::within_sum_async,
+    tools::user_check::UserCheck,
 };
 
 use super::{Syscall, SyscallResult};
@@ -171,14 +177,15 @@ impl<'a> Syscall<'a> {
         let path = Path::from_string(path).expect("Error parsing path");
 
         let dir = if path.is_absolute {
-            fs::root::get_root_dir()  
+            fs::root::get_root_dir()
         } else {
             if dir_fd == AT_FDCWD {
                 let cwd = self.lproc.with_fsinfo(|f| f.cwd.to_string());
-                fs::root::get_root_dir().lookup(&cwd)
-                    .map_err(|_| AxError::InvalidInput)?
+                fs::root::get_root_dir().lookup(&cwd).map_err(|_| AxError::InvalidInput)?
             } else {
-                let file = self.lproc.with_mut_fdtable(|f| f.get(dir_fd as usize))
+                let file = self
+                    .lproc
+                    .with_mut_fdtable(|f| f.get(dir_fd as usize))
                     .map(|fd| fd.file.clone())
                     .ok_or(AxError::InvalidInput)?; // TODO: return EBADF
                 if file.stat().unwrap().type_() != VfsNodeType::Dir {
@@ -208,6 +215,27 @@ impl<'a> Syscall<'a> {
         };
 
         self.lproc.with_mut_fdtable(|f| Ok(f.alloc(file) as usize))
+    }
+
+    /// 创建管道，在 *pipe 记录读管道的 fd，在 *(pipe+1) 记录写管道的 fd。
+    /// 成功时返回 0，失败则返回 -1
+    pub fn sys_pipe(&mut self, pipe: UserWritePtr<u32>) -> SyscallResult {
+        info!("Syscall: pipe");
+        let (pipe_read, pipe_write) = Pipe::new_pipe();
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+
+        self.lproc.with_mut_fdtable(|table| {
+            let read_fd = table.alloc(Arc::new(pipe_read));
+            let write_fd = table.alloc(Arc::new(pipe_write));
+
+            debug!("read_fd: {}", read_fd);
+            debug!("write_fd: {}", write_fd);
+
+            // TODO: check user permissions
+            unsafe { *pipe.raw_ptr_mut() = read_fd as u32 }
+            unsafe { *pipe.raw_ptr_mut().add(1) = write_fd as u32 }
+        });
+        Ok(0)
     }
 
     pub fn sys_close(&mut self, fd: usize) -> SyscallResult {
@@ -335,11 +363,13 @@ impl<'a> Syscall<'a> {
     }
 
     pub fn sys_getdents(&mut self, fd: usize, buf: *mut u8, len: usize) -> SyscallResult {
-        info!("Syscall: getdents (fd: {:?}, buf: {:?}, len: {:?})", fd, buf, len);
-        
+        info!(
+            "Syscall: getdents (fd: {:?}, buf: {:?}, len: {:?})",
+            fd, buf, len
+        );
+
         // TODO: should return EBADF
-        let fd_obj = self.lproc.with_fdtable(|f| f.get(fd))
-            .ok_or(AxError::InvalidInput)?;
+        let fd_obj = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(AxError::InvalidInput)?;
         let file = fd_obj.file.clone();
 
         /// 目录信息类
@@ -371,11 +401,13 @@ impl<'a> Syscall<'a> {
 
             let dirent_beg = unsafe { buf.add(wroten_len) } as *mut DirentFront;
             let d_name_beg = unsafe { buf.add(wroten_len + core::mem::size_of::<DirentFront>()) };
-            
+
             let user_check = UserCheck::new_with_sum(&self.lproc);
-            user_check.checked_write(dirent_beg, dirent_front.clone())
+            user_check
+                .checked_write(dirent_beg, dirent_front.clone())
                 .map_err(|_| AxError::InvalidInput)?;
-            user_check.checked_write_cstr(d_name_beg, vfs_entry.d_name())
+            user_check
+                .checked_write_cstr(d_name_beg, vfs_entry.d_name())
                 .map_err(|_| AxError::InvalidInput)?;
 
             wroten_len += this_entry_len;
@@ -384,35 +416,43 @@ impl<'a> Syscall<'a> {
         Ok(wroten_len)
     }
 
-    pub fn sys_unlinkat(&mut self, dir_fd: usize, path_name: *const u8, flags: usize) -> SyscallResult {
-        info!("Syscall: unlinkat (dir_fd: {:?}, path_name: {:?}, flags: {:?})", 
-            dir_fd, path_name, flags);
+    pub fn sys_unlinkat(
+        &mut self,
+        dir_fd: usize,
+        path_name: *const u8,
+        flags: usize,
+    ) -> SyscallResult {
+        info!(
+            "Syscall: unlinkat (dir_fd: {:?}, path_name: {:?}, flags: {:?})",
+            dir_fd, path_name, flags
+        );
 
         let need_to_be_dir = (flags & AT_REMOVEDIR) != 0;
 
         let user_check = UserCheck::new_with_sum(&self.lproc);
-        let path_name = user_check.checked_read_cstr(path_name)
-            .map_err(|_| AxError::InvalidInput)?;
+        let path_name =
+            user_check.checked_read_cstr(path_name).map_err(|_| AxError::InvalidInput)?;
 
         debug!("unlinkat: path_name: {:?}", path_name);
 
-        let path = Path::from_string(path_name)
-            .map_err(|_| AxError::InvalidInput)?;
+        let path = Path::from_string(path_name).map_err(|_| AxError::InvalidInput)?;
 
-        let dir; 
+        let dir;
         let file_name;
         if path.is_absolute {
             let dir_path = path.remove_tail();
             dir = fs::root::get_root_dir().lookup(&dir_path.to_string())?;
             file_name = path.last();
         } else {
-            let fd_dir = 
-            if dir_fd == AT_FDCWD {
+            let fd_dir = if dir_fd == AT_FDCWD {
                 let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone());
                 fs::root::get_root_dir().lookup(&cwd.to_string())?
             } else {
-                self.lproc.with_fdtable(|f| f.get(dir_fd))
-                    .ok_or(AxError::InvalidInput)?.file.clone()
+                self.lproc
+                    .with_fdtable(|f| f.get(dir_fd))
+                    .ok_or(AxError::InvalidInput)?
+                    .file
+                    .clone()
             };
 
             let rel_dir_path = path.remove_tail();
@@ -445,9 +485,8 @@ impl Iterator for VfsDirEntryIter {
 
     fn next(&mut self) -> Option<Self::Item> {
         #[allow(invalid_value)]
-        let mut vfs_entries: [VfsDirEntry; 1] = unsafe {
-            core::mem::MaybeUninit::uninit().assume_init()
-        };
+        let mut vfs_entries: [VfsDirEntry; 1] =
+            unsafe { core::mem::MaybeUninit::uninit().assume_init() };
 
         let read_cnt = self.dir.read_dir(self.vfs_ent_cnt, &mut vfs_entries).unwrap();
         if read_cnt == 0 {

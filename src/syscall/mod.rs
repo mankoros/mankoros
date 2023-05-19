@@ -1,6 +1,3 @@
-
-
-
 use crate::executor::util_futures::yield_now;
 use crate::memory::{UserReadPtr, UserWritePtr};
 use crate::process::lproc::LightProcess;
@@ -8,7 +5,6 @@ use crate::process::lproc::LightProcess;
 use crate::{axerrno::AxError, syscall::misc::UtsName, trap::context::UKContext};
 
 use log::debug;
-
 
 mod fs;
 mod memory;
@@ -43,7 +39,7 @@ impl<'a> Syscall<'a> {
         let result: SyscallResult = match syscall_no {
             // File related
             SYSCALL_GETCWD => self.sys_getcwd(args[0] as *mut u8, args[1]),
-            SYSCALL_PIPE2 => todo!(),
+            SYSCALL_PIPE2 => self.sys_pipe(UserWritePtr::from_usize(args[0])),
             SYSCALL_DUP => self.sys_dup(args[0]),
             SYSCALL_DUP3 => self.sys_dup3(args[0], args[1]),
             SYSCALL_OPENAT => self.sys_openat(

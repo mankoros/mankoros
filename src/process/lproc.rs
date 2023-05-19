@@ -307,7 +307,7 @@ impl LightProcess {
         if flags.contains(CloneFlags::FILES) {
             fdtable = self.fdtable.clone();
         } else {
-            fdtable = new_shared(FdTable::new_with_std());
+            fdtable = new_shared(self.fdtable.lock(here!()).clone());
         }
 
         // TODO: signal handler
@@ -360,6 +360,7 @@ impl FileDescriptor {
     }
 }
 
+#[derive(Clone)]
 pub struct FdTable {
     pool: UsizePool,
     table: BTreeMap<usize, Arc<FileDescriptor>>,
