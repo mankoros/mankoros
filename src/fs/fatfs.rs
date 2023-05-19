@@ -190,7 +190,7 @@ impl VfsNode for FileWrapper<'static> {
         file.write(buf).map_err(as_vfs_err)
     }
 
-    fn read_at<'a>(&'a self, offset: u64, mut buf: &'a mut [u8]) -> AVfsResult<usize> {
+    fn read_at<'a>(&'a self, offset: u64, buf: &'a mut [u8]) -> AVfsResult<usize> {
         Box::pin(async move { self.sync_read_at(offset, buf) })
     }
 

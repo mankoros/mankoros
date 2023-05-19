@@ -6,7 +6,6 @@ use super::{range_map::RangeMap};
 use crate::memory::address::VirtAddr;
 
 use crate::{
-    consts,
     fs::vfs::filesystem::VfsNode,
     memory::{
         address::{VirtPageNum},
@@ -240,7 +239,7 @@ impl UserArea {
                     let access_vaddr: VirtAddr = access_vpn.into();
                     let real_offset = offset + (access_vaddr - range_begin);
                     let slice = unsafe { frame.as_mut_page_slice() };
-                    let read_length = file.sync_read_at(real_offset as u64, slice).expect("read file failed");
+                    let _read_length = file.sync_read_at(real_offset as u64, slice).expect("read file failed");
                     // Read length may be less than PAGE_SIZE, due to file mmap
                 }
             }
