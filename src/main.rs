@@ -221,6 +221,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
                 "execve",
                 "chdir",
                 "exit",
+                "read",
                 "write",
                 "close",
                 "mmap",

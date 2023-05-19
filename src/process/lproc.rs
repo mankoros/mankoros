@@ -305,8 +305,10 @@ impl LightProcess {
 
         let fdtable;
         if flags.contains(CloneFlags::FILES) {
+            // Increase refcnt
             fdtable = self.fdtable.clone();
         } else {
+            // Copy the whole fdtable
             fdtable = new_shared(self.fdtable.lock(here!()).clone());
         }
 
