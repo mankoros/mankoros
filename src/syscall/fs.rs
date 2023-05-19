@@ -1,7 +1,7 @@
 //! Filesystem related syscall
 //!
 
-use alloc::{string::ToString, sync::Arc};
+use alloc::{sync::Arc};
 use core::{cmp::min};
 use log::{debug, info};
 
@@ -10,7 +10,7 @@ use crate::{
     axerrno::AxError,
     fs::{
         self,
-        vfs::{filesystem::VfsNode, path::Path, node::VfsDirEntry},
+        vfs::{filesystem::VfsNode, path::Path, node::{VfsDirEntry, VfsNodeType}},
     },
     memory::{UserReadPtr, UserWritePtr},
     tools::user_check::{UserCheck}, executor::util_futures::within_sum_async,
@@ -112,6 +112,9 @@ impl OpenFlags {
     }
 }
 
+const AT_REMOVEDIR: usize = 1 << 9;
+const AT_FDCWD: usize = -100isize as usize;
+
 impl<'a> Syscall<'a> {
     pub async fn sys_write(
         &mut self,
@@ -153,7 +156,7 @@ impl<'a> Syscall<'a> {
 
     pub fn sys_openat(
         &mut self,
-        _dir_fd: i32,
+        dir_fd: usize,
         path: *const u8,
         raw_flags: u32,
         _user_mode: i32,
@@ -163,11 +166,29 @@ impl<'a> Syscall<'a> {
         // Parse flags
         let flags = OpenFlags::from_bits_truncate(raw_flags);
 
-        let root_fs = fs::root::get_root_dir();
         let user_check = UserCheck::new_with_sum(&self.lproc);
         let path = user_check.checked_read_cstr(path).map_err(|_| AxError::InvalidInput)?;
         let path = Path::from_string(path).expect("Error parsing path");
-        let file = match within_sum(|| root_fs.clone().lookup(&path.to_string())) {
+
+        let dir = if path.is_absolute {
+            fs::root::get_root_dir()  
+        } else {
+            if dir_fd == AT_FDCWD {
+                let cwd = self.lproc.with_fsinfo(|f| f.cwd.to_string());
+                fs::root::get_root_dir().lookup(&cwd)
+                    .map_err(|_| AxError::InvalidInput)?
+            } else {
+                let file = self.lproc.with_mut_fdtable(|f| f.get(dir_fd as usize))
+                    .map(|fd| fd.file.clone())
+                    .ok_or(AxError::InvalidInput)?; // TODO: return EBADF
+                if file.stat().unwrap().type_() != VfsNodeType::Dir {
+                    return Err(AxError::InvalidInput);
+                }
+                file
+            }
+        };
+
+        let file = match dir.clone().lookup(&path.to_string()) {
             Ok(file) => file,
             Err(AxError::NotFound) => {
                 // Check if CREATE flag is set
@@ -175,8 +196,8 @@ impl<'a> Syscall<'a> {
                     return Err(AxError::NotFound);
                 }
                 // Create file
-                root_fs.create(path.to_string().as_str(), fs::vfs::node::VfsNodeType::File)?;
-                let file = root_fs
+                dir.create(path.to_string().as_str(), VfsNodeType::File)?;
+                let file = dir
                     .lookup(&path.to_string())
                     .expect("File just created is not found, very wrong");
                 file
@@ -258,7 +279,7 @@ impl<'a> Syscall<'a> {
             debug!("Directory already exists: {:?}", path);
             return Ok(0);
         }
-        root_fs.create(path.to_string().as_str(), fs::vfs::node::VfsNodeType::Dir)?;
+        root_fs.create(path.to_string().as_str(), VfsNodeType::Dir)?;
         Ok(0)
     }
 
@@ -292,7 +313,7 @@ impl<'a> Syscall<'a> {
         let root_fs = fs::root::get_root_dir();
         let node = root_fs.lookup(&path.to_string())?;
         let node_stat = node.stat()?;
-        if node_stat.type_() != fs::vfs::node::VfsNodeType::Dir {
+        if node_stat.type_() != VfsNodeType::Dir {
             return Err(AxError::NotADirectory);
         }
 
@@ -367,9 +388,6 @@ impl<'a> Syscall<'a> {
         info!("Syscall: unlinkat (dir_fd: {:?}, path_name: {:?}, flags: {:?})", 
             dir_fd, path_name, flags);
 
-        const AT_REMOVEDIR: usize = 1 << 9;
-        const AT_FDCWD: usize = -100isize as usize;
-
         let need_to_be_dir = (flags & AT_REMOVEDIR) != 0;
 
         let user_check = UserCheck::new_with_sum(&self.lproc);
@@ -403,10 +421,10 @@ impl<'a> Syscall<'a> {
         }
 
         let file_type = dir.clone().lookup(file_name)?.stat()?.type_();
-        if need_to_be_dir && file_type != fs::vfs::node::VfsNodeType::Dir {
+        if need_to_be_dir && file_type != VfsNodeType::Dir {
             return Err(AxError::NotADirectory);
         }
-        if !need_to_be_dir && file_type == fs::vfs::node::VfsNodeType::Dir {
+        if !need_to_be_dir && file_type == VfsNodeType::Dir {
             return Err(AxError::IsADirectory);
         }
 

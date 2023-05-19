@@ -202,7 +202,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
 
     cfg_if::cfg_if! {
         if #[cfg(debug_assertions)] {
-            let cases = ["getdents"];
+            let cases = ["openat"];
         } else {
             let cases = [
                 "getpid",
@@ -229,6 +229,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
                 "unlink",
                 "wait",
                 "waitpid",
+                "openat",
             ];
         }
     }

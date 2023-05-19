@@ -47,7 +47,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_DUP => self.sys_dup(args[0]),
             SYSCALL_DUP3 => self.sys_dup3(args[0], args[1]),
             SYSCALL_OPENAT => self.sys_openat(
-                args[0] as i32,
+                args[0],
                 args[1] as *const u8,
                 args[2] as u32,
                 args[3] as i32,
