@@ -1,9 +1,9 @@
 //! Filesystem related syscall
 //!
 
-use alloc::{borrow::ToOwned, string::ToString, sync::Arc};
-use core::cmp::min;
-use log::{debug, info, warn};
+use alloc::{string::ToString, sync::Arc};
+use core::{cmp::min};
+use log::{debug, info};
 
 use crate::{
     arch::within_sum,
@@ -12,9 +12,8 @@ use crate::{
         self,
         vfs::{filesystem::VfsNode, path::Path, node::VfsDirEntry},
     },
-    memory::{UserPtr, UserReadPtr, UserWritePtr},
-    tools::user_check::{UserCheck, self},
-    utils, executor::util_futures::within_sum_async,
+    memory::{UserReadPtr, UserWritePtr},
+    tools::user_check::{UserCheck}, executor::util_futures::within_sum_async,
 };
 
 use super::{Syscall, SyscallResult};
@@ -324,6 +323,7 @@ impl<'a> Syscall<'a> {
 
         /// 目录信息类
         #[repr(C)]
+        #[derive(Clone)]
         struct DirentFront {
             d_ino: u64,
             d_off: u64,
@@ -348,20 +348,14 @@ impl<'a> Syscall<'a> {
                 d_type: vfs_entry.d_type().as_char() as u8,
             };
 
-            // TODO: check user memory
-            within_sum(|| unsafe {
-                core::ptr::copy_nonoverlapping(
-                    &dirent_front as *const _ as *const u8, 
-                    buf.add(wroten_len), 
-                    core::mem::size_of::<DirentFront>()
-                );
-                core::ptr::copy_nonoverlapping(
-                    vfs_entry.d_name().as_ptr(), 
-                    buf.add(wroten_len + core::mem::size_of::<DirentFront>()), 
-                    vfs_entry.d_name().len()
-                );
-                *buf.add(wroten_len + this_entry_len) = 0;
-            });
+            let dirent_beg = unsafe { buf.add(wroten_len) } as *mut DirentFront;
+            let d_name_beg = unsafe { buf.add(wroten_len + core::mem::size_of::<DirentFront>()) };
+            
+            let user_check = UserCheck::new_with_sum(&self.lproc);
+            user_check.checked_write(dirent_beg, dirent_front.clone())
+                .map_err(|_| AxError::InvalidInput)?;
+            user_check.checked_write_cstr(d_name_beg, vfs_entry.d_name())
+                .map_err(|_| AxError::InvalidInput)?;
 
             wroten_len += this_entry_len;
         }

@@ -62,6 +62,16 @@ impl<'a> UserCheck<'a> {
         Ok(s)
     }
 
+    pub fn checked_write_cstr(&self, ptr: *mut u8, value: &str) -> Result<(), ()> {
+        let mut p = ptr;
+        for c in value.chars() {
+            self.checked_write(p, c as u8)?;
+            p = unsafe { p.add(1) };
+        }
+        self.checked_write(p, 0)?;
+        Ok(())
+    }
+
     pub fn checked_read_2d_cstr(&self, ptr: *const *const u8) -> Result<Vec<String>, ()> {
         let mut v = Vec::new();
         let mut p = ptr;
