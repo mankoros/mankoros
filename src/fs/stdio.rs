@@ -69,7 +69,7 @@ impl VfsNode for Stdout {
                     if #[cfg(debug_assertions)] {
                         warn!("User stdout: {}", data);
                     } else {
-                        print!("{}", data);
+                        crate::print!("{}", data);
                     }
                 }
                 Ok(buf.len())
