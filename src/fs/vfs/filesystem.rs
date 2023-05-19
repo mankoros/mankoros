@@ -96,6 +96,9 @@ pub trait VfsNode: Send + Sync + 'static {
     /// Lookup the node with given `path` in the directory.
     ///
     /// Return the node if found.
+    /// 
+    /// Because when path == "." or "", it will return current dir, 
+    /// it must consume an Arc<Self> instead of &self
     fn lookup(self: Arc<Self>, _path: &str) -> VfsResult<VfsNodeRef> {
         ax_err!(Unsupported)
     }
