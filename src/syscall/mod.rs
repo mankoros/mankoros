@@ -74,7 +74,7 @@ impl<'a> Syscall<'a> {
                 args[1] as *const *const u8,
                 args[2] as *const *const u8,
             ),
-            SYSCALL_WAIT => self.sys_wait(args[0], args[1], args[2]).await,
+            SYSCALL_WAIT => self.sys_wait(args[0] as isize, args[1], args[2]).await,
             SYSCALL_EXIT => {
                 debug!("syscall: exit");
                 self.do_exit = true;

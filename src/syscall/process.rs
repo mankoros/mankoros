@@ -7,7 +7,7 @@ use crate::{
     executor::util_futures::yield_now,
     memory::address::VirtAddr,
     process::{self, lproc::ProcessStatus, user_space::user_area::UserAreaPerm},
-    signal, fs::vfs::{filesystem::VfsNode, path::Path}, tools::user_check::UserCheck,
+    signal, fs::vfs::{filesystem::VfsNode, path::Path}, tools::user_check::{UserCheck, self},
 };
 
 use super::{Syscall, SyscallResult};
@@ -46,36 +46,58 @@ bitflags! {
 impl<'a> Syscall<'a> {
     pub async fn sys_wait(
         &mut self,
-        _pid: usize,
-        wstatus: usize, // TODO: not sure
-        _options: usize,
+        pid: isize,
+        // Can't use *mut u32 here because it's not Send.
+        wstatus: usize,
+        options: usize,
     ) -> SyscallResult {
-        debug!("syscall: wait");
-        let pid = loop {
+        info!("syscall: wait: pid: {}, wstatus: {:?}, options: {}", pid, wstatus, options);
+
+        if options != 0 {
+            todo!("wait: options != 0");
+        }
+
+        let result_lproc = loop {
             yield_now().await;
+
             // Check if the child has exited.
-            if let Some(child) = self
-                .lproc
-                .children()
-                .into_iter()
+            let stopped_children = self.lproc.children().into_iter()
                 .filter(|lp| lp.status() == ProcessStatus::STOPPED)
-                .collect::<Vec<_>>()
-                .first()
-            {
+                .collect::<Vec<_>>();
+
+            let target_child_opt = if pid < -1 {
+                let target_tgid = -pid as usize;
+                stopped_children.iter().find(|lp| lp.tgid() == target_tgid) 
+            } else if pid == -1 {
+                stopped_children.last()
+            } else if pid == 0 {
+                let target_tgid = self.lproc.tgid();
+                stopped_children.iter().find(|lp| lp.tgid() == target_tgid)
+            } else  {
+                debug_assert!(pid > 0);
+                let pid = pid as usize;
+                stopped_children.iter().find(|lp| lp.id() == pid)
+            };
+
+            if let Some(child) = target_child_opt {
                 self.lproc.clone().remove_child(&child.clone());
                 // Reset SIGCHLC signal
                 self.lproc.clone().clear_signal(signal::SignalSet::SIGCHLD);
-                break child.id();
+                break child.clone();
             }
         };
-        if wstatus != 0 {
-            // No write to NULL
-            let wstatus = wstatus as *mut usize;
-            within_sum(|| {
-                unsafe { *wstatus = pid.into() };
-            });
+
+        let wstatus = wstatus as *mut u32;
+        if !wstatus.is_null() {
+            // 末尾 8 位是 SIG 信息, 再上 8 位是退出码
+            let status = ((result_lproc.exit_code() as u32 & 0xff) << 8) | 0x00;
+            debug!("wstatus: {:#x}", status);
+            let user_check = UserCheck::new_with_sum(&self.lproc);
+            user_check.checked_write(wstatus, status)
+                .map_err(|_| AxError::InvalidInput)?;
         }
-        Ok(pid.into())
+
+        Ok(result_lproc.id().into())
     }
 
     pub fn sys_clone(
