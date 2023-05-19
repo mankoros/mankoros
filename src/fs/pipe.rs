@@ -5,10 +5,19 @@
 //! 目前的实现中，Pipe位于内核堆
 //! Adapted from Maturin OS.
 
-use alloc::sync::Arc;
-use ringbuffer::AllocRingBuffer;
+use alloc::{boxed::Box, sync::Arc};
+use ringbuffer::{AllocRingBuffer, RingBuffer, RingBufferRead, RingBufferWrite};
 
-use crate::{consts, sync::SpinNoIrqLock};
+use crate::{
+    axerrno::AxError, consts, executor::util_futures::yield_now, here, impl_vfs_non_dir_default,
+    sync::SpinNoIrqLock,
+};
+
+use super::vfs::{
+    filesystem::VfsNode,
+    node::{VfsNodeAttr, VfsNodePermission, VfsNodeType},
+    AVfsResult, VfsResult,
+};
 
 /// 管道本体，每次创建两份，一个是读端，一个是写端
 pub struct Pipe {
@@ -35,5 +44,80 @@ impl Pipe {
                 data: buf,
             },
         )
+    }
+}
+
+impl VfsNode for Pipe {
+    impl_vfs_non_dir_default! {}
+
+    fn write_at<'a>(&'a self, _offset: u64, buf: &'a [u8]) -> AVfsResult<usize> {
+        Box::pin(async move {
+            // Check if the pipe is writable
+            if self.is_read {
+                return Err(AxError::Unsupported);
+            }
+
+            let buf_len = buf.len();
+
+            let mut data = loop {
+                // Acquire the lock
+                let data = self.data.lock(here!());
+                // Check if the buffer is enough
+                if data.capacity() - data.len() >= buf_len {
+                    break data;
+                }
+                // Release the lock
+                drop(data);
+                // Wait for next round
+                yield_now().await;
+            };
+            for b in buf.iter() {
+                data.push(*b);
+            }
+            // Auto release lock
+            Ok(buf_len)
+        })
+    }
+
+    fn fsync(&self) -> VfsResult {
+        crate::ax_err!(Unsupported)
+    }
+
+    fn truncate(&self, _size: u64) -> VfsResult {
+        crate::ax_err!(Unsupported)
+    }
+    fn read_at<'a>(&'a self, _offset: u64, buf: &'a mut [u8]) -> AVfsResult<usize> {
+        Box::pin(async move {
+            // Check if the pipe is readable
+            if !self.is_read {
+                return Err(AxError::Unsupported);
+            }
+            let buf_len = buf.len();
+            let mut data = loop {
+                // Acquire the lock
+                let data = self.data.lock(here!());
+                // Check if the buffer is enough
+                if data.len() >= buf_len {
+                    break data;
+                }
+                // Release the lock
+                drop(data);
+                // Wait for next round
+                yield_now().await;
+            };
+            for i in 0..buf_len {
+                buf[i] = data.dequeue().expect("Just checked for len, should not fail");
+            }
+            Ok(buf_len)
+        })
+    }
+    /// 文件属性
+    fn stat(&self) -> VfsResult<VfsNodeAttr> {
+        Ok(VfsNodeAttr::new(
+            VfsNodePermission::all(),
+            VfsNodeType::CharDevice,
+            0,
+            0,
+        ))
     }
 }
