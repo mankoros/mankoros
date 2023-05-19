@@ -115,6 +115,10 @@ impl LightProcess {
         self.exit_code.load(Ordering::SeqCst)
     }
 
+    pub fn set_exit_code(&self, code: i32) {
+        self.exit_code.store(code, Ordering::SeqCst);
+    }
+
     pub fn children(&self) -> Vec<Arc<LightProcess>> {
         self.children.lock(here!()).clone()
     }

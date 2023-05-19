@@ -148,7 +148,7 @@ impl<'a> Syscall<'a> {
 
         // save the tid of the new process and add it to queue
         let new_proc_tid = new_lproc.id();
-        debug!("Spawning new process with tid {:#?}", new_proc_tid);
+        debug!("Spawning new process with tid {:?}", new_proc_tid);
         process::spawn_proc(new_lproc);
         Ok(new_proc_tid.into())
     }

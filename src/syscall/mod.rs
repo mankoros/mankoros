@@ -78,7 +78,8 @@ impl<'a> Syscall<'a> {
             SYSCALL_EXIT => {
                 debug!("syscall: exit");
                 self.do_exit = true;
-                Ok(args[0])
+                self.lproc.set_exit_code(args[0] as i32);
+                Ok(0)
             }
             SYSCALL_GETPPID => self.sys_getppid(),
             SYSCALL_GETPID => self.sys_getpid(),
