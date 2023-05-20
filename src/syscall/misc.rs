@@ -1,6 +1,8 @@
 //! Misc syscall
 //!
 
+use crate::timer::TimeVal;
+
 use super::{Syscall, SyscallResult};
 
 // copy from sys/utsname.h
@@ -46,6 +48,13 @@ impl<'a> Syscall<'a> {
             riscv::register::sstatus::set_sum();
             (*uts) = UtsName::default();
             riscv::register::sstatus::clear_sum();
+        }
+        Ok(0)
+    }
+
+    pub fn sys_gettimeofday(&mut self, time_val: *mut TimeVal) -> SyscallResult {
+        unsafe {
+            (*time_val) = TimeVal::now();
         }
         Ok(0)
     }

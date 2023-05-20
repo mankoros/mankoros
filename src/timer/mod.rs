@@ -1,3 +1,10 @@
+mod timespec;
+mod timeval;
+mod tms;
+
+pub use self::timespec::TimeSpec;
+pub use self::timeval::TimeVal;
+pub use self::tms::Tms;
 use crate::arch;
 use log::info;
 use riscv::register::{sie, time};

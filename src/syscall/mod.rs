@@ -2,8 +2,9 @@ use core::cmp::min;
 
 use crate::arch::within_sum;
 use crate::executor::yield_future::yield_now;
-use crate::process::lproc::{LightProcess};
+use crate::process::lproc::LightProcess;
 
+use crate::timer::TimeVal;
 use crate::{axerrno::AxError, syscall::misc::UtsName, trap::context::UKContext};
 
 use log::debug;
@@ -65,9 +66,9 @@ impl<'a> Syscall<'a> {
             // Process related
             SYSCALL_CLONE => self.sys_clone(args[0] as u32, args[1], args[2], args[3], args[4]),
             SYSCALL_EXECVE => self.sys_execve(
-                args[0] as *const u8, 
-                args[1] as *const *const u8, 
-                args[2] as *const *const u8
+                args[0] as *const u8,
+                args[1] as *const *const u8,
+                args[2] as *const *const u8,
             ),
             SYSCALL_WAIT => self.sys_wait(args[0], args[1], args[2]).await,
             SYSCALL_EXIT => {
@@ -95,7 +96,7 @@ impl<'a> Syscall<'a> {
                 yield_now().await;
                 Ok(0)
             }
-            SYSCALL_GETTIMEOFDAY => todo!(),
+            SYSCALL_GETTIMEOFDAY => self.sys_gettimeofday(args[0] as *mut TimeVal),
             SYSCALL_NANOSLEEP => todo!(),
             _ => panic!("Unknown syscall_id: {}", syscall_no),
         };
