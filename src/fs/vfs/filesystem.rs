@@ -34,6 +34,29 @@ pub trait Vfs: Send + Sync {
     }
 }
 
+/// A Wrapper for converting a VfsNodeRef to a Vfs file system
+pub struct VfsWrapper {
+    node: VfsNodeRef,
+}
+impl VfsWrapper {
+    pub fn new(node: VfsNodeRef) -> VfsWrapper {
+        VfsWrapper { node }
+    }
+}
+
+impl Vfs for VfsWrapper {
+    // No support for nested mounting
+    fn mount(&self, _path: &str, _mount_point: VfsNodeRef) -> VfsResult {
+        Ok(())
+    }
+    fn unmount(&self) -> VfsResult {
+        ax_err!(Unsupported)
+    }
+    fn root_dir(&self) -> VfsNodeRef {
+        self.node.clone()
+    }
+}
+
 pub trait VfsNode: Send + Sync + 'static {
     /// open operation
     fn open(&self) -> VfsResult {
@@ -96,8 +119,8 @@ pub trait VfsNode: Send + Sync + 'static {
     /// Lookup the node with given `path` in the directory.
     ///
     /// Return the node if found.
-    /// 
-    /// Because when path == "." or "", it will return current dir, 
+    ///
+    /// Because when path == "." or "", it will return current dir,
     /// it must consume an Arc<Self> instead of &self
     fn lookup(self: Arc<Self>, _path: &str) -> VfsResult<VfsNodeRef> {
         ax_err!(Unsupported)

@@ -13,7 +13,7 @@ use crate::{
         self,
         pipe::Pipe,
         vfs::{
-            filesystem::VfsNode,
+            filesystem::{VfsNode, VfsWrapper},
             node::{VfsDirEntry, VfsNodeType},
             path::Path,
         },
@@ -473,6 +473,56 @@ impl<'a> Syscall<'a> {
         // TODO: 延迟删除: 这个操作会直接让底层 FS 删除文件, 但是如果有其他进程正在使用这个文件, 应该延迟删除
         // 已知 fat32 fs 要求被删除的文件夹是空的, 不然会返回错误, 可能该行为需要被明确到 VFS 层
         dir.remove(&file_name).map(|_| 0)
+    }
+
+    pub fn sys_mount(
+        &mut self,
+        device: UserReadPtr<u8>,
+        mount_point: UserReadPtr<u8>,
+        _fs_type: UserReadPtr<u8>,
+        _flags: u32,
+        _data: UserReadPtr<u8>,
+    ) -> SyscallResult {
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+        let device = user_check
+            .checked_read_cstr(device.raw_ptr())
+            .map_err(|_| AxError::InvalidInput)?;
+        let mount_point = user_check
+            .checked_read_cstr(mount_point.raw_ptr())
+            .map_err(|_| AxError::InvalidInput)?;
+        info!(
+            "Syscall: mount (device: {:?}, mount_point: {:?})",
+            device, mount_point
+        );
+
+        // TODO: deal with relative path?
+        let dir = fs::root::get_root_dir().lookup(&device)?;
+        let cwd = self.lproc.with_mut_fsinfo(|f| f.cwd.clone());
+        let mount_point = cwd.to_string() + "/" + &mount_point;
+        // Canonicalize path
+        let mount_point = Path::from_string(mount_point).map_err(|_| AxError::InvalidInput)?;
+        unsafe {
+            Arc::get_mut_unchecked(&mut fs::root::get_root_dir())
+                .mount(mount_point.to_string(), Arc::new(VfsWrapper::new(dir)))?;
+        }
+        Ok(0)
+    }
+
+    pub fn sys_umount(&mut self, mount_point: UserReadPtr<u8>, _flags: u32) -> SyscallResult {
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+        let mount_point = user_check
+            .checked_read_cstr(mount_point.raw_ptr())
+            .map_err(|_| AxError::InvalidInput)?;
+        info!("Syscall: umount (mount_point: {:?})", mount_point);
+
+        let cwd = self.lproc.with_mut_fsinfo(|f| f.cwd.clone());
+        let mount_point = cwd.to_string() + "/" + &mount_point;
+        // Canonicalize path
+        let mount_point = Path::from_string(mount_point).map_err(|_| AxError::InvalidInput)?;
+        unsafe {
+            Arc::get_mut_unchecked(&mut fs::root::get_root_dir()).umount(&mount_point.to_string());
+        }
+        Ok(0)
     }
 }
 

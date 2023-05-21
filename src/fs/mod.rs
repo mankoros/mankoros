@@ -1,4 +1,4 @@
-use alloc::{sync::Arc, vec::Vec};
+use alloc::{string::ToString, sync::Arc, vec::Vec};
 use log::info;
 use mbr_nostd::PartitionTable;
 
@@ -61,8 +61,9 @@ pub fn init_filesystems(blk_dev: BlockDevice) {
     // TODO: switch to real device here
     devfs.add("vda2", Arc::new(zero));
     // TODO: solve this issue when refactoring VFS
-    Arc::get_mut(&mut root_dir)
-        .unwrap()
-        .mount("/dev", Arc::new(devfs))
-        .expect("failed to mount devfs at /dev");
+    unsafe {
+        Arc::get_mut_unchecked(&mut root_dir)
+            .mount("/dev".to_string(), Arc::new(devfs))
+            .expect("failed to mount devfs at /dev")
+    };
 }

@@ -60,8 +60,14 @@ impl<'a> Syscall<'a> {
             SYSCALL_LINKAT => todo!(),
             SYSCALL_UNLINKAT => self.sys_unlinkat(args[0], args[1] as *const u8, args[2]),
             SYSCALL_MKDIRAT => self.sys_mkdir(args[0], args[1] as *const u8, args[2]),
-            SYSCALL_UMOUNT => todo!(),
-            SYSCALL_MOUNT => todo!(),
+            SYSCALL_UMOUNT => self.sys_umount(UserReadPtr::from_usize(args[0]), args[1] as u32),
+            SYSCALL_MOUNT => self.sys_mount(
+                UserReadPtr::from_usize(args[0]),
+                UserReadPtr::from_usize(args[1]),
+                UserReadPtr::from_usize(args[2]),
+                args[3] as u32,
+                UserReadPtr::from_usize(args[4]),
+            ),
             SYSCALL_FSTAT => self.sys_fstat(args[0], args[1] as *mut fs::Kstat),
             // Process related
             SYSCALL_CLONE => self.sys_clone(args[0] as u32, args[1], args[2], args[3], args[4]),

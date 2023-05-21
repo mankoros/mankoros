@@ -4,6 +4,7 @@
 //! Copyright (C) 2023 by ArceOS
 //! Copyright (C) 2023 by MankorOS
 
+use alloc::string::String;
 use alloc::{sync::Arc, vec::Vec};
 use log::debug;
 
@@ -20,7 +21,7 @@ static ROOT_DIR: LazyInit<Arc<RootDirectory>> = LazyInit::new();
 
 /// Maintain a path <-> fs relationship
 struct MountPoint {
-    path: &'static str,
+    path: String,
     fs: Arc<dyn Vfs>,
 }
 
@@ -30,7 +31,7 @@ pub struct RootDirectory {
 }
 
 impl MountPoint {
-    pub fn new(path: &'static str, fs: Arc<dyn Vfs>) -> Self {
+    pub fn new(path: String, fs: Arc<dyn Vfs>) -> Self {
         Self { path, fs }
     }
 }
@@ -49,7 +50,7 @@ impl RootDirectory {
         }
     }
 
-    pub fn mount(&mut self, path: &'static str, fs: Arc<dyn Vfs>) -> AxResult {
+    pub fn mount(&mut self, path: String, fs: Arc<dyn Vfs>) -> AxResult {
         if path == "/" {
             return crate::ax_err!(InvalidInput, "cannot mount root filesystem");
         }
@@ -60,8 +61,8 @@ impl RootDirectory {
             return crate::ax_err!(InvalidInput, "mount point already exists");
         }
         // create the mount point in the main filesystem if it does not exist
-        self.main_fs.root_dir().create(path, VfsNodeType::Dir)?;
-        fs.mount(path, self.main_fs.root_dir().lookup(path)?)?;
+        self.main_fs.root_dir().create(&path, VfsNodeType::Dir)?;
+        fs.mount(&path, self.main_fs.root_dir().lookup(&path)?)?;
         self.mounts.push(MountPoint::new(path, fs));
         Ok(())
     }
