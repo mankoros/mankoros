@@ -1,7 +1,15 @@
 //! Misc syscall
 //!
 
-use crate::timer::TimeVal;
+use log::warn;
+
+use crate::{
+    axerrno::AxError,
+    executor::hart_local::get_curr_lproc,
+    here,
+    process::lproc,
+    timer::{TimeVal, Tms},
+};
 
 use super::{Syscall, SyscallResult};
 
@@ -57,5 +65,27 @@ impl<'a> Syscall<'a> {
             (*time_val) = TimeVal::now();
         }
         Ok(0)
+    }
+
+    pub fn sys_times(&mut self, tms_ptr: *mut Tms) -> SyscallResult {
+        match get_curr_lproc() {
+            Some(lproc) => {
+                let (utime, stime) = lproc.timer().lock(here!()).output_us();
+
+                unsafe {
+                    (*tms_ptr).tms_utime = utime;
+                    (*tms_ptr).tms_stime = stime;
+                    // TODO: childtime calc
+                    (*tms_ptr).tms_cutime = utime;
+                    (*tms_ptr).tms_cstime = stime;
+                }
+
+                return Ok(0);
+            }
+            None => {
+                warn!("Current hart have no lporc");
+                return Err(AxError::NotFound);
+            }
+        }
     }
 }

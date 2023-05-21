@@ -4,7 +4,7 @@ use crate::arch::within_sum;
 use crate::executor::yield_future::yield_now;
 use crate::process::lproc::LightProcess;
 
-use crate::timer::TimeVal;
+use crate::timer::{TimeVal, Tms};
 use crate::{axerrno::AxError, syscall::misc::UtsName, trap::context::UKContext};
 
 use log::debug;
@@ -90,7 +90,7 @@ impl<'a> Syscall<'a> {
                 args[5],
             ),
             // Misc
-            SYSCALL_TIMES => todo!(),
+            SYSCALL_TIMES => self.sys_times(args[0] as *mut Tms),
             SYSCALL_UNAME => self.sys_uname(args[0] as *mut UtsName),
             SYSCALL_SCHED_YIELD => {
                 yield_now().await;

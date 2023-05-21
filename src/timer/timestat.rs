@@ -40,7 +40,7 @@ impl TimeStat {
         let now = super::get_time_us();
         let delta = now - self.kernel_tick;
         self.stime_us += delta;
-        self.kernel_tick = now;
+        self.user_tick = now;
     }
 
     /// switch from user to kernel
@@ -50,7 +50,7 @@ impl TimeStat {
         let now = super::get_time_us();
         let delta = now - self.user_tick;
         self.utime_us += delta;
-        self.user_tick = now;
+        self.kernel_tick = now;
     }
 
     /// when switch into this lporc

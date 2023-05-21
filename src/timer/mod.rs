@@ -4,6 +4,7 @@ mod timeval;
 mod tms;
 
 pub use self::timespec::TimeSpec;
+pub use self::timestat::TimeStat;
 pub use self::timeval::TimeVal;
 pub use self::tms::Tms;
 use crate::arch;

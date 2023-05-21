@@ -14,6 +14,7 @@ use crate::{
     signal,
     sync::SpinNoIrqLock,
     syscall,
+    timer::TimeStat,
     tools::handler_pool::UsizePool,
     trap::context::UKContext,
 };
@@ -52,6 +53,7 @@ pub struct LightProcess {
     children: Arc<SpinNoIrqLock<Vec<Arc<LightProcess>>>>,
     // 因为同一个 Thread Group 里的进程可能会互相修改状态, 所以要加锁
     status: SpinNoIrqLock<SyncUnsafeCell<ProcessStatus>>,
+    timer: SpinNoIrqLock<TimeStat>,
     exit_code: AtomicI32,
 
     // 下面的数据可能被多个 LightProcess 共享
@@ -98,6 +100,10 @@ impl LightProcess {
         unsafe {
             *self.status.lock(here!()).get() = status;
         }
+    }
+
+    pub fn timer(&self) -> &SpinNoIrqLock<TimeStat> {
+        &self.timer
     }
 
     pub fn set_signal(self: Arc<Self>, signal: signal::SignalSet) {
@@ -186,6 +192,7 @@ impl LightProcess {
             context: SyncUnsafeCell::new(unsafe { UKContext::new_uninit() }),
             children: new_shared(Vec::new()),
             status: SpinNoIrqLock::new(SyncUnsafeCell::new(ProcessStatus::UNINIT)),
+            timer: SpinNoIrqLock::new(TimeStat::new()),
             exit_code: AtomicI32::new(0),
             group: new_shared(ThreadGroup::new_empty()),
             memory: new_shared(UserSpace::new()),
@@ -252,6 +259,7 @@ impl LightProcess {
         let id = alloc_pid();
         let mut context = SyncUnsafeCell::new(Box::new(self.context().clone()));
         let status = SpinNoIrqLock::new(SyncUnsafeCell::new(self.status()));
+        let timer = SpinNoIrqLock::new(TimeStat::new());
         let exit_code = AtomicI32::new(self.exit_code());
 
         let parent;
@@ -313,6 +321,7 @@ impl LightProcess {
             context,
             children,
             status,
+            timer,
             exit_code,
             group,
             memory,
