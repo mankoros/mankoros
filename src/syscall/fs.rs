@@ -188,7 +188,7 @@ impl<'a> Syscall<'a> {
                     .with_mut_fdtable(|f| f.get(dir_fd as usize))
                     .map(|fd| fd.file.clone())
                     .ok_or(AxError::InvalidInput)?; // TODO: return EBADF
-                if file.stat().unwrap().type_() != VfsNodeType::Dir {
+                if file.stat().unwrap().file_type() != VfsNodeType::Dir {
                     return Err(AxError::InvalidInput);
                 }
                 file
@@ -341,7 +341,7 @@ impl<'a> Syscall<'a> {
         let root_fs = fs::root::get_root_dir();
         let node = root_fs.lookup(&path.to_string())?;
         let node_stat = node.stat()?;
-        if node_stat.type_() != VfsNodeType::Dir {
+        if node_stat.file_type() != VfsNodeType::Dir {
             return Err(AxError::NotADirectory);
         }
 
@@ -462,7 +462,7 @@ impl<'a> Syscall<'a> {
             file_name = path.last();
         }
 
-        let file_type = dir.clone().lookup(file_name)?.stat()?.type_();
+        let file_type = dir.clone().lookup(file_name)?.stat()?.file_type();
         if need_to_be_dir && file_type != VfsNodeType::Dir {
             return Err(AxError::NotADirectory);
         }

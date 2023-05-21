@@ -1,9 +1,12 @@
 use core::cell::Cell;
 
+use alloc::boxed::Box;
+
 use super::vfs::filesystem::VfsNode;
 use super::vfs::node::VfsNodeAttr;
 use super::vfs::node::VfsNodePermission;
 use super::vfs::node::VfsNodeType;
+use super::vfs::AVfsResult;
 use super::vfs::VfsResult;
 /// Disk related
 ///
@@ -125,7 +128,7 @@ impl Disk {
 impl VfsNode for Disk {
     impl_vfs_non_dir_default! {}
 
-    fn write_at(&self, offset: u64, mut buf: &[u8]) -> VfsResult<usize> {
+    fn sync_write_at(&self, offset: u64, mut buf: &[u8]) -> VfsResult<usize> {
         let mut write_len = 0;
         self.set_position(offset);
         while !buf.is_empty() {
@@ -149,7 +152,7 @@ impl VfsNode for Disk {
     fn truncate(&self, _size: u64) -> VfsResult {
         crate::ax_err!(Unsupported)
     }
-    fn read_at(&self, _offset: u64, buf: &mut [u8]) -> VfsResult<usize> {
+    fn sync_read_at(&self, _offset: u64, buf: &mut [u8]) -> VfsResult<usize> {
         // Offset is ignored
 
         if buf.len() == 0 {
@@ -157,6 +160,13 @@ impl VfsNode for Disk {
         }
         // TODO: implement read
         Ok(1)
+    }
+    fn read_at<'a>(&'a self, offset: u64, buf: &'a mut [u8]) -> AVfsResult<usize> {
+        Box::pin(async move { self.sync_read_at(offset, buf) })
+    }
+
+    fn write_at<'a>(&'a self, offset: u64, buf: &'a [u8]) -> AVfsResult<usize> {
+        Box::pin(async move { self.sync_write_at(offset, buf) })
     }
     /// 文件属性
     fn stat(&self) -> VfsResult<VfsNodeAttr> {

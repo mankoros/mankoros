@@ -12,6 +12,7 @@ pub mod disk;
 pub mod fatfs;
 pub mod partition;
 
+pub mod devfs;
 pub mod pipe;
 pub mod root;
 pub mod stdio;
@@ -50,4 +51,18 @@ pub fn init_filesystems(blk_dev: BlockDevice) {
         ))
     }
     self::root::init_rootfs(partitions[0].clone());
+
+    let mut root_dir = self::root::get_root_dir();
+    // Mount devfs
+    let devfs = devfs::DeviceFileSystem::new();
+    let zero = devfs::ZeroDev;
+
+    devfs.add("zero", Arc::new(zero.clone()));
+    // TODO: switch to real device here
+    devfs.add("vda2", Arc::new(zero));
+    // TODO: solve this issue when refactoring VFS
+    Arc::get_mut(&mut root_dir)
+        .unwrap()
+        .mount("/dev", Arc::new(devfs))
+        .expect("failed to mount devfs at /dev");
 }

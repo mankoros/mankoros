@@ -137,6 +137,26 @@ impl VfsNodeAttr {
             blocks,
         }
     }
+    /// Creates a new `VfsNodeAttr` for a file, with the default file permission.
+    pub const fn new_file(size: u64, blocks: u64) -> Self {
+        Self {
+            mode: VfsNodePermission::default_file(),
+            type_: VfsNodeType::File,
+            size,
+            blocks,
+        }
+    }
+
+    /// Creates a new `VfsNodeAttr` for a directory, with the default directory
+    /// permission.
+    pub const fn new_dir(size: u64, blocks: u64) -> Self {
+        Self {
+            mode: VfsNodePermission::default_dir(),
+            type_: VfsNodeType::Dir,
+            size,
+            blocks,
+        }
+    }
 
     /// Get file permission
     pub const fn mode(&self) -> VfsNodePermission {
@@ -144,7 +164,7 @@ impl VfsNodeAttr {
     }
 
     /// Get file type
-    pub const fn type_(&self) -> VfsNodeType {
+    pub const fn file_type(&self) -> VfsNodeType {
         self.type_
     }
 
