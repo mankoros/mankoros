@@ -498,9 +498,12 @@ impl<'a> Syscall<'a> {
         // TODO: deal with relative path?
         let dir = fs::root::get_root_dir().lookup(&device)?;
         let cwd = self.lproc.with_mut_fsinfo(|f| f.cwd.clone());
-        let mount_point = cwd.to_string() + "/" + &mount_point;
-        // Canonicalize path
-        let mount_point = Path::from_string(mount_point).map_err(|_| AxError::InvalidInput)?;
+        let mut mount_point = Path::from_string(mount_point).map_err(|_| AxError::InvalidInput)?;
+        if !mount_point.is_root() {
+            // Canonicalize path
+            let tmp = cwd.to_string() + "/" + &mount_point.to_string();
+            mount_point = Path::from_string(tmp).map_err(|_| AxError::InvalidInput)?;
+        }
         unsafe {
             Arc::get_mut_unchecked(&mut fs::root::get_root_dir())
                 .mount(mount_point.to_string(), Arc::new(VfsWrapper::new(dir)))?;
