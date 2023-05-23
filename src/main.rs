@@ -40,6 +40,7 @@ mod executor;
 mod lazy_init;
 mod process;
 mod signal;
+mod timer;
 mod tools;
 mod trap;
 
@@ -59,7 +60,7 @@ use crate::fs::vfs::node::VfsDirEntry;
 use crate::memory::address::kernel_virt_text_to_phys;
 use crate::memory::{kernel_phys_dev_to_virt, pagetable};
 
-use trap::ticks;
+// use trap::ticks;
 
 // Global shared atomic varible
 
@@ -115,7 +116,8 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     trap::trap::init();
 
     // Initialize timer
-    trap::timer::init();
+    // trap::timer::init();
+    timer::init();
 
     // Test ebreak
     unsafe {
@@ -235,6 +237,8 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
                 "pipe",
                 "mount",
                 "umount",
+                "gettimeofday",
+                "times",
             ];
         }
     }

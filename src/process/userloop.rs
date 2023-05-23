@@ -51,14 +51,24 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
         // TODO: 处理 HART 相关问题
         let auto_sie = AutoSIE::disable_interrupt_until_drop();
         let context = lproc.context();
+        let timer = lproc.timer();
 
         match lproc.status() {
             ProcessStatus::UNINIT => panic!("Uninitialized process should not enter userloop"),
-            ProcessStatus::READY | ProcessStatus::RUNNING => {
+            ProcessStatus::READY => {
+                timer.lock(here!()).switch_into();
+                timer.lock(here!()).kernel_to_user();
                 run_user(context);
+                timer.lock(here!()).user_to_kernel();
+            }
+            ProcessStatus::RUNNING => {
+                timer.lock(here!()).kernel_to_user();
+                run_user(context);
+                timer.lock(here!()).user_to_kernel();
             }
             ProcessStatus::ZOMBIE | ProcessStatus::STOPPED => {
                 // 进程死掉了, 可以退出 userloop 了
+                timer.lock(here!()).switch_out();
                 break;
             }
         }

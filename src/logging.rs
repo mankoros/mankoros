@@ -5,6 +5,7 @@
 // Adapted from rCore https://github.com/rcore-os/rCore/blob/13ad2d19058901e6401a978d4e20acf7f5610666/kernel/src/logging.rs
 // And AcreOS/modules/axlog/src/lib.rs
 
+use crate::timer;
 use core::fmt;
 use core::str::FromStr;
 
@@ -94,7 +95,7 @@ impl Log for SimpleLogger {
             ColorCode::White,
             "[{} {} {} {}\n",
             with_color!(level_color, "{:<5}", level),
-            with_color!(ColorCode::BrightBlue, "{:0>4}", crate::ticks()),
+            with_color!(ColorCode::BrightBlue, "{:0>4}", timer::get_time_sec()),
             with_color!(ColorCode::White, "{:>40}:{:<4}]", target, line),
             with_color!(args_color, "{}", record.args()),
         ));

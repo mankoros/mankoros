@@ -1,6 +1,17 @@
 //! Misc syscall
 //!
 
+use log::{info, warn};
+
+use crate::{
+    arch::within_sum,
+    axerrno::AxError,
+    executor::hart_local::get_curr_lproc,
+    here,
+    process::lproc,
+    timer::{TimeVal, Tms},
+};
+
 use super::{Syscall, SyscallResult};
 
 // copy from sys/utsname.h
@@ -48,5 +59,38 @@ impl<'a> Syscall<'a> {
             riscv::register::sstatus::clear_sum();
         }
         Ok(0)
+    }
+
+    pub fn sys_gettimeofday(&mut self, time_val: *mut TimeVal) -> SyscallResult {
+        info!("Syscall: gettimeofday");
+        within_sum(|| unsafe {
+            (*time_val) = TimeVal::now();
+        });
+        Ok(0)
+    }
+
+    pub fn sys_times(&mut self, tms_ptr: *mut Tms) -> SyscallResult {
+        info!("Syscall: times");
+        match get_curr_lproc() {
+            Some(lproc) => {
+                let (utime, stime) = lproc.timer().lock(here!()).output_us();
+
+                within_sum(|| {
+                    unsafe {
+                        (*tms_ptr).tms_utime = utime;
+                        (*tms_ptr).tms_stime = stime;
+                        // TODO: childtime calc
+                        (*tms_ptr).tms_cutime = utime;
+                        (*tms_ptr).tms_cstime = stime;
+                    }
+                });
+
+                return Ok(0);
+            }
+            None => {
+                warn!("Current hart have no lporc");
+                return Err(AxError::NotFound);
+            }
+        }
     }
 }
