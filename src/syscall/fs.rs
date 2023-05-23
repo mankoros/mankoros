@@ -261,8 +261,8 @@ impl<'a> Syscall<'a> {
 
                 within_sum(|| unsafe {
                     *kstat = Kstat {
-                        st_dev: 0,
-                        st_ino: fstat.blocks(),
+                        st_dev: 1,
+                        st_ino: 1,
                         st_mode: 0,
                         st_nlink: 0,
                         st_uid: 0,
