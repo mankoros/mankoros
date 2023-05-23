@@ -227,6 +227,8 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
                 "close",
                 "mmap",
                 "munmap",
+                "gettimeofday",
+                "times",
             ];
         }
     }
