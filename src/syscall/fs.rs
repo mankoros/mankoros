@@ -264,7 +264,8 @@ impl<'a> Syscall<'a> {
                         st_dev: 1,
                         st_ino: 1,
                         st_mode: 0,
-                        st_nlink: 0,
+                        // TODO: when linkat is implemented, use their infrastructure to check link num
+                        st_nlink: 1,
                         st_uid: 0,
                         st_gid: 0,
                         st_rdev: 0,
