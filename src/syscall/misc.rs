@@ -6,10 +6,11 @@ use log::{info, warn};
 use crate::{
     arch::within_sum,
     axerrno::AxError,
-    executor::hart_local::get_curr_lproc,
+    executor::{hart_local::get_curr_lproc, util_futures::yield_now},
     here,
+    memory::{UserReadPtr, UserWritePtr},
     process::lproc,
-    timer::{TimeVal, Tms},
+    timer::{get_time_f64, TimeSpec, TimeVal, Tms},
 };
 
 use super::{Syscall, SyscallResult};
@@ -92,5 +93,27 @@ impl<'a> Syscall<'a> {
                 return Err(AxError::NotFound);
             }
         }
+    }
+
+    pub async fn sys_nanosleep(
+        &mut self,
+        req: UserReadPtr<TimeSpec>,
+        rem: UserWritePtr<TimeSpec>,
+    ) -> SyscallResult {
+        info!("Syscall: nanosleep");
+        // Calculate end time
+        let end_time = within_sum(|| get_time_f64() + (unsafe { *req.raw_ptr() }).time_in_sec());
+
+        while get_time_f64() < end_time {
+            yield_now().await
+        }
+        // Sleep is done
+        // Update rem if provided
+        if rem.raw_ptr_mut() as usize != 0 {
+            within_sum(|| unsafe {
+                (*rem.raw_ptr_mut()) = TimeSpec::new(0.0);
+            })
+        }
+        Ok(0)
     }
 }

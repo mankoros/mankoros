@@ -2,7 +2,7 @@ use crate::executor::util_futures::yield_now;
 use crate::memory::{UserReadPtr, UserWritePtr};
 use crate::process::lproc::LightProcess;
 
-use crate::timer::{TimeVal, Tms};
+use crate::timer::{TimeSpec, TimeVal, Tms};
 use crate::{axerrno::AxError, syscall::misc::UtsName, trap::context::UKContext};
 
 use log::debug;
@@ -105,7 +105,13 @@ impl<'a> Syscall<'a> {
                 Ok(0)
             }
             SYSCALL_GETTIMEOFDAY => self.sys_gettimeofday(args[0] as *mut TimeVal),
-            SYSCALL_NANOSLEEP => todo!(),
+            SYSCALL_NANOSLEEP => {
+                self.sys_nanosleep(
+                    UserReadPtr::from_usize(args[0]),
+                    UserWritePtr::from_usize(args[1]),
+                )
+                .await
+            }
             _ => panic!("Unknown syscall_id: {}", syscall_no),
         };
 
