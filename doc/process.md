@@ -99,3 +99,95 @@ if flags.contains(CloneFlags::THREAD) {
 - 异步编程模型中的 `Task` 抽象 () 会保证一个 Future 不会被 wake 多次,
   从而使得已经在调度队列中的进程不会被重复加入.
   因此不需要代表 "进程已经被调度" 的状态 
+
+
+## 地址空间
+
+出于性能考虑, MankorOS 的内核与用户程序共用页表, 
+且内核空间占用的二级页表在不同用户程序之间是共享的.
+
+<!-- TODO: 插一个共享页表的图示水水页数 -->
+
+### 地址空间布局
+
+<!-- TODO: 加入图片 -->
+
+### 地址空间管理
+
+MankorOS 中的地址空间的各类信息由 `UserSpace` 结构体表示:
+
+```rust
+pub struct UserSpace {
+    // 根页表
+    pub page_table: PageTable,
+    // 分段管理
+    areas: UserAreaManager,
+}
+```
+
+其中 `UserAreaManager` 结构体用于管理用户程序的各个段, 其组成非常简单:
+
+```rust
+pub struct UserAreaManager {
+    map: RangeMap<VirtAddr, UserArea>,    
+}
+
+pub struct RangeMap<U: Ord + Copy, V>(BTreeMap<U, Node<U, V>>);
+```
+
+`RangeMap` 的实现直接借用了 [FTL-OS](https://gitee.com/ftl-os/ftl-os/blob/master/code/kernel/src/tools/container/range_map.rs) 的实现.
+但额外增加了原地修改区间长度的 `extend_back` 和 `reduce_back` 方法,
+以针对堆内存的动态增长和缩减进行优化.
+对于其他类型的区间长度增减, 
+仍然采用 "创建新区间-合并" 和 "分裂旧区间-删除" 的方式.
+
+`UserArea` 中保存了各个内存段的信息, 包括:
+
+<!-- TODO: 看看这个 MMAP_SHARED 的段的 todo 要不要放上来 -->
+
+```rust
+bitflags! {
+    pub struct UserAreaPerm: u8 {
+        const READ = 1 << 0;
+        const WRITE = 1 << 1;
+        const EXECUTE = 1 << 2;
+    }
+}
+
+enum UserAreaType {
+    /// 匿名映射区域
+    MmapAnonymous,
+    /// 私有映射区域
+    MmapPrivate {
+        file: Arc<dyn VfsNode>,
+        offset: usize,
+    },
+    // TODO: 共享映射区域
+    // MmapShared {
+    //     file: Arc<dyn VfsNode>,
+    //     offset: usize,
+    // },
+}
+
+pub struct UserArea {
+    kind: UserAreaType,
+    perm: UserAreaPerm,
+}
+```
+
+考虑到地址空间段的类型是基本确定的, 
+此处并没有像 Linux 一样使用函数指针 ("虚表") 来抽象各类段的行为, 
+也没有使用本质上相同的 Rust 的 `dyn trait` 方式,
+而是直接使用枚举类型实现.
+这样既可以保证处理时的完整地好各类情况, 也有一定的性能优势.
+
+MankorOS 中所有段都是懒映射且懒加载的,
+所有内存数据都会且只会在处理缺页异常时被请求 
+(譬如换入页或读取文件信息).
+这同时也带来了 `exec` 系统调用中对 ELF 文件的懒加载能力.
+
+该实现还意味着各种不同类型的段只需要在构造或处理缺页异常时进行不同的处理即可.
+几乎所有 `UserArea` 方法中只有缺页异常处理需要用到 `match (self.kind)`,
+使得使用枚举区分不同段的方法带来了几乎为零的代码清晰程度开销.
+正因如此, 我们放弃了虚表方法可能带来的代码清晰度的提升与灵活性, 
+而选择了性能更好的枚举实现.
