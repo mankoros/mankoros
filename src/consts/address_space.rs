@@ -1,5 +1,28 @@
 //! User address space and kernel address space
 
+// =========== 用户段 ===========
+pub const U_SEG_BEG: usize = 0x0000_0000_0000_0000;
+// 链接基地址
+pub const U_SEG_LINK_ADDR: usize = 0x0000_0000_0001_0000;
+
+// 数据段
+pub const U_SEG_DATA_BEG: usize = 0x0000_0000_0001_0000;
+pub const U_SEG_DATA_END: usize = 0x0000_0000_4000_0000;
+
+// 堆段
+pub const U_SEG_HEAP_BEG: usize = 0x0000_0000_4000_0000;
+pub const U_SEG_HEAP_END: usize = 0x0000_0000_8000_0000;
+
+// 线程栈段 (64 GiB)
+pub const U_SEG_STACK_BEG: usize = 0x0000_0001_0000_0000;
+pub const U_SEG_STACK_END: usize = 0x0000_0002_0000_0000;
+
+// mmap 段 (128 GiB)
+pub const U_SEG_FILE_BEG: usize = 0x0000_0002_0000_0000;
+pub const U_SEG_FILE_END: usize = 0x0000_0004_0000_0000;
+
+pub const U_SEG_END: usize = 0x0000_0004_0000_0000;
+
 // =========== 内核段 ===========
 pub const K_SEG_BEG: usize = 0xffff_ffc0_0000_0000;
 
@@ -24,26 +47,3 @@ pub const K_SEG_HARDWARE_BEG: usize = 0xffff_ffff_c000_0000;
 pub const K_SEG_HARDWARE_END: usize = 0xffff_ffff_f000_0000;
 
 pub const K_SEG_END: usize = 0xffff_ffff_ffff_ffff;
-
-// =========== 用户段 ===========
-pub const U_SEG_BEG: usize = 0x0000_0000_0000_0000;
-// 链接基地址
-pub const U_SEG_LINK_ADDR: usize = 0x0000_0000_0001_0000;
-
-// 数据段
-pub const U_SEG_DATA_BEG: usize = 0x0000_0000_0001_0000;
-pub const U_SEG_DATA_END: usize = 0x0000_0000_4000_0000;
-
-// 堆段
-pub const U_SEG_HEAP_BEG: usize = 0x0000_0000_4000_0000;
-pub const U_SEG_HEAP_END: usize = 0x0000_0000_8000_0000;
-
-// 线程栈段 (64 GiB)
-pub const U_SEG_STACK_BEG: usize = 0x0000_0001_0000_0000;
-pub const U_SEG_STACK_END: usize = 0x0000_0002_0000_0000;
-
-// mmap 段 (128 GiB)
-pub const U_SEG_FILE_BEG: usize = 0x0000_0002_0000_0000;
-pub const U_SEG_FILE_END: usize = 0x0000_0004_0000_0000;
-
-pub const U_SEG_END: usize = 0x0000_0004_0000_0000;
