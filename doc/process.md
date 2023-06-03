@@ -191,3 +191,36 @@ MankorOS 中所有段都是懒映射且懒加载的,
 使得使用枚举区分不同段的方法带来了几乎为零的代码清晰程度开销.
 正因如此, 我们放弃了虚表方法可能带来的代码清晰度的提升与灵活性, 
 而选择了性能更好的枚举实现.
+
+## 进程调度
+
+MankorOS 是异步内核, 其进程调度与同步内核有所不同.
+显著的一个特点是在内核中并不需要维护一个保存了所有进程信息的数组,
+而是使 `Arc<LightProcess>` 分散在内核内存中的各个 Future 中,
+直到 waker 将其 "唤醒", 调度器才能知晓该进程的存在.
+
+目前 MankorOS 中的进程调度器是一个简单的 FIFO 调度器,
+其内部维护了一个双端队列, 依次从队列头部取出包含待调度进程的 Future 并执行,
+当用户程序因为时间片用完而返回内核时, 放弃该轮执行并被重新加入调度队列的尾部.
+当用户程序因为系统调用而返回内核, 并且该系统调用会 "阻塞" 时, 
+它会返回一个 `Pending` 状态, 并且等待到阻塞条件满足后被 waker 唤醒.
+换而言之, 异步内核中没有 "阻塞" 的概念, 一切操作要么马上结束, 要么放弃执行等待回调.
+
+MankorOS 下一步预计引入更加复杂的调度算法,
+比如为每个 CPU 核心维护一个优先级队列以更好地利用缓存.
+这可以通过在生成代表进程的 Future 时,
+向其传入不同的 waker 来实现.
+具体而言便是修改此处的实现, 
+将 `|runnable| TASK_QUEUE.push(runnable)` 改为更复杂的 "使不同的调度器知晓自身存在" 的操作即可.
+
+```rust
+// src/executor/mod.rs:25
+pub fn spawn<F>(future: F) -> (Runnable, Task<F::Output>)
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    async_task::spawn(future, |runnable| TASK_QUEUE.push(runnable))
+}
+```
+
