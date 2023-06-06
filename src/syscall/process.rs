@@ -27,16 +27,12 @@ bitflags! {
         const PARENT = 0x00008000;
         /* 新旧 task 置于相同线程组 */
         const THREAD = 0x00010000;
-        /* share system V SEM_UNDO semantics */
-        const SYSVSEM = 0x00040000;
         /* create a new TLS for the child */
         const SETTLS = 0x00080000;
         /* set the TID in the parent */
         const PARENT_SETTID = 0x00100000;
         /* clear the TID in the child */
         const CHILD_CLEARTID = 0x00200000;
-        /* Unused, ignored */
-        const CLONE_DETACHED = 0x00400000;
         /* set the TID in the child */
         const CHILD_SETTID = 0x01000000;
     }

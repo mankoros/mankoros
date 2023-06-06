@@ -23,10 +23,7 @@ pub fn spawn_proc_from_file(file: Arc<dyn VfsNode>) {
 }
 
 pub fn spawn_proc(lproc: Arc<LightProcess>) {
-    let future = OutermostFuture::new(lproc.clone(), async {
-        userloop::userloop(lproc).await;
-    });
-
+    let future = OutermostFuture::new(lproc.clone(),userloop::userloop(lproc));
     let (r, t) = executor::spawn(future);
     r.schedule();
     t.detach();
