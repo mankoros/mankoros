@@ -40,6 +40,7 @@ fn iter_vpn(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum) -> ()) {
 }
 
 bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct UserAreaPerm: u8 {
         const READ = 1 << 0;
         const WRITE = 1 << 1;
@@ -82,6 +83,7 @@ impl From<xmas_elf::program::Flags> for UserAreaPerm {
 }
 
 bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct PageFaultAccessType: u8 {
         const WRITE = 1 << 1;
         const EXECUTE = 1 << 2;
@@ -315,7 +317,7 @@ impl UserAreaManager {
         self.map.iter_mut()
     }
 
-    /// 返回栈的开始地址 sp_init, [sp_init - size, sp_init] 都是栈的范围.
+    /// 返回栈的开始地址 sp_init, [sp_init - size, sp_init] 都是栈的范围。
     /// sp_init 16 字节对齐
     pub fn alloc_stack(&mut self, size: usize) -> VirtAddr {
         let range = self.map
@@ -350,7 +352,7 @@ impl UserAreaManager {
     }
 
     pub fn reset_heap_break(&mut self, new_brk: VirtAddr) -> Result<(), ()> {
-        // TODO-PERF: 缓存 heap 的位置, 减少一次查询
+        // TODO-PERF: 缓存 heap 的位置，减少一次查询
         let (Range { start, end }, _) = self.map.get(Self::HEAP_BEG)
             .expect("brk without heap");
 
@@ -451,20 +453,20 @@ impl UserAreaManager {
 
     /// 释放一个虚拟地址范围内的所有页
     /// 
-    /// **注意**: 只释放物理页, 不会管分段
+    /// **注意**: 只释放物理页，不会管分段
     pub fn release_range(page_table: &mut PageTable, range: VirtAddrRange) {
         debug!("release range: {:?}", range);
         // 释放被删除的段
         with_shared_frame_mgr(|mgr| {
             iter_vpn(range, |vpn| {
-                // TODO-PERF: 尝试在段中维护已映射的共享物理页, 以减少查询次数
+                // TODO-PERF: 尝试在段中维护已映射的共享物理页，以减少查询次数
                 let pte = page_table.get_pte_copied_from_vpn(vpn);
                 if pte.is_none() {
                     return;
                 }
 
                 let ppn = pte.unwrap().ppn();
-                // 如果是共享的, 则只减少引用计数, 否则释放
+                // 如果是共享的，则只减少引用计数，否则释放
                 if mgr.is_shared(ppn) {
                     mgr.remove_ref(ppn);
                 } else {

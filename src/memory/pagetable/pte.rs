@@ -15,6 +15,7 @@ use crate::memory::frame;
 // Define the PTEFlags bitflags structure
 bitflags! {
     // riscv-privileged 4.3.1 P87
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct PTEFlags: u16 {
         const V = 1 << 0; // valid
         const R = 1 << 1; // readable
@@ -58,7 +59,7 @@ impl PageTableEntry {
     pub fn new(paddr: PhysAddr, perm: PTEFlags) -> Self {
         PageTableEntry {
             bits: ((usize::from(paddr.round_down()) >> 2) & consts::PTE_PPN_MASK_SV39)
-                | perm.bits as usize,
+                | perm.bits() as usize,
         }
     }
     // Define an empty PageTableEntry

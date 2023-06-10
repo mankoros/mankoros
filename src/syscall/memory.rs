@@ -13,6 +13,7 @@ use super::{Syscall, SyscallResult};
 
 bitflags! {
     /// 指定 mmap 的选项
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct MMAPPROT: u32 {
         /// 不挂起当前进程，直接返回
         const PROT_READ = 1 << 0;
@@ -58,6 +59,7 @@ impl Into<UserAreaPerm> for MMAPPROT {
 }
 
 bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct MMAPFlags: u32 {
         /// 对这段内存的修改是共享的
         const MAP_SHARED = 1 << 0;
@@ -69,7 +71,7 @@ bitflags! {
         const MAP_FIXED = 1 << 4;
         /// 不映射到实际文件
         const MAP_ANONYMOUS = 1 << 5;
-        /// 映射时不保留空间，即可能在实际使用mmap出来的内存时内存溢出
+        /// 映射时不保留空间，即可能在实际使用 mmap 出来的内存时内存溢出
         const MAP_NORESERVE = 1 << 14;
     }
 }
@@ -105,7 +107,7 @@ impl<'a> Syscall<'a> {
             start, len, prot, flags, fd, offset
         );
 
-        // start == 0 表明需要OS为其找一段内存，而 MAP_FIXED 表明必须 mmap 在固定位置。两者是冲突的
+        // start == 0 表明需要 OS 为其找一段内存，而 MAP_FIXED 表明必须 mmap 在固定位置。两者是冲突的
         if start == 0 && flags.contains(MMAPFlags::MAP_FIXED) {
             return Err(AxError::InvalidInput);
         }
@@ -113,7 +115,7 @@ impl<'a> Syscall<'a> {
         let _anywhere = start == 0 || !flags.contains(MMAPFlags::MAP_FIXED);
 
         if flags.contains(MMAPFlags::MAP_ANONYMOUS) {
-            // 根据linux规范需要 fd 设为 -1 且 offset 设为 0
+            // 根据 linux 规范需要 fd 设为 -1 且 offset 设为 0
             if fd == -1 && offset == 0 {
                 return self.lproc.with_mut_memory(|m| {
                     m.areas_mut()

@@ -14,6 +14,7 @@ use super::super::fs;
 use log::{debug, warn, info};
 
 bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct CloneFlags: u32 {
         /* 共享内存 */
         const VM = 0x0000100;
@@ -84,7 +85,7 @@ impl<'a> Syscall<'a> {
 
         let wstatus = wstatus as *mut u32;
         if !wstatus.is_null() {
-            // 末尾 8 位是 SIG 信息, 再上 8 位是退出码
+            // 末尾 8 位是 SIG 信息，再上 8 位是退出码
             let status = ((result_lproc.exit_code() as u32 & 0xff) << 8) | 0x00;
             debug!("wstatus: {:#x}", status);
             let user_check = UserCheck::new_with_sum(&self.lproc);
@@ -192,7 +193,7 @@ impl<'a> Syscall<'a> {
         drop(user_check);
         info!("syscall: execve: path: {:?}, argv: {:?}, envp: {:?}", path, argv, envp);
 
-        // 不知道为什么要加, 从 Oops 抄过来的
+        // 不知道为什么要加，从 Oops 抄过来的
         envp.push(String::from("LD_LIBRARY_PATH=."));
         envp.push(String::from("SHELL=/busybox"));
         envp.push(String::from("PWD=/"));
