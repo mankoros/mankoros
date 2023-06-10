@@ -96,13 +96,14 @@ struct KernelStack([u8; 1024 * 1024]); // 1MiB stack
 static mut KERNEL_STACK: core::mem::MaybeUninit<[KernelStack; 8]> =
     core::mem::MaybeUninit::uninit(); // 8 core at max
 
-/// Assembly entry point for boot hard
+/// Assembly entry point for boot hart
 ///
 /// call rust_main
 #[naked]
 #[link_section = ".text.entry"]
 #[export_name = "_start"]
 unsafe extern "C" fn entry(hartid: usize) -> ! {
+    // DO NOT MODIFY a1
     core::arch::asm!(
         "   mv   tp, a0",
         "   call {set_stack}",
@@ -122,6 +123,7 @@ unsafe extern "C" fn entry(hartid: usize) -> ! {
 
 #[naked]
 pub unsafe extern "C" fn alt_entry(hartid: usize) -> ! {
+    // DO NOT MODIFY a1
     core::arch::asm!(
         "   mv   tp, a0",
         "   call {set_stack}",
@@ -142,6 +144,7 @@ pub unsafe extern "C" fn alt_entry(hartid: usize) -> ! {
 /// 设置启动栈
 #[naked]
 unsafe extern "C" fn set_stack(hartid: usize) {
+    // DO NOT MODIFY a1
     core::arch::asm!(
         "   add  t0, a0, 1
             slli t0, t0, 18
@@ -157,6 +160,7 @@ unsafe extern "C" fn set_stack(hartid: usize) {
 /// 设置启动页表
 #[naked]
 unsafe extern "C" fn set_boot_pt(hartid: usize) {
+    // DO NOT MODIFY a1
     core::arch::asm!(
         "   la   t0, _boot_page_table_sv39
             srli t0, t0, 12

@@ -87,7 +87,7 @@ lazy_static! {
 ///
 ///
 #[no_mangle]
-pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) -> ! {
+pub extern "C" fn boot_rust_main(boot_hart_id: usize, device_tree_addr: usize) -> ! {
     // Clear BSS before anything else
     boot::clear_bss();
     // Print boot message
@@ -99,6 +99,32 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     println!("Logging initializing...");
     logging::init();
     info!("Logging initialised");
+    // In QEMU, device tree address is ensured to be within 1GB huge page
+    // So it is safe to use it directly
+    // TODO: To be ensured by checking SBI implementation or doc
+    info!("Device tree address: {:#x}", device_tree_addr);
+    let device_tree =
+        unsafe { fdt::Fdt::from_ptr(device_tree_addr as _).expect("Parse DTB failed") };
+    let device_tree_size =
+        humansize::SizeFormatter::new(device_tree.total_size(), humansize::BINARY);
+    info!("Device tree size: {}", device_tree_size);
+
+    let uart = device_tree.find_compatible(&["ns16550a"]).unwrap();
+    info!("UART: {}", uart.name);
+    info!(
+        "UART start address: {:#x}",
+        uart.reg().unwrap().into_iter().next().unwrap().starting_address as usize
+    );
+    for memory_region in device_tree.memory().regions() {
+        let memory_size =
+            humansize::SizeFormatter::new(memory_region.size.unwrap_or(0), humansize::BINARY);
+        info!(
+            "Memory start: {:#x}, size: {}",
+            memory_region.starting_address as usize, memory_size
+        );
+    }
+
+    sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
     // Print boot memory layour
     memlayout::print_memlayout();
 
@@ -155,7 +181,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     info!("Starting other cores at 0x{:x}", alt_rust_main_phys);
     for hart_id in 0..hart_cnt {
         if hart_id != boot_hart_id {
-            sbi_rt::hart_start(hart_id, alt_rust_main_phys, _device_tree_addr)
+            sbi_rt::hart_start(hart_id, alt_rust_main_phys, device_tree_addr)
                 .expect("Starting hart failed");
         }
     }

@@ -30,8 +30,7 @@ mbr-nostd = "0.1.0"
 ringbuffer = "0.13.0"
 cfg-if = "1.0.0"
 spin = "0.9.8"
-
-# rust_fatfs = { path = "crates/rust_fatfs", default-features = false, features = ["alloc"] }
+fdt = "0.1.5"
 
 [dependencies.lazy_static]
 # For runtime initializing static vars
