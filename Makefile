@@ -24,7 +24,17 @@ endif
 
 QEMU_DEVICES	:= -drive file=fs.img,format=raw,id=hd0 -device virtio-blk-device,drive=hd0
 
-.PHONY: doc kernel build clean qemu run
+# QEMU cmdline
+QEMU_CMD		:= qemu-system-riscv64 		\
+        				-machine virt 		\
+            			-nographic 			\
+            			-bios default 		\
+						-m $(MEM_SIZE)		\
+						-smp $(CPUS) 		\
+						$(QEMU_DEVICES)		\
+						-kernel $(BIN_FILE) 
+
+.PHONY: doc kernel build clean qemu run release all release-qemu qemu-dtb
 .EXPORT_ALL_VARIABLES:
 
 build: kernel $(BIN_FILE)
@@ -34,6 +44,7 @@ doc:
 kernel:
 	@cargo build $(CARGO_BUILD_ARGS)
 
+# addr2line hack
 ifeq ($(ADDR),)
 addr2line:
 	@echo "Usage: make addr2line ADDR=<addr>"
@@ -48,42 +59,18 @@ $(BIN_FILE): kernel
 asm: build
 	@$(OBJDUMP) -d $(KERNEL_FILE) > asm
 
-clean:
-	@cargo clean
-	@rm -rf $(BIN_FILE)
 
 # launch qemu
 # -kernel will give control to 0x80200000
 qemu: build
-	@qemu-system-riscv64 		\
-            -machine virt 		\
-            -nographic 			\
-            -bios default 		\
-			-m $(MEM_SIZE)		\
-			-smp $(CPUS) 		\
-			$(QEMU_DEVICES)		\
-			-kernel $(BIN_FILE)
+	@$(QEMU_CMD)
 
 debug: build
-	@qemu-system-riscv64 		\
-            -machine virt 		\
-            -nographic 			\
-            -bios default 		\
-			-m $(MEM_SIZE)		\
-			-smp $(CPUS) 		\
-			-kernel $(BIN_FILE) \
-			$(QEMU_DEVICES)		\
+	@$(QEMU_CMD)	\
 			-s -d int
 
 release-qemu: release
-	@qemu-system-riscv64 		\
-            -machine virt 		\
-            -nographic 			\
-            -bios default 		\
-			-m $(MEM_SIZE)		\
-			-smp $(CPUS) 		\
-			$(QEMU_DEVICES)		\
-			-kernel $(BIN_FILE)
+	@$(QEMU_CMD)
 
 # First set release mode
 release: MODE = release
@@ -95,3 +82,20 @@ release: build
 
 # build and run
 run: build qemu
+
+# Genrate current QEMU dtb
+# Also generate human readable dts
+qemu-dtb:
+	@$(QEMU_CMD)	\
+		-machine dumpdtb=qemu.dtb
+	@dtc -o qemu.dts -O dts -I dtb qemu.dtb
+
+clean:
+	@cargo clean
+	@rm -rf $(BIN_FILE)
+	@rm -rf qemu.dts
+	@rm -rf kernel-qemu
+	@rm -rf qemu.dtb
+
+# Compatible with OS competition
+all: build
