@@ -208,6 +208,11 @@ impl PageTable {
             let np2_iter = new.next_table_mut_or_create(np1).iter_mut();
 
             for (op2, np2) in Iterator::zip(op2_iter, np2_iter) {
+                if op2.is_leaf() {
+                    // Huge Page
+                    *np2 = *op2;
+                    continue;
+                }
                 let op3t = old.next_table_mut_opt(&op2);
                 if op3t.is_none() {
                     continue;

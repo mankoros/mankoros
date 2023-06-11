@@ -229,7 +229,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
 
     cfg_if::cfg_if! {
         if #[cfg(debug_assertions)] {
-            let cases = ["write"];
+            let cases = ["fork"];
         } else {
             let cases = [
                 "getpid",
