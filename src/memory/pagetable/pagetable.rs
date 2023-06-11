@@ -17,7 +17,7 @@ use crate::{
 };
 
 use alloc::{vec, vec::Vec};
-use log::{trace};
+use log::trace;
 
 use super::pte::{self, PTEFlags, PageTableEntry};
 
@@ -28,11 +28,11 @@ fn p4_index(vaddr: VirtAddr) -> usize {
     (usize::from(vaddr) >> (12 + 27)) & (ENTRY_COUNT - 1)
 }
 
-fn p3_index(vaddr: VirtAddr) -> usize {
+pub fn p3_index(vaddr: VirtAddr) -> usize {
     (usize::from(vaddr) >> (12 + 18)) & (ENTRY_COUNT - 1)
 }
 
-fn p2_index(vaddr: VirtAddr) -> usize {
+pub fn p2_index(vaddr: VirtAddr) -> usize {
     (usize::from(vaddr) >> (12 + 9)) & (ENTRY_COUNT - 1)
 }
 
@@ -50,15 +50,15 @@ pub fn map_kernel_phys_seg() {
         let paddr: usize = i + PHYMEM_START;
         let vaddr = VirtAddr::from(i + K_SEG_PHY_MEM_BEG);
         trace!("p3 index: {}", p3_index(vaddr));
-        boot_pagetable[p3_index(vaddr)] = (paddr >> 2) | 0xcf;
+        boot_pagetable[p3_index(vaddr)] = PageTableEntry::from((paddr >> 2) | 0xcf);
     }
 }
 
 /// Unmap the lower segment used for booting
 pub fn unmap_boot_seg() {
     let boot_pagetable = boot::boot_pagetable();
-    boot_pagetable[0] = 0;
-    boot_pagetable[2] = 0;
+    boot_pagetable[0] = PageTableEntry::EMPTY;
+    boot_pagetable[2] = PageTableEntry::EMPTY;
 }
 
 /// Switch to global kernel boot pagetable

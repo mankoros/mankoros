@@ -17,7 +17,7 @@ panic = "abort"
 [dependencies]
 bitflags = "2.3.1"
 rustversion = "1.0.11"
-sbi-rt = "0.0.2"
+sbi-rt = { version = "0.0.2", features = ["legacy"] }
 log = "0.4.17"
 buddy_system_allocator = "0.9.0"
 bitmap-allocator = { git = "https://github.com/rcore-os/bitmap-allocator", version = "0.1.0" }

@@ -90,6 +90,10 @@ qemu-dtb:
 		-machine dumpdtb=qemu.dtb
 	@dtc -o qemu.dts -O dts -I dtb qemu.dtb
 
+# Make a u-boot bootable uImage
+uImage: build
+	mkimage -A riscv -O linux -C none -T kernel -a 0x001fffc0 -e 0x00200000 -n MankorOS -d $(BIN_FILE) uImage
+
 clean:
 	@cargo clean
 	@rm -rf $(BIN_FILE)

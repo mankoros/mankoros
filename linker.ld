@@ -8,8 +8,8 @@ OUTPUT_ARCH(riscv)
 /* Entry Point */
 ENTRY(_start)
 
-/* OpenSBI transfer control to 0x80200000 */
-BASE_ADDRESS = 0xFFFFFFFF80200000;
+/* Kernel will run at this address once paging is enabled */
+BASE_ADDRESS = 0xFFFFFFFF80000000;
 
 SECTIONS
 {
@@ -59,7 +59,7 @@ SECTIONS
     .eh_frame_hdr : {
         *(.eh_frame_hdr.*)
     }
-    . = ALIGN(4K);
+    . = ALIGN(2M);
     kernel_end = .;
 
     __eh_frame_hdr_start = ADDR(.eh_frame_hdr);

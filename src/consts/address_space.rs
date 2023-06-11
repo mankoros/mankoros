@@ -42,8 +42,11 @@ pub const K_SEG_PHY_MEM_END: usize = 0xffff_ffff_8000_0000;
 pub const K_SEG_DATA_BEG: usize = 0xffff_ffff_8000_0000;
 pub const K_SEG_DATA_END: usize = 0xffff_ffff_c000_0000;
 
-// 硬件 IO 地址 (1 GiB)
+// 硬件 IO 地址 (750 MiB)
 pub const K_SEG_HARDWARE_BEG: usize = 0xffff_ffff_c000_0000;
 pub const K_SEG_HARDWARE_END: usize = 0xffff_ffff_f000_0000;
+
+// DTB fixed mapping
+pub const K_SEG_DTB: usize = 0xffff_ffff_f000_0000;
 
 pub const K_SEG_END: usize = 0xffff_ffff_ffff_ffff;

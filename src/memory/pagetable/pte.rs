@@ -228,6 +228,12 @@ impl PageTableEntry {
     }
 }
 
+impl From<usize> for PageTableEntry {
+    fn from(bits: usize) -> Self {
+        PageTableEntry { bits }
+    }
+}
+
 impl fmt::Debug for PageTableEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut f = f.debug_struct("PageTableEntry");

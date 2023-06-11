@@ -44,7 +44,7 @@ mod timer;
 mod tools;
 mod trap;
 
-use driver::uart::Uart;
+use driver::uart::{EarlyConsole, Uart};
 use log::{error, info, warn};
 use memory::frame;
 use memory::heap;
@@ -52,8 +52,8 @@ use memory::pagetable::pte::PTEFlags;
 use sync::SpinNoIrqLock;
 
 use consts::address_space;
-use consts::memlayout;
 
+use crate::consts::address_space::K_SEG_DTB;
 use crate::consts::platform;
 use crate::fs::vfs::filesystem::VfsNode;
 use crate::fs::vfs::node::VfsDirEntry;
@@ -68,16 +68,12 @@ pub static DEVICE_REMAPPED: AtomicBool = AtomicBool::new(false);
 
 pub static BOOT_HART_CNT: AtomicUsize = AtomicUsize::new(0);
 
+pub static mut EARLY_UART: EarlyConsole = EarlyConsole {};
 // Init uart, called uart0
 lazy_static! {
-    pub static ref EARLY_UART: SpinNoIrqLock<Uart> = {
-        let mut port = unsafe { Uart::new(memlayout::UART0_BASE) };
-        port.init();
-        SpinNoIrqLock::new(port)
-    };
     pub static ref UART0: SpinNoIrqLock<Uart> = {
         let mut port =
-            unsafe { Uart::new(memlayout::UART0_BASE + address_space::K_SEG_HARDWARE_BEG) };
+            unsafe { Uart::new(consts::device::UART0_BASE + address_space::K_SEG_HARDWARE_BEG) };
         port.init();
         SpinNoIrqLock::new(port)
     };
@@ -87,11 +83,26 @@ lazy_static! {
 ///
 ///
 #[no_mangle]
-pub extern "C" fn boot_rust_main(boot_hart_id: usize, device_tree_addr: usize) -> ! {
+pub extern "C" fn boot_rust_main(boot_hart_id: usize) -> ! {
     // Clear BSS before anything else
     boot::clear_bss();
     // Print boot message
     boot::print_boot_msg();
+    println!("Early Console");
+    // Parse device tree
+    // No error handling here, because we have no console now
+    let device_tree = unsafe { fdt::Fdt::from_ptr(K_SEG_DTB as _).unwrap() };
+    let uart = device_tree
+        .find_compatible(&[
+            "ns16550a",
+            "snps,dw-apb-uart", // C910
+        ])
+        .unwrap(); // Must be one
+    unsafe {
+        consts::device::UART0_BASE =
+            uart.reg().unwrap().into_iter().next().unwrap().starting_address as usize
+    };
+
     // Print current boot hart
     println!("Hart {} init booting up", boot_hart_id);
 
@@ -102,14 +113,11 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, device_tree_addr: usize) -
     // In QEMU, device tree address is ensured to be within 1GB huge page
     // So it is safe to use it directly
     // TODO: To be ensured by checking SBI implementation or doc
-    info!("Device tree address: {:#x}", device_tree_addr);
-    let device_tree =
-        unsafe { fdt::Fdt::from_ptr(device_tree_addr as _).expect("Parse DTB failed") };
+
     let device_tree_size =
         humansize::SizeFormatter::new(device_tree.total_size(), humansize::BINARY);
     info!("Device tree size: {}", device_tree_size);
 
-    let uart = device_tree.find_compatible(&["ns16550a"]).unwrap();
     info!("UART: {}", uart.name);
     info!(
         "UART start address: {:#x}",
@@ -125,8 +133,8 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, device_tree_addr: usize) -
     }
 
     sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
-    // Print boot memory layour
-    memlayout::print_memlayout();
+    // Print boot memory layout
+    consts::memlayout::print_memlayout();
 
     // Initial memory system
     frame::init();
@@ -158,8 +166,8 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, device_tree_addr: usize) -
     // Map devices
 
     kernal_page_table.map_page(
-        (memlayout::UART0_BASE + address_space::K_SEG_HARDWARE_BEG).into(),
-        memlayout::UART0_BASE.into(),
+        (unsafe { consts::device::UART0_BASE } + address_space::K_SEG_HARDWARE_BEG).into(),
+        unsafe { consts::device::UART0_BASE.into() },
         PTEFlags::R | PTEFlags::W,
     );
 
@@ -181,7 +189,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, device_tree_addr: usize) -
     info!("Starting other cores at 0x{:x}", alt_rust_main_phys);
     for hart_id in 0..hart_cnt {
         if hart_id != boot_hart_id {
-            sbi_rt::hart_start(hart_id, alt_rust_main_phys, device_tree_addr)
+            sbi_rt::hart_start(hart_id, alt_rust_main_phys, K_SEG_DTB)
                 .expect("Starting hart failed");
         }
     }

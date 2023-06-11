@@ -78,7 +78,7 @@ impl Uart {
 
             // Set baud rate to 38.4K, other value may be valid
             // but here just copy xv6 behaviour
-            reg.add(0).write_volatile(0x03);
+            reg.add(0).write_volatile(0x09);
             reg.add(1).write_volatile(0x00);
 
             // Disable DLAB and set data word length to 8 bits
@@ -140,6 +140,17 @@ impl Write for Uart {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         for byte in s.bytes() {
             self.send(byte);
+        }
+        Ok(())
+    }
+}
+
+pub struct EarlyConsole;
+
+impl Write for EarlyConsole {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        for byte in s.bytes() {
+            sbi_rt::legacy::console_putchar(byte.into());
         }
         Ok(())
     }
