@@ -1,11 +1,6 @@
-use log::info;
-
 /// Copyright (c) 2023 Easton Man @Mankoros
-/// Copyright (c) 2022 Maturin OS
 ///
-/// Adapted from Maturin OS
-///
-/// Boot time things
+/// Boot time magic
 ///
 use crate::{
     consts::{
@@ -22,6 +17,7 @@ use crate::{
     },
     println,
 };
+use log::info;
 
 const BOOT_MSG: &str = r"
  __  __             _               ___  ____  
@@ -108,7 +104,6 @@ static mut KERNEL_STACK: core::mem::MaybeUninit<[KernelStack; 8]> =
 #[link_section = ".text.entry"]
 #[export_name = "_start"]
 unsafe extern "C" fn entry(hartid: usize) -> ! {
-    // DO NOT MODIFY a1
     core::arch::asm!(
         "   auipc s2, 0",  // Set s2 to boot_pc
         "   mv    tp, a0",
@@ -121,16 +116,18 @@ unsafe extern "C" fn entry(hartid: usize) -> ! {
         "   call  {set_boot_pt}",
         // Set boot stack
         "   mv    a0, tp",
+        "   mv    a1, s2",
         "   call  {set_stack}",
         // jump to boot_rust_main
         "   la    t0, boot_rust_main",
         "   sub   t0, t0, s2", // t0 = offset of boot_rust_main
         "   li    t1, 0xffffffff80000000",
         "   add   t0, t0, t1",
-        "   mv    a0, tp",
+        "   mv    a0, tp", // Set a0 to hartid
+        "   mv    a1, s2", // Set a1 to boot_pc
         "   jr    t0",
         set_early_stack   = sym set_early_stack,
-        set_boot_pt = sym set_boot_pt,
+        set_boot_pt = sym setup_vm,
         set_stack =  sym set_stack,
         options(noreturn),
     )
@@ -138,32 +135,32 @@ unsafe extern "C" fn entry(hartid: usize) -> ! {
 
 #[naked]
 pub unsafe extern "C" fn alt_entry(hartid: usize) -> ! {
-    // DO NOT MODIFY a1
     core::arch::asm!(
-        "   mv   tp, a0",
-        "   call {set_stack}",
-        "   call {set_boot_pt}",
+        "   mv    tp, a0",
+        "   call  {set_boot_pgtbl}",
+        "   call  {set_stack}",
         // jump to alt_rust_main
-        "   la   t0, alt_rust_main
-            li   t1, 0xffffffff00000000
-            add  t0, t0, t1
-            add  sp, sp, t1
-            jr   t0
+        "   la    t0, alt_rust_main",
+        "   mv    a0, tp
+            jr    t0
         ",
         set_stack = sym set_stack,
-        set_boot_pt = sym set_boot_pt,
+        set_boot_pgtbl = sym set_boot_pgtbl,
         options(noreturn),
     )
 }
 
 /// 设置高地址启动栈
 #[naked]
-unsafe extern "C" fn set_stack(hartid: usize) {
+unsafe extern "C" fn set_stack(hartid: usize, boot_pc: usize) {
     core::arch::asm!(
         "   add  t0, a0, 1",
         "   slli t0, t0, 20", // 1 MiB Stack Each
-        "   la   sp, {stack}
-            add  sp, sp, t0
+        "   la   sp, {stack}",
+        "   sub  t1, sp, a1", // t0 = offset of stack
+        "   li   t2, 0xffffffff80000000",
+        "   add  sp, t1, t2",
+        "   add  sp, sp, t0
             ret
         ",
         stack = sym KERNEL_STACK,
@@ -188,8 +185,25 @@ unsafe extern "C" fn set_early_stack(hartid: usize, boot_pc: usize) {
     )
 }
 
-/// 设置启动页表
-unsafe extern "C" fn set_boot_pt(_hartid: usize, boot_pc: usize, dtb_addr: usize) {
+#[naked]
+unsafe extern "C" fn set_boot_pgtbl(_hartid: usize, root_paddr: usize) {
+    // Set root page table and enable paging
+    // can only use safe code
+    core::arch::asm!(
+        "   mv   t0, a1
+            srli t0, t0, 12
+            li   t1, 8 << 60
+            or   t0, t0, t1
+            csrw satp, t0
+            ret
+        ",
+        options(noreturn),
+    );
+}
+
+/// Fill in boot page table
+/// And then switch to it
+unsafe extern "C" fn setup_vm(_hartid: usize, boot_pc: usize, dtb_addr: usize) {
     let boot_page_align = 1usize << 21;
 
     let root_offset = _BOOT_PAGE_TABLE_SV39.as_ptr() as usize - kernel_start as usize;

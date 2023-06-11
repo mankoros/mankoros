@@ -7,7 +7,8 @@
 use crate::{
     arch, boot,
     consts::{
-        self, address_space::K_SEG_PHY_MEM_BEG, HUGE_PAGE_SIZE, MAX_PHYSICAL_MEMORY, PHYMEM_START,
+        self, address_space::K_SEG_PHY_MEM_BEG, device::MAX_PHYSICAL_MEMORY, device::PHYMEM_START,
+        HUGE_PAGE_SIZE,
     },
     memory::{self, address::VirtPageNum},
     memory::{
@@ -46,8 +47,8 @@ pub fn map_kernel_phys_seg() {
     let boot_pagetable = boot::boot_pagetable();
 
     // Map kernel physical memory
-    for i in (0..MAX_PHYSICAL_MEMORY).step_by(HUGE_PAGE_SIZE) {
-        let paddr: usize = i + PHYMEM_START;
+    for i in (0..unsafe { MAX_PHYSICAL_MEMORY }).step_by(HUGE_PAGE_SIZE) {
+        let paddr: usize = i + unsafe { PHYMEM_START };
         let vaddr = VirtAddr::from(i + K_SEG_PHY_MEM_BEG);
         trace!("p3 index: {}", p3_index(vaddr));
         boot_pagetable[p3_index(vaddr)] = PageTableEntry::from((paddr >> 2) | 0xcf);
@@ -57,8 +58,10 @@ pub fn map_kernel_phys_seg() {
 /// Unmap the lower segment used for booting
 pub fn unmap_boot_seg() {
     let boot_pagetable = boot::boot_pagetable();
-    boot_pagetable[0] = PageTableEntry::EMPTY;
-    boot_pagetable[2] = PageTableEntry::EMPTY;
+    for i in 0..ENTRY_COUNT / 2 {
+        // Lower half is user space
+        boot_pagetable[i] = PageTableEntry::EMPTY;
+    }
 }
 
 /// Switch to global kernel boot pagetable

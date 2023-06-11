@@ -36,6 +36,7 @@ mod utils;
 #[macro_use]
 mod xdebug;
 mod axerrno;
+mod device_tree;
 mod executor;
 mod lazy_init;
 mod process;
@@ -53,7 +54,8 @@ use sync::SpinNoIrqLock;
 
 use consts::address_space;
 
-use crate::consts::address_space::K_SEG_DTB;
+use crate::boot::boot_pagetable_paddr;
+use crate::consts::address_space::{K_SEG_DTB, K_SEG_PHY_MEM_BEG};
 use crate::consts::platform;
 use crate::fs::vfs::filesystem::VfsNode;
 use crate::fs::vfs::node::VfsDirEntry;
@@ -83,26 +85,18 @@ lazy_static! {
 ///
 ///
 #[no_mangle]
-pub extern "C" fn boot_rust_main(boot_hart_id: usize) -> ! {
+pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     // Clear BSS before anything else
     boot::clear_bss();
+    unsafe { consts::device::PLATFORM_BOOT_PC = boot_pc };
+
     // Print boot message
     boot::print_boot_msg();
     // Print current boot hart
     println!("Early SBI console initialized");
     println!("Hart {} init booting up", boot_hart_id);
     // Parse device tree
-    let device_tree = unsafe { fdt::Fdt::from_ptr(K_SEG_DTB as _).expect("Parse DTB failed") };
-    let uart = device_tree
-        .find_compatible(&[
-            "ns16550a",
-            "snps,dw-apb-uart", // C910
-        ])
-        .expect("No compatible serial console"); // Must be one
-    unsafe {
-        consts::device::UART0_BASE =
-            uart.reg().unwrap().into_iter().next().unwrap().starting_address as usize
-    };
+    let device_tree = device_tree::parse_device_tree();
 
     // Initial logging support
     println!("Logging initializing...");
@@ -113,7 +107,6 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize) -> ! {
         humansize::SizeFormatter::new(device_tree.total_size(), humansize::BINARY);
     info!("Device tree size: {}", device_tree_size);
 
-    info!("UART: {}", uart.name);
     info!("UART start address: {:#x}", unsafe {
         consts::device::UART0_BASE
     });
@@ -129,7 +122,6 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize) -> ! {
     // Print boot memory layout
     consts::memlayout::print_memlayout();
 
-    sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
     // Initial memory system
     frame::init();
     // Test the physical frame allocator
@@ -156,9 +148,13 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize) -> ! {
     );
     // Map physical memory
     pagetable::pagetable::map_kernel_phys_seg();
-    info!("Physical memory mapped at {:#x}", consts::PHYMEM_START);
-    // Map devices
+    info!(
+        "Physical memory mapped {:#x} -> {:#x}",
+        K_SEG_PHY_MEM_BEG,
+        unsafe { consts::device::PHYMEM_START }
+    );
 
+    // Map devices
     kernal_page_table.map_page(
         (unsafe { consts::device::UART0_BASE } + address_space::K_SEG_HARDWARE_BEG).into(),
         unsafe { consts::device::UART0_BASE.into() },
@@ -183,7 +179,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize) -> ! {
     info!("Starting other cores at 0x{:x}", alt_rust_main_phys);
     for hart_id in 0..hart_cnt {
         if hart_id != boot_hart_id {
-            sbi_rt::hart_start(hart_id, alt_rust_main_phys, K_SEG_DTB)
+            sbi_rt::hart_start(hart_id, alt_rust_main_phys, boot_pagetable_paddr())
                 .expect("Starting hart failed");
         }
     }
@@ -197,6 +193,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize) -> ! {
         riscv::asm::sfence_vma_all();
     }
     info!("Boot memory unmapped");
+    loop {}
 
     // Avoid drop
     mem::forget(kernal_page_table);
@@ -233,7 +230,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize) -> ! {
 
     cfg_if::cfg_if! {
         if #[cfg(debug_assertions)] {
-            let cases = ["sleep"];
+            let cases = ["write"];
         } else {
             let cases = [
                 "getpid",
@@ -290,9 +287,8 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize) -> ! {
 ///
 ///
 #[no_mangle]
-pub extern "C" fn alt_rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
-    pagetable::pagetable::enable_boot_pagetable();
-    info!("Hart {} started at stack: 0x{:x}", hart_id, arch::sp());
+pub extern "C" fn alt_rust_main(hart_id: usize) -> ! {
+    info!("Hart {} started at stack: 0x{:x}", hart_id, arch::fp());
     BOOT_HART_CNT.fetch_add(1, Ordering::SeqCst);
 
     // Initialize interrupt controller
