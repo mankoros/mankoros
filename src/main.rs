@@ -88,41 +88,35 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize) -> ! {
     boot::clear_bss();
     // Print boot message
     boot::print_boot_msg();
-    println!("Early Console");
+    // Print current boot hart
+    println!("Early SBI console initialized");
+    println!("Hart {} init booting up", boot_hart_id);
     // Parse device tree
-    // No error handling here, because we have no console now
-    let device_tree = unsafe { fdt::Fdt::from_ptr(K_SEG_DTB as _).unwrap() };
+    let device_tree = unsafe { fdt::Fdt::from_ptr(K_SEG_DTB as _).expect("Parse DTB failed") };
     let uart = device_tree
         .find_compatible(&[
             "ns16550a",
             "snps,dw-apb-uart", // C910
         ])
-        .unwrap(); // Must be one
+        .expect("No compatible serial console"); // Must be one
     unsafe {
         consts::device::UART0_BASE =
             uart.reg().unwrap().into_iter().next().unwrap().starting_address as usize
     };
 
-    // Print current boot hart
-    println!("Hart {} init booting up", boot_hart_id);
-
     // Initial logging support
     println!("Logging initializing...");
     logging::init();
     info!("Logging initialised");
-    // In QEMU, device tree address is ensured to be within 1GB huge page
-    // So it is safe to use it directly
-    // TODO: To be ensured by checking SBI implementation or doc
 
     let device_tree_size =
         humansize::SizeFormatter::new(device_tree.total_size(), humansize::BINARY);
     info!("Device tree size: {}", device_tree_size);
 
     info!("UART: {}", uart.name);
-    info!(
-        "UART start address: {:#x}",
-        uart.reg().unwrap().into_iter().next().unwrap().starting_address as usize
-    );
+    info!("UART start address: {:#x}", unsafe {
+        consts::device::UART0_BASE
+    });
     for memory_region in device_tree.memory().regions() {
         let memory_size =
             humansize::SizeFormatter::new(memory_region.size.unwrap_or(0), humansize::BINARY);
@@ -132,10 +126,10 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize) -> ! {
         );
     }
 
-    sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
     // Print boot memory layout
     consts::memlayout::print_memlayout();
 
+    sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
     // Initial memory system
     frame::init();
     // Test the physical frame allocator

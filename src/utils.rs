@@ -17,12 +17,12 @@ macro_rules! println {
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
-    // let remapped = DEVICE_REMAPPED.load(Ordering::SeqCst);
-    // if remapped {
-    //     crate::UART0.lock(here!()).write_fmt(args).unwrap();
-    // } else {
-    unsafe { crate::EARLY_UART.write_fmt(args).unwrap() };
-    // }
+    let remapped = DEVICE_REMAPPED.load(Ordering::SeqCst);
+    if remapped {
+        crate::UART0.lock(here!()).write_fmt(args).unwrap();
+    } else {
+        unsafe { crate::EARLY_UART.write_fmt(args).unwrap() };
+    }
 }
 
 /// 获取一个裸指针指向的字符串长度

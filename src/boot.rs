@@ -8,8 +8,8 @@ use log::info;
 /// Boot time things
 ///
 use crate::{
-    arch,
     consts::{
+        address_space::K_SEG_DTB,
         memlayout::{kernel_end, kernel_start},
         KERNEL_LINK_ADDR, PAGE_SIZE,
     },
@@ -72,13 +72,13 @@ pub fn get_hart_status() -> usize {
 struct OnePage([u8; 4096]);
 // Boot pagetable
 #[link_section = ".data"]
-static mut _boot_page_table_sv39: core::mem::MaybeUninit<[OnePage; 1]> =
+static mut _BOOT_PAGE_TABLE_SV39: core::mem::MaybeUninit<[OnePage; 1]> =
     core::mem::MaybeUninit::uninit();
 
 /// Boot secondary page table
 /// Used to support 2M-aligned relocation
 #[link_section = ".data"]
-static mut _boot_second_page_table_sv39: core::mem::MaybeUninit<[OnePage; 512]> =
+static mut _BOOT_SECOND_PAGE_TABLE_SV39: core::mem::MaybeUninit<[OnePage; 512]> =
     core::mem::MaybeUninit::uninit();
 
 /// Return the physical address of the boot page table
@@ -89,7 +89,7 @@ pub fn boot_pagetable() -> &'static mut [PageTableEntry] {
 /// Return the physical address of the boot page table
 /// usually 0x80xxxxxx
 pub fn boot_pagetable_paddr() -> usize {
-    kernel_virt_text_to_phys(unsafe { _boot_page_table_sv39.as_ptr() } as usize)
+    kernel_virt_text_to_phys(unsafe { _BOOT_PAGE_TABLE_SV39.as_ptr() } as usize)
 }
 
 /// 一个核的启动栈
@@ -112,11 +112,12 @@ unsafe extern "C" fn entry(hartid: usize) -> ! {
     core::arch::asm!(
         "   auipc s2, 0",  // Set s2 to boot_pc
         "   mv    tp, a0",
-        "   mv    s1, a1", // Save a1 to s1
+        "   mv    s1, a1", // Save dtb address to s1
         "   mv    a1, s2", // Set a1 to boot_pc
         // Set a temp stack for filling page table in Rust
         "   call  {set_early_stack}",
         // Setup boot page table
+        "   mv    a2, s1", // Set a2 to dtb address
         "   call  {set_boot_pt}",
         // Set boot stack
         "   mv    a0, tp",
@@ -188,20 +189,22 @@ unsafe extern "C" fn set_early_stack(hartid: usize, boot_pc: usize) {
 }
 
 /// 设置启动页表
-unsafe extern "C" fn set_boot_pt(_hartid: usize, boot_pc: usize) {
+unsafe extern "C" fn set_boot_pt(_hartid: usize, boot_pc: usize, dtb_addr: usize) {
     let boot_page_align = 1usize << 21;
 
-    // Fill root page table
-    let root_offset = _boot_page_table_sv39.as_ptr() as usize - kernel_start as usize;
+    let root_offset = _BOOT_PAGE_TABLE_SV39.as_ptr() as usize - kernel_start as usize;
     let root_paddr = boot_pc + root_offset;
     let boot_pgtbl =
         unsafe { core::slice::from_raw_parts_mut(root_paddr as *mut PageTableEntry, ENTRY_COUNT) };
-    let second_offset = _boot_second_page_table_sv39.as_ptr() as usize - kernel_start as usize;
+    let second_offset = _BOOT_SECOND_PAGE_TABLE_SV39.as_ptr() as usize - kernel_start as usize;
     let second_paddr = boot_pc + second_offset;
+
+    // Fill root page table
     for (idx, pte) in boot_pgtbl.iter_mut().enumerate() {
         // non-leaf
         *pte = PageTableEntry::new((second_paddr + idx * PAGE_SIZE).into(), PTEFlags::V);
     }
+
     // Map [boot_pc, boot_pc + kernel_size) -> [K_SEG_DATA_BEG, xxx)
     let kernel_size = kernel_end as usize - kernel_start as usize;
     for offset in (0..kernel_size).step_by(boot_page_align) {
@@ -222,6 +225,14 @@ unsafe extern "C" fn set_boot_pt(_hartid: usize, boot_pc: usize) {
         *low_pte = new_pte;
         *high_pte = new_pte;
     }
+
+    // Map FDT to fixed DTB address
+    let fixed_ftb_pte = (second_paddr
+        + p3_index(K_SEG_DTB.into()) * PAGE_SIZE
+        + p2_index(K_SEG_DTB.into()) * 8) as *mut PageTableEntry;
+    // DTB is expected to be read-only
+    // Assume DTB is less than 2 MiB
+    *fixed_ftb_pte = PageTableEntry::new(dtb_addr.into(), PTEFlags::R | PTEFlags::V);
 
     // Set root page table and enable paging
     // can only use safe code
