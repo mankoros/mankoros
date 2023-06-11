@@ -9,6 +9,7 @@ pub fn parse_device_tree() -> Fdt<'static> {
         .find_compatible(&[
             "ns16550a",
             "snps,dw-apb-uart", // C910
+            "sifive,uart0",     // sifive_u QEMU (FU540)
         ])
         .expect("No compatible serial console"); // Must be one
     unsafe {

@@ -234,7 +234,8 @@ unsafe extern "C" fn setup_vm(_hartid: usize, boot_pc: usize, dtb_addr: usize) {
             + p2_index(paddr.into()) * 8) as *mut PageTableEntry;
         let new_pte = PageTableEntry::new(
             paddr.into(),
-            PTEFlags::R | PTEFlags::X | PTEFlags::W | PTEFlags::V,
+            // Must set A & D, some hardware cannot handle A & D set
+            PTEFlags::R | PTEFlags::X | PTEFlags::W | PTEFlags::V | PTEFlags::A | PTEFlags::D,
         );
         *low_pte = new_pte;
         *high_pte = new_pte;
@@ -246,7 +247,7 @@ unsafe extern "C" fn setup_vm(_hartid: usize, boot_pc: usize, dtb_addr: usize) {
         + p2_index(K_SEG_DTB.into()) * 8) as *mut PageTableEntry;
     // DTB is expected to be read-only
     // Assume DTB is less than 2 MiB
-    *fixed_ftb_pte = PageTableEntry::new(dtb_addr.into(), PTEFlags::R | PTEFlags::V);
+    *fixed_ftb_pte = PageTableEntry::new(dtb_addr.into(), PTEFlags::R | PTEFlags::V | PTEFlags::A);
 
     // Set root page table and enable paging
     // can only use safe code

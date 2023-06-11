@@ -158,7 +158,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     kernal_page_table.map_page(
         (unsafe { consts::device::UART0_BASE } + address_space::K_SEG_HARDWARE_BEG).into(),
         unsafe { consts::device::UART0_BASE.into() },
-        PTEFlags::R | PTEFlags::W,
+        PTEFlags::R | PTEFlags::W | PTEFlags::A | PTEFlags::D,
     );
 
     for reg in platform::VIRTIO_MMIO_REGIONS {
@@ -166,7 +166,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
             kernel_phys_dev_to_virt(reg.0).into(),
             reg.0.into(),
             reg.1,
-            PTEFlags::R | PTEFlags::W,
+            PTEFlags::R | PTEFlags::W | PTEFlags::A | PTEFlags::D,
         );
     }
 
