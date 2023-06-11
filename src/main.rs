@@ -193,7 +193,6 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
         riscv::asm::sfence_vma_all();
     }
     info!("Boot memory unmapped");
-    loop {}
 
     // Avoid drop
     mem::forget(kernal_page_table);
