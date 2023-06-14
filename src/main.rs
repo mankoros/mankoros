@@ -15,6 +15,7 @@
 #![feature(let_chains)]
 #![feature(const_convert)]
 #![feature(get_mut_unchecked)] // VFS workaround
+#![feature(negative_impls)]
 extern crate alloc;
 
 use alloc::vec::Vec;
