@@ -18,6 +18,7 @@ tmp
 # Release output
 kernel-qemu
 sbi-qemu
+uImage
 
 # Testing filesystem image
 fs.img

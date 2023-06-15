@@ -6,8 +6,8 @@
 // And AcreOS/modules/axlog/src/lib.rs
 
 use crate::timer;
-use core::fmt;
 use core::str::FromStr;
+use core::{fmt, sync::atomic::AtomicBool};
 
 use log::{self, Level, LevelFilter, Log, Metadata, Record};
 
@@ -53,10 +53,13 @@ cfg_if::cfg_if! {
     }
 }
 
+pub static mut INITIALIZED: AtomicBool = AtomicBool::new(false);
+
 pub fn init() {
     static LOGGER: SimpleLogger = SimpleLogger;
     log::set_logger(&LOGGER).unwrap();
     set_max_level(LOG_LEVEL);
+    unsafe { INITIALIZED.store(true, core::sync::atomic::Ordering::SeqCst) };
 }
 
 pub fn set_max_level(level: &str) {

@@ -301,18 +301,36 @@ static PANIC_COUNT: AtomicUsize = AtomicUsize::new(0);
 /// This function is called on panic.
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
+    let logging_initialized = unsafe { logging::INITIALIZED.load(Ordering::SeqCst) };
     if let Some(location) = info.location() {
-        error!(
-            "Panic at {}:{}, msg: {}",
-            location.file(),
-            location.line(),
-            info.message().unwrap()
-        );
+        if logging_initialized {
+            error!(
+                "Panic at {}:{}, msg: {}",
+                location.file(),
+                location.line(),
+                info.message().unwrap()
+            );
+        } else {
+            println!(
+                "Panic at {}:{}, msg: {}",
+                location.file(),
+                location.line(),
+                info.message().unwrap()
+            );
+        }
     } else {
         if let Some(msg) = info.message() {
-            error!("Panicked: {}", msg);
+            if logging_initialized {
+                error!("Panicked: {}", msg);
+            } else {
+                println!("Panicked: {}", msg);
+            }
         } else {
-            error!("Unknown panic: {:?}", info);
+            if logging_initialized {
+                error!("Unknown panic: {:?}", info);
+            } else {
+                println!("Unknown panic: {:?}", info);
+            }
         }
     }
 
