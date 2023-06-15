@@ -244,7 +244,7 @@ impl UserSpace {
         vaddr: VirtAddr,
         access_type: PageFaultAccessType,
     ) -> Result<(), PageFaultErr> {
-        self.areas.page_fault(&mut self.page_table, vaddr.assert_4k().page_num(), access_type)
+        self.areas.page_fault(&mut self.page_table, vaddr.page_num_down(), access_type)
     }
 
     pub fn force_map_range(&mut self, range: VirtAddrRange) {
