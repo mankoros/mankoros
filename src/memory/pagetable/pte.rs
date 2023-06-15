@@ -9,7 +9,7 @@ use bitflags::bitflags;
 use core::fmt;
 
 use crate::consts;
-use crate::memory::address::{PhysAddr, PhysPageNum};
+use crate::memory::address::{PhysAddr, PhysPageNum, PhysAddr4K};
 use crate::memory::frame;
 
 // Define the PTEFlags bitflags structure
@@ -56,9 +56,9 @@ pub struct PageTableEntry {
 // Implement methods for PageTableEntry
 impl PageTableEntry {
     // Create a new PageTableEntry with the given physical address and permissions
-    pub fn new(paddr: PhysAddr, perm: PTEFlags) -> Self {
+    pub fn new(paddr: PhysAddr4K, perm: PTEFlags) -> Self {
         PageTableEntry {
-            bits: ((paddr.round_down().bits() >> 2) & consts::PTE_PPN_MASK_SV39)
+            bits: ((paddr.bits() >> 2) & consts::PTE_PPN_MASK_SV39)
                 | perm.bits() as usize,
         }
     }
@@ -76,7 +76,7 @@ impl PageTableEntry {
     }
 
     // Get the physical address from the PageTableEntry
-    pub fn paddr(&self) -> PhysAddr {
+    pub fn paddr(&self) -> PhysAddr4K {
         self.ppn().addr()
     }
 
@@ -205,7 +205,7 @@ impl PageTableEntry {
     }
 
     // Map a frame to the PageTableEntry with the given permissions and physical address
-    pub fn map_frame(&mut self, perm: PTEFlags, pa: PhysAddr) {
+    pub fn map_frame(&mut self, perm: PTEFlags, pa: PhysAddr4K) {
         debug_assert!(!self.is_valid(), "try alloc to a valid pte");
         *self = Self::new(pa, perm | PTEFlags::D | PTEFlags::A | PTEFlags::V);
     }
@@ -213,14 +213,14 @@ impl PageTableEntry {
     /// Deallocate the PageTableEntry and clear the valid flag
     pub unsafe fn dealloc(&mut self) {
         debug_assert!(self.is_valid() && self.is_leaf());
-        frame::dealloc_frame(self.paddr().into());
+        frame::dealloc_frame(self.paddr());
         *self = Self::EMPTY;
     }
 
     /// Deallocate the non-leaf PageTableEntry and clear the valid flag
     pub unsafe fn dealloc_non_leaf(&mut self) {
         debug_assert!(self.is_valid() && self.is_directory());
-        frame::dealloc_frame(self.paddr().into());
+        frame::dealloc_frame(self.paddr());
         *self = Self::EMPTY;
     }
 }

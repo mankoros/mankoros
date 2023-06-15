@@ -57,7 +57,7 @@ use consts::memlayout;
 use crate::consts::platform;
 use crate::fs::vfs::filesystem::VfsNode;
 use crate::fs::vfs::node::VfsDirEntry;
-use crate::memory::address::{kernel_virt_text_to_phys, PhysAddr, VirtAddr};
+use crate::memory::address::{kernel_virt_text_to_phys, PhysAddr, VirtAddr, PhysAddr4K, VirtAddr4K};
 use crate::memory::{kernel_phys_dev_to_virt, pagetable};
 
 // use trap::ticks;
@@ -124,7 +124,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
         riscv::asm::ebreak();
     }
     let mut kernal_page_table = memory::pagetable::pagetable::PageTable::new_with_paddr(
-        PhysAddr::from(boot::boot_pagetable_paddr()),
+        PhysAddr4K::from(boot::boot_pagetable_paddr()),
     );
     // Map physical memory
     pagetable::pagetable::map_kernel_phys_seg();
@@ -132,15 +132,15 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     // Map devices
 
     kernal_page_table.map_page(
-        VirtAddr::from(memlayout::UART0_BASE + address_space::K_SEG_HARDWARE_BEG),
-        PhysAddr::from(memlayout::UART0_BASE),
+        VirtAddr4K::from(memlayout::UART0_BASE + address_space::K_SEG_HARDWARE_BEG),
+        PhysAddr4K::from(memlayout::UART0_BASE),
         PTEFlags::R | PTEFlags::W,
     );
 
     for reg in platform::VIRTIO_MMIO_REGIONS {
         kernal_page_table.map_region(
-            VirtAddr::from(kernel_phys_dev_to_virt(reg.0)),
-            PhysAddr::from(reg.0),
+            VirtAddr4K::from(kernel_phys_dev_to_virt(reg.0)),
+            PhysAddr4K::from(reg.0),
             reg.1,
             PTEFlags::R | PTEFlags::W,
         );

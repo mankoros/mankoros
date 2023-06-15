@@ -11,7 +11,7 @@ use crate::{
     },
     memory::{self, address::VirtPageNum},
     memory::{
-        address::{PhysAddr, VirtAddr},
+        address::{PhysAddr, VirtAddr, VirtAddr4K, PhysAddr4K},
         frame,
     },
 };
@@ -68,14 +68,14 @@ pub fn enable_boot_pagetable() {
 }
 
 pub struct PageTable {
-    root_paddr: PhysAddr,
-    intrm_tables: Vec<PhysAddr>,
+    root_paddr: PhysAddr4K,
+    intrm_tables: Vec<PhysAddr4K>,
 }
 
 impl PageTable {
     pub fn new() -> Self {
         // Allocate 1 page for the root page table
-        let root_paddr: PhysAddr = Self::alloc_table();
+        let root_paddr = Self::alloc_table();
 
         PageTable {
             root_paddr,
@@ -85,11 +85,11 @@ impl PageTable {
 
     pub fn new_with_kernel_seg() -> Self {
         // Allocate 1 page for the root page table
-        let root_paddr: PhysAddr = Self::alloc_table();
-        let boot_root_paddr: PhysAddr = PhysAddr::from(boot::boot_pagetable_paddr());
+        let root_paddr = Self::alloc_table();
+        let boot_root_paddr = PhysAddr::from(boot::boot_pagetable_paddr()).assert_4k();
 
         // Copy kernel segment
-        unsafe { root_paddr.assert_4k().as_mut_page_slice().copy_from_slice(boot_root_paddr.assert_4k().as_page_slice()) }
+        unsafe { root_paddr.as_mut_page_slice().copy_from_slice(boot_root_paddr.as_page_slice()) }
 
         PageTable {
             root_paddr,
@@ -97,35 +97,35 @@ impl PageTable {
         }
     }
 
-    pub fn new_with_paddr(paddr: PhysAddr) -> Self {
+    pub fn new_with_paddr(paddr: PhysAddr4K) -> Self {
         PageTable {
             root_paddr: paddr,
             intrm_tables: vec![paddr],
         }
     }
 
-    pub const fn root_paddr(&self) -> PhysAddr {
+    pub const fn root_paddr(&self) -> PhysAddr4K {
         self.root_paddr
     }
 
     // map_page maps a physical page to a virtual address
     // PTE::V is guaranteed to be set, so no need to set PTE::V
-    pub fn map_page(&mut self, vaddr: VirtAddr, paddr: PhysAddr, flags: PTEFlags) {
+    pub fn map_page(&mut self, vaddr: VirtAddr4K, paddr: PhysAddr4K, flags: PTEFlags) {
         let new_pte = pte::PageTableEntry::new(paddr, PTEFlags::V | flags);
         // Get entry by vaddr
-        let entry = self.get_entry_mut_or_create(vaddr);
+        let entry = self.get_entry_mut_or_create(vaddr.into());
         debug_assert!(!entry.is_valid(), "Remapping a valid page table entry");
         *entry = new_pte;
     }
-    pub fn unmap_page(&mut self, vaddr: VirtAddr) -> PhysAddr {
-        let entry = self.get_entry_mut(vaddr);
+    pub fn unmap_page(&mut self, vaddr: VirtAddr4K) -> PhysAddr4K {
+        let entry = self.get_entry_mut(vaddr.into());
         let paddr = entry.paddr();
         debug_assert!(entry.is_valid(), "Unmapping a invalid page table entry");
         entry.clear();
         paddr
     }
-    pub fn unmap_and_dealloc_page(&mut self, vaddr: VirtAddr) -> PhysAddr {
-        let entry = self.get_entry_mut(vaddr);
+    pub fn unmap_and_dealloc_page(&mut self, vaddr: VirtAddr4K) -> PhysAddr4K {
+        let entry = self.get_entry_mut(vaddr.into());
         let paddr = entry.paddr();
         debug_assert!(entry.is_valid(), "Unmapping a invalid page table entry");
         entry.clear();
@@ -135,14 +135,14 @@ impl PageTable {
 
     // map_region map a memory region from vaddr to paddr
     // PTE::V is guaranteed to be set, so no need to set PTE::V
-    pub fn map_region(&mut self, vaddr: VirtAddr, paddr: PhysAddr, size: usize, flags: PTEFlags) {
+    pub fn map_region(&mut self, vaddr: VirtAddr4K, paddr: PhysAddr4K, size: usize, flags: PTEFlags) {
         trace!(
             "map_region({:#x}): [{:#x}, {:#x}) -> [{:#x}, {:#x}) ({:#?})",
             self.root_paddr(),
             vaddr,
-            vaddr + size,
+            vaddr.into() + size,
             paddr,
-            paddr + size,
+            paddr.into() + size,
             flags,
         );
         let mut vaddr = vaddr;
@@ -150,18 +150,18 @@ impl PageTable {
         let mut size = size;
         while size > 0 {
             self.map_page(vaddr, paddr, flags);
-            vaddr += consts::PAGE_SIZE;
-            paddr += consts::PAGE_SIZE;
+            vaddr.offset_to_next_page();
+            paddr.offset_to_next_page();
             size -= consts::PAGE_SIZE;
         }
     }
 
-    pub fn unmap_region(&mut self, vaddr: VirtAddr, size: usize, dealloc: bool) {
+    pub fn unmap_region(&mut self, vaddr: VirtAddr4K, size: usize, dealloc: bool) {
         trace!(
             "unmap_region({:#x}) [{:#x}, {:#x})",
             self.root_paddr(),
             vaddr,
-            vaddr + size,
+            vaddr.into() + size,
         );
         let mut vaddr = vaddr;
         let mut size = size;
@@ -171,20 +171,20 @@ impl PageTable {
             } else {
                 self.unmap_page(vaddr);
             }
-            vaddr += consts::PAGE_SIZE;
+            vaddr.offset_to_next_page();
             size -= consts::PAGE_SIZE;
         }
     }
 
     pub fn get_pte_copied_from_vpn(&mut self, vpn: VirtPageNum) -> Option<PageTableEntry> {
-        self.get_entry_mut_opt(vpn.addr()).as_deref().copied()
+        self.get_entry_mut_opt(vpn.addr().into()).as_deref().copied()
     }
 
     pub fn get_paddr_from_vaddr(&self, vaddr: VirtAddr) -> PhysAddr {
-        self.get_entry_mut(vaddr).paddr() + vaddr.page_offset()
+        self.get_entry_mut(vaddr).paddr().into() + vaddr.page_offset()
     }
 
-    pub fn copy_table_and_mark_self_cow(&mut self, do_with_frame: impl Fn(PhysAddr) -> ()) -> Self {
+    pub fn copy_table_and_mark_self_cow(&mut self, do_with_frame: impl Fn(PhysAddr4K) -> ()) -> Self {
         let old = self;
         let mut new = Self::new();
 
@@ -234,21 +234,21 @@ impl PageTable {
 impl PageTable {
     // Allocates a page for a table
     // the allocated page will be zeroed to ensure every PTE is not valid
-    fn alloc_table() -> PhysAddr {
-        let paddr: PhysAddr = frame::alloc_frame().expect("failed to allocate page");
+    fn alloc_table() -> PhysAddr4K {
+        let paddr = frame::alloc_frame().expect("failed to allocate page");
         // Fill with zeros
         unsafe {
-            paddr.assert_4k().as_mut_page_slice().fill(0);
+            paddr.as_mut_page_slice().fill(0);
         }
         paddr
     }
-    fn table_of<'a>(&self, paddr: PhysAddr) -> &'a [PageTableEntry] {
+    fn table_of<'a>(&self, paddr: PhysAddr4K) -> &'a [PageTableEntry] {
         // use kernel_vaddr here to work after kernel remapped
         let kernel_vaddr = memory::kernel_phys_to_virt(paddr.bits());
         unsafe { core::slice::from_raw_parts(kernel_vaddr as _, ENTRY_COUNT) }
     }
 
-    fn table_of_mut<'a>(&self, paddr: PhysAddr) -> &'a mut [PageTableEntry] {
+    fn table_of_mut<'a>(&self, paddr: PhysAddr4K) -> &'a mut [PageTableEntry] {
         // use kernel_vaddr here to work after kernel remapped
         let kernel_vaddr = memory::kernel_phys_to_virt(paddr.bits());
         unsafe { core::slice::from_raw_parts_mut(kernel_vaddr as _, ENTRY_COUNT) }
@@ -282,7 +282,7 @@ impl PageTable {
     ) -> &'a mut [PageTableEntry] {
         if !pte.is_valid() {
             let paddr = Self::alloc_table();
-            self.intrm_tables.push(paddr.into());
+            self.intrm_tables.push(paddr);
             *pte = PageTableEntry::new(paddr, PTEFlags::V);
             self.table_of_mut(paddr)
         } else {
@@ -330,7 +330,7 @@ impl Drop for PageTable {
         // shared kernel segment pagetable is not in intrm_tables
         // so no extra things should be done
         for frame in &self.intrm_tables {
-            frame::dealloc_frame((*frame).into());
+            frame::dealloc_frame((*frame));
         }
     }
 }

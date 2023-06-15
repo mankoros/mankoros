@@ -261,7 +261,7 @@ impl UserSpace {
         Self {
             page_table: self.page_table.copy_table_and_mark_self_cow(|frame_paddr| {
                 with_shared_frame_mgr(|mgr| {
-                    mgr.add_ref(frame_paddr.assert_4k().page_num());
+                    mgr.add_ref(frame_paddr.page_num());
                 });
             }),
             areas: self.areas.clone(),

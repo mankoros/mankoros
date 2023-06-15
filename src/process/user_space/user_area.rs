@@ -222,15 +222,15 @@ impl UserArea {
             // decrease the old frame's ref count
             let old_frame = pte.paddr();
             with_shared_frame_mgr(|mgr| {
-                mgr.remove_ref(old_frame.assert_4k().page_num()); 
+                mgr.remove_ref(old_frame.page_num()); 
             });
 
             // copy the data
             // assert we are in process's page table now
             debug_assert!(page_table.root_paddr().bits() == get_curr_page_table_addr());
             unsafe {
-                frame.assert_4k().as_mut_page_slice()
-                    .copy_from_slice(old_frame.assert_4k().as_page_slice());
+                frame.as_mut_page_slice()
+                    .copy_from_slice(old_frame.as_page_slice());
             }
         } else {
             // a lazy alloc or lazy load (demand paging)
@@ -240,8 +240,8 @@ impl UserArea {
                 // If lazy load, read from fs
                 UserAreaType::MmapPrivate { file, offset } => {
                     let access_vaddr = access_vpn.addr();
-                    let real_offset = offset + (access_vaddr - range_begin);
-                    let slice = unsafe { frame.assert_4k().as_mut_page_slice() };
+                    let real_offset = offset + (access_vaddr.into() - range_begin);
+                    let slice = unsafe { frame.as_mut_page_slice() };
                     let _read_length = file.sync_read_at(real_offset as u64, slice).expect("read file failed");
                     // Read length may be less than PAGE_SIZE, due to file mmap
                 }
@@ -425,7 +425,7 @@ impl UserAreaManager {
     }
 
     pub fn page_fault(&mut self, page_table: &mut PageTable, access_vpn: VirtPageNum, access_type: PageFaultAccessType) -> Result<(), PageFaultErr> {
-        let (range, area) = self.map.get_mut(access_vpn.addr())
+        let (range, area) = self.map.get_mut(access_vpn.addr().into())
             .ok_or(PageFaultErr::NoSegment)?;
         area.page_fault(page_table, range.start, access_vpn, access_type)
     }
