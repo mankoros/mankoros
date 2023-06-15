@@ -31,6 +31,19 @@ impl PhysAddr4K {
     pub unsafe fn as_mut_page_slice(self) -> &'static mut [u8] {
         self.into().as_mut_slice(consts::PAGE_SIZE)
     }
+
+    pub const fn next_page(self) -> Self {
+        Self(self.0 + consts::PAGE_SIZE)
+    }
+    pub const fn prev_page(self) -> Self {
+        Self(self.0 - consts::PAGE_SIZE)
+    }
+    pub fn offset_to_next_page(&mut self) {
+        self.0 += consts::PAGE_SIZE;
+    }
+    pub fn offset_to_prev_page(&mut self) {
+        self.0 -= consts::PAGE_SIZE;
+    }
 }
 
 impl const From<usize> for PhysAddr4K {
@@ -51,7 +64,18 @@ impl Into<PhysPageNum> for PhysAddr4K {
     }
 }
 
-impl_arithmetic_with_usize!(PhysAddr4K);
+impl PartialEq<usize> for PhysAddr4K {
+    fn eq(&self, other: &usize) -> bool {
+        self.0 == *other
+    }
+}
+
+impl PartialEq<PhysAddr> for PhysAddr4K {
+    fn eq(&self, other: &PhysAddr) -> bool {
+        self.0 == other.0
+    }
+}
+
 impl_fmt!(PhysAddr4K, "PA4K");
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
@@ -105,8 +129,8 @@ impl_usize_convert!(PhysAddr);
 pub struct PhysPageNum(usize);
 
 impl PhysPageNum {
-    pub const fn addr(self) -> PhysAddr {
-        PhysAddr(self.0 * consts::PAGE_SIZE)
+    pub const fn addr(self) -> PhysAddr4K {
+        PhysAddr4K(self.0 * consts::PAGE_SIZE)
     }
 }
 
