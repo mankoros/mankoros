@@ -1,5 +1,31 @@
 //! Address type infrastructure
 //!
+//! 本模块包含了 `{Phys,Virt}{Addr,Addr4K,PageNum}` 共计 2 * 3 = 6 种地址类型,
+//! 它们都是 usize 的包装, 其中以 `Phys` 开头的用于表示物理地址, 以 `Virt` 开头的用于表示虚拟地址 (用户地址空间中的地址).
+//! 以 `Addr` 结尾的类型用于表示任意定位到字节的地址, 而以 `Addr4K` 结尾的类型用于表示对齐到页的地址, `PageNum` 则表示页号.
+//! 例如, 地址 `0x87654321` 便是一个普通的地址; 如果其对齐到页, 则是 `0x87654000` (4K 页情况下); 如果是页号, 则是 `0x87654`.
+//! 一般偏好使用 `Addr4K` 结尾的类型作为某些与页有关的数据的指代, 除非使用 `PageNum` 更为合理 (比如页表项中或是需要页号相减获得页数量的时候).
+//! 
+//! 下面是 `Addr`, `Addr4K`, `PageNum` 的转换关系:
+//! - `Addr` 
+//!     - -> `Addr4K`: 可以分别通过 `round_up/round_down` 来向上/向下取整到页对齐的地址, 也可以通过 `assert_4k` 来强制转换 (在 Debug 模式下会进行 assert)
+//!     - -> `PageNum`: 可以通过 `page_num_up/page_num_down` 来获得向上/向下取整的页号, 也可以通过 `.assert_4k().page_num()` 来转换到页对齐地址后再转换到页号
+//!     - -> `usize`: 可以通过 `bits` 方法转换为 `usize`
+//!     - <- `usize`: 可以通过 `usize::into` 转换为 `Addr`
+//! - `Addr4K`
+//!     - -> `Addr`: 可以通过 `into` 来转换
+//!     - -> `PageNum`: 可以通过 `page_num` 来转换
+//!     - -> `usize`: 可以通过 `bits` 方法转换为 `usize`
+//!     - <- `usize`: 无. 必须先转换为 `Addr`, 再从 `Addr` 显式指定如何转换为 `Addr4K`
+//! - `PageNum`
+//!     - -> `Addr`: 可以通过 `.addr().into()` 先转换到 `Addr4K` 再转换到 `Addr`
+//!     - -> `Addr4K`: 可以通过 `.addr` 转换
+//!     - -> `usize`: 可以通过 `bits` 方法转换为 `usize`
+//!     - <- `usize`: 可以通过 `usize::into` 转换为 `PageNum`
+//!
+//! 同时这些类型里还有一些辅助方法, 比如转换到 `u8` 指针的方法 (`as_ptr`/`as_mut_ptr`), 
+//! 转换到任意长度的 slice 的方法 (unsafe `as_slice`/`as_slice_mut`), 以及转换到以页为长度的 slice 的方法,
+//! 可以按需取用.
 
 use log::{trace, warn};
 
@@ -134,8 +160,10 @@ macro_rules! impl_usize_convert {
             pub const fn bits(self) -> usize {
                 self.0
             }
+        }
+        impl const From<usize> for $t {
             #[inline]
-            pub const fn from(bits: usize) -> Self {
+            fn from(bits: usize) -> Self {
                 Self(bits)
             }
         }

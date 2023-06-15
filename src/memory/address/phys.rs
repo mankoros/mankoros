@@ -33,6 +33,12 @@ impl PhysAddr4K {
     }
 }
 
+impl const From<usize> for PhysAddr4K {
+    fn from(bits: usize) -> Self {
+        Self::from(bits)
+    }
+}
+
 impl Into<PhysAddr> for PhysAddr4K {
     fn into(self) -> PhysAddr {
         self.into()

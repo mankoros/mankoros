@@ -30,6 +30,12 @@ impl VirtAddr4K {
     }
 }
 
+impl const From<usize> for VirtAddr4K {
+    fn from(bits: usize) -> Self {
+        Self::from(bits)
+    }
+}
+
 impl Into<VirtAddr> for VirtAddr4K {
     fn into(self) -> VirtAddr {
         self.into()
