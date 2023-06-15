@@ -30,8 +30,8 @@ pub type VirtAddrRange = Range<VirtAddr>;
 
 #[inline(always)]
 fn iter_vpn(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum) -> ()) {
-    let start_vpn = range.start.into();
-    let end_vpn = range.end.into();
+    let start_vpn = range.start.assert_4k().page_num();
+    let end_vpn = range.end.assert_4k().page_num();
     let mut vpn = start_vpn;
     while vpn < end_vpn {
         f(vpn);
@@ -222,14 +222,15 @@ impl UserArea {
             // decrease the old frame's ref count
             let old_frame = pte.paddr();
             with_shared_frame_mgr(|mgr| {
-                mgr.remove_ref(old_frame.into()); 
+                mgr.remove_ref(old_frame.assert_4k().page_num()); 
             });
 
             // copy the data
             // assert we are in process's page table now
-            debug_assert!(page_table.root_paddr() == get_curr_page_table_addr().into());
+            debug_assert!(page_table.root_paddr().bits() == get_curr_page_table_addr());
             unsafe {
-                frame.as_mut_page_slice().copy_from_slice(old_frame.as_page_slice());
+                frame.assert_4k().as_mut_page_slice()
+                    .copy_from_slice(old_frame.assert_4k().as_page_slice());
             }
         } else {
             // a lazy alloc or lazy load (demand paging)
@@ -238,9 +239,9 @@ impl UserArea {
                 UserAreaType::MmapAnonymous => {}
                 // If lazy load, read from fs
                 UserAreaType::MmapPrivate { file, offset } => {
-                    let access_vaddr: VirtAddr = access_vpn.into();
+                    let access_vaddr = access_vpn.addr();
                     let real_offset = offset + (access_vaddr - range_begin);
-                    let slice = unsafe { frame.as_mut_page_slice() };
+                    let slice = unsafe { frame.assert_4k().as_mut_page_slice() };
                     let _read_length = file.sync_read_at(real_offset as u64, slice).expect("read file failed");
                     // Read length may be less than PAGE_SIZE, due to file mmap
                 }
@@ -248,7 +249,7 @@ impl UserArea {
         }
 
         // remap the frame
-        page_table.map_page(access_vpn.into(), frame, self.perm().into());
+        page_table.map_page(access_vpn.addr(), frame, self.perm().into());
         Ok(())
     }
 
@@ -291,9 +292,9 @@ pub struct UserAreaManager {
 }
 
 impl UserAreaManager {
-    const HEAP_BEG: VirtAddr = U_SEG_HEAP_BEG.into();
-    const STACK_RANGE: VirtAddrRange = U_SEG_STACK_BEG.into()..U_SEG_STACK_END.into();
-    const MMAP_RANGE: VirtAddrRange = U_SEG_FILE_BEG.into()..U_SEG_FILE_END.into();
+    const HEAP_BEG: VirtAddr = VirtAddr::from(U_SEG_HEAP_BEG);
+    const STACK_RANGE: VirtAddrRange = VirtAddr::from(U_SEG_STACK_BEG)..VirtAddr::from(U_SEG_STACK_END);
+    const MMAP_RANGE: VirtAddrRange = VirtAddr::from(U_SEG_FILE_BEG)..VirtAddr::from(U_SEG_FILE_END);
 
     pub fn new() -> Self {
         Self {
@@ -321,11 +322,11 @@ impl UserAreaManager {
     /// sp_init 16 字节对齐
     pub fn alloc_stack(&mut self, size: usize) -> VirtAddr {
         let range = self.map
-            .find_free_range(Self::STACK_RANGE, size, |va, n| (va + n).round_up())
+            .find_free_range(Self::STACK_RANGE, size, |va, n| (va + n).round_up().into())
             .expect("too many stack!");
 
         // 栈要 16 字节对齐
-        let sp_init = ((range.end.0 - PAGE_SIZE) & !0xf).into();
+        let sp_init = VirtAddr::from((range.end.bits() - PAGE_SIZE) & !0xf);
         trace!("alloc stack: {:x?}, sp_init: {:x?}", range, sp_init);
 
         let area = UserArea::new_anonymous(
@@ -372,7 +373,7 @@ impl UserAreaManager {
 
     fn find_free_mmap_area(&self, size: usize) -> Result<(VirtAddr, usize), ()> {
         self.map
-            .find_free_range(Self::MMAP_RANGE, size, |va, n| (va + n).round_up())
+            .find_free_range(Self::MMAP_RANGE, size, |va, n| (va + n).round_up().into())
             .map(|r| (r.start, r.end - r.start))
             .ok_or(()) 
     }
@@ -424,7 +425,7 @@ impl UserAreaManager {
     }
 
     pub fn page_fault(&mut self, page_table: &mut PageTable, access_vpn: VirtPageNum, access_type: PageFaultAccessType) -> Result<(), PageFaultErr> {
-        let (range, area) = self.map.get_mut(access_vpn.into())
+        let (range, area) = self.map.get_mut(access_vpn.addr())
             .ok_or(PageFaultErr::NoSegment)?;
         area.page_fault(page_table, range.start, access_vpn, access_type)
     }
@@ -432,8 +433,8 @@ impl UserAreaManager {
     pub fn force_map_range(&mut self, page_table: &mut PageTable, range: VirtAddrRange) {
         debug!("force map range: {:?}", range);
 
-        let vpn_begin = range.start.into();
-        let vpn_end = range.end.into();
+        let vpn_begin = range.start.assert_4k().page_num();
+        let vpn_end = range.end.assert_4k().page_num();
 
         let mut vpn = vpn_begin;
         while vpn < vpn_end {
@@ -470,7 +471,7 @@ impl UserAreaManager {
                 if mgr.is_shared(ppn) {
                     mgr.remove_ref(ppn);
                 } else {
-                    dealloc_frame(ppn.into());
+                    dealloc_frame(ppn.addr());
                 }
             })
         })

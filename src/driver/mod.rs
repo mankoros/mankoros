@@ -164,9 +164,9 @@ unsafe impl virtio_drivers::Hal for VirtIoHalImpl {
         } else {
             return (0, NonNull::dangling());
         };
-        let vaddr = kernel_phys_to_virt(paddr.into());
+        let vaddr = kernel_phys_to_virt(paddr.bits());
         let ptr = NonNull::new(vaddr as _).unwrap();
-        (paddr.into(), ptr)
+        (paddr.bits(), ptr)
     }
 
     unsafe fn dma_dealloc(

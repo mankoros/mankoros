@@ -6,7 +6,7 @@ use alloc::{string::String, sync::Arc, vec::Vec};
 use crate::{
     arch::get_curr_page_table_addr,
     fs::vfs::filesystem::VfsNode,
-    memory::{address::VirtAddr, pagetable::pagetable::PageTable},
+    memory::{address::{VirtAddr, PhysAddr}, pagetable::pagetable::PageTable},
     process::{aux_vector::AuxElement, user_space::user_area::PageFaultAccessType},
 };
 
@@ -70,7 +70,7 @@ pub fn init_stack(
     在构建栈的时候, 我们从底向上塞各个东西
     */
 
-    let mut sp = sp_init.0;
+    let mut sp = sp_init.bits();
     debug_assert!(sp & 0xf == 0);
 
     // 存放环境与参数的字符串本身
@@ -188,7 +188,7 @@ impl UserSpace {
 
             let offset = ph.offset() as usize;
 
-            let area_begin = VirtAddr(ph.virtual_addr() as usize);
+            let area_begin = VirtAddr::from(ph.virtual_addr() as usize);
             let area_perm = ph.flags().into();
             let area_size = ph.mem_size() as usize;
 
@@ -212,7 +212,7 @@ impl UserSpace {
                     .insert_mmap_anonymous_at(area_begin, area_size, area_perm)
                     .expect("failed to map elf file in a mmap-anonymous-like way");
                 // copy data
-                debug_assert!(self.page_table.root_paddr() == get_curr_page_table_addr().into());
+                debug_assert!(self.page_table.root_paddr() == PhysAddr::from(get_curr_page_table_addr()));
                 let area_slice = unsafe { area_begin.as_mut_slice(area_size) };
                 elf_file
                     .sync_read_at(offset as u64, area_slice)
@@ -234,7 +234,7 @@ impl UserSpace {
 
         let elf_begin = elf_begin_opt.expect("Elf has no loadable segment!");
         let auxv = AuxVector::from_elf(&elf, elf_begin);
-        let entry_point = VirtAddr(elf.header.pt2.entry_point() as usize);
+        let entry_point = VirtAddr::from(elf.header.pt2.entry_point() as usize);
 
         (entry_point, auxv)
     }
@@ -244,7 +244,7 @@ impl UserSpace {
         vaddr: VirtAddr,
         access_type: PageFaultAccessType,
     ) -> Result<(), PageFaultErr> {
-        self.areas.page_fault(&mut self.page_table, vaddr.into(), access_type)
+        self.areas.page_fault(&mut self.page_table, vaddr.assert_4k().page_num(), access_type)
     }
 
     pub fn force_map_range(&mut self, range: VirtAddrRange) {
@@ -261,7 +261,7 @@ impl UserSpace {
         Self {
             page_table: self.page_table.copy_table_and_mark_self_cow(|frame_paddr| {
                 with_shared_frame_mgr(|mgr| {
-                    mgr.add_ref(frame_paddr.into());
+                    mgr.add_ref(frame_paddr.assert_4k().page_num());
                 });
             }),
             areas: self.areas.clone(),

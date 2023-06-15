@@ -5,7 +5,7 @@ use bitflags::bitflags;
 use log::info;
 
 use crate::{
-    axerrno::AxError, consts::PAGE_MASK, memory::pagetable::pte::PTEFlags,
+    axerrno::AxError, consts::PAGE_MASK, memory::{pagetable::pte::PTEFlags, address::VirtAddr},
     process::user_space::user_area::UserAreaPerm,
 };
 
@@ -82,11 +82,11 @@ impl<'a> Syscall<'a> {
 
         if brk == 0 {
             let cur_brk = self.lproc.with_memory(|m| m.areas().get_heap_break());
-            Ok(cur_brk.into())
+            Ok(cur_brk.bits())
         } else {
             self.lproc.with_mut_memory(|m| {
                 m.areas_mut()
-                    .reset_heap_break(brk.into())
+                    .reset_heap_break(VirtAddr::from(brk))
                     .map(|_| 0)
                     .map_err(|_| AxError::NoMemory)
             })
@@ -120,7 +120,7 @@ impl<'a> Syscall<'a> {
                 return self.lproc.with_mut_memory(|m| {
                     m.areas_mut()
                         .insert_mmap_anonymous(len, prot.into())
-                        .map(|(r, _)| r.start.into())
+                        .map(|(r, _)| r.start.bits())
                         .map_err(|_| AxError::NoMemory)
                 });
             }
@@ -134,7 +134,7 @@ impl<'a> Syscall<'a> {
                         return self.lproc.with_mut_memory(|m| {
                             m.areas_mut()
                                 .insert_mmap_private(len, prot.into(), fd.file.clone(), offset)
-                                .map(|(r, _)| r.start.into())
+                                .map(|(r, _)| r.start.bits())
                                 .map_err(|_| AxError::NoMemory)
                         });
                     }
@@ -153,7 +153,7 @@ impl<'a> Syscall<'a> {
             return Err(AxError::InvalidInput);
         }
 
-        let range = start.into()..(start + len).into();
+        let range = VirtAddr::from(start)..VirtAddr::from(start + len);
         self.lproc.with_mut_memory(|m| m.unmap_range(range));
 
         Ok(0)

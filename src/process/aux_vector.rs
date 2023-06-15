@@ -71,7 +71,7 @@ pub struct AuxVector {
 
 impl AuxVector {
     pub fn from_elf(elf: &ElfFile, begin_addr: VirtAddr) -> Self {
-        let pgm_header_addr = (begin_addr + elf.header.pt2.ph_offset() as usize).0;
+        let pgm_header_addr = (begin_addr + elf.header.pt2.ph_offset() as usize).bits();
         let pgm_header_cnt = elf.header.pt2.ph_count() as usize;
         let pgm_header_entry_size = elf.header.pt2.ph_entry_size() as usize;
         let entry_point = elf.header.pt2.entry_point() as usize;
