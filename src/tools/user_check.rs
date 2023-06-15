@@ -24,7 +24,7 @@ impl<'a> UserCheck<'a> {
     }
 
     pub fn checked_read<T>(&self, ptr: *const T) -> Result<T, ()> {
-        let vaddr = (ptr as usize).into();
+        let vaddr = VirtAddr::from(ptr as usize);
         if self.has_perm(vaddr, UserAreaPerm::READ) {
             unsafe { Ok(ptr.read()) }
         } else {
@@ -33,7 +33,7 @@ impl<'a> UserCheck<'a> {
     }
 
     pub fn checked_write<T>(&self, ptr: *mut T, val: T) -> Result<(), ()> {
-        let vaddr = (ptr as usize).into();
+        let vaddr = VirtAddr::from(ptr as usize);
         if self.has_perm(vaddr, UserAreaPerm::WRITE) {
             unsafe {
                 ptr.write(val);

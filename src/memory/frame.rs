@@ -47,7 +47,7 @@ impl GlobalFrameAlloc {
     }
     fn dealloc(&self, target: PhysAddr) {
         trace!("Deallocate frame: {:x}", target);
-        let target: usize = target.into();
+        let target: usize = target.bits();
         FRAME_ALLOCATOR.lock(here!()).dealloc((target - PHYMEM_START) / PAGE_SIZE);
     }
 }
@@ -75,12 +75,12 @@ pub fn alloc_frame_contiguous(size: usize, align_log2: usize) -> Option<PhysAddr
 }
 pub fn dealloc_frames(target: usize, pages: usize) {
     for i in 0..pages {
-        GlobalFrameAlloc.dealloc((target + i * PAGE_SIZE).into());
+        GlobalFrameAlloc.dealloc(PhysAddr::from(target + i * PAGE_SIZE));
     }
 }
 
 pub fn test_first_frame() {
-    let first_frame: usize = alloc_frame().unwrap().into();
+    let first_frame: usize = alloc_frame().unwrap().bits();
     let kernel_end = memlayout::kernel_end as usize;
     let kernel_end = kernel_virt_text_to_phys(kernel_end);
     assert!(
@@ -91,5 +91,5 @@ pub fn test_first_frame() {
     );
     info!("Frame allocator self test passed.");
     info!("First available frame: 0x{:x}", first_frame);
-    dealloc_frame(first_frame.into());
+    dealloc_frame(PhysAddr::from(first_frame));
 }

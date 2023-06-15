@@ -220,7 +220,7 @@ impl LightProcess {
             "Create new userspace with page table at {:?}",
             page_table_paddr
         );
-        switch_page_table(page_table_paddr.into());
+        switch_page_table(page_table_paddr.bits());
 
         // 把 elf 的 segment 映射到用户空间
         let (entry_point, auxv) = self.with_mut_memory(|m| m.parse_and_map_elf_file(elf_file));
@@ -241,7 +241,7 @@ impl LightProcess {
 
         // 为线程初始化上下文
         debug!("Entry point: {:?}", entry_point);
-        let sepc: usize = entry_point.into();
+        let sepc = entry_point.bits();
         self.context().init_user(sp, sepc, sstatus::read(), argc, argv, envp);
 
         // 分配堆
@@ -302,7 +302,7 @@ impl LightProcess {
         } else {
             stack_begin = memory.lock(here!()).areas_mut().alloc_stack(THREAD_STACK_SIZE);
         }
-        context.get_mut().set_user_sp(stack_begin.into());
+        context.get_mut().set_user_sp(stack_begin.bits());
 
         let fsinfo;
         if flags.contains(CloneFlags::FS) {

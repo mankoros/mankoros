@@ -9,7 +9,7 @@ use crate::{
     executor::{hart_local::set_curr_lproc, util_futures::yield_now},
     process::user_space::user_area::PageFaultAccessType,
     syscall::Syscall,
-    trap::trap::run_user,
+    trap::trap::run_user, memory::address::VirtAddr,
 };
 
 use super::lproc::{LightProcess, ProcessStatus};
@@ -104,7 +104,7 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                     };
 
                     let result =
-                        lproc.with_mut_memory(|m| m.handle_pagefault(stval.into(), access_type));
+                        lproc.with_mut_memory(|m| m.handle_pagefault(VirtAddr::from(stval), access_type));
                     if let Err(_) = result {
                         is_exit = true;
                     }
@@ -166,7 +166,7 @@ impl<F: Future + Send + 'static> Future for OutermostFuture<F> {
         // TODO: 检查是否需要切换页表, 比如看看 hart 里的进程是不是当前进程
         // 切换页表
         let pg_paddr = this.lproc.with_memory(|m| m.page_table.root_paddr());
-        let old_pgtbl = arch::switch_page_table(pg_paddr.into());
+        let old_pgtbl = arch::switch_page_table(pg_paddr.bits());
         // TODO: 开中断
         // 再 poll 里边的 userloop
         let ret = unsafe { Pin::new_unchecked(&mut this.future).poll(cx) };

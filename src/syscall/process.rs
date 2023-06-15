@@ -116,9 +116,9 @@ impl<'a> Syscall<'a> {
                     warn!("child stack is not aligned: {:#x}", child_stack);
                     // TODO: 跟组委会确认这种情况是不是要返回错误
                     // return Err(AxError::InvalidInput);
-                    Some((child_stack - 8).into())
+                    Some(child_stack - 8).map(VirtAddr::from)
                 } else {
-                    Some(child_stack.into()) 
+                    Some(child_stack).map(VirtAddr::from) 
                 }
             } else {
                 None
@@ -132,7 +132,7 @@ impl<'a> Syscall<'a> {
         }
 
         let checked_write_u32 = |ptr, value| -> Result<(), AxError> {
-            let vaddr = VirtAddr(ptr);
+            let vaddr = VirtAddr::from(ptr);
             let writeable = new_lproc.with_memory(|m| m.has_perm(vaddr, UserAreaPerm::WRITE));
 
             if !writeable {

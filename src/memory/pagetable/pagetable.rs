@@ -25,19 +25,19 @@ use super::pte::{self, PTEFlags, PageTableEntry};
 pub const ENTRY_COUNT: usize = 512;
 
 fn p4_index(vaddr: VirtAddr) -> usize {
-    (usize::from(vaddr) >> (12 + 27)) & (ENTRY_COUNT - 1)
+    (vaddr.bits() >> (12 + 27)) & (ENTRY_COUNT - 1)
 }
 
 fn p3_index(vaddr: VirtAddr) -> usize {
-    (usize::from(vaddr) >> (12 + 18)) & (ENTRY_COUNT - 1)
+    (vaddr.bits() >> (12 + 18)) & (ENTRY_COUNT - 1)
 }
 
 fn p2_index(vaddr: VirtAddr) -> usize {
-    (usize::from(vaddr) >> (12 + 9)) & (ENTRY_COUNT - 1)
+    (vaddr.bits() >> (12 + 9)) & (ENTRY_COUNT - 1)
 }
 
 fn p1_index(vaddr: VirtAddr) -> usize {
-    (usize::from(vaddr) >> 12) & (ENTRY_COUNT - 1)
+    (vaddr.bits() >> 12) & (ENTRY_COUNT - 1)
 }
 
 /// Map kernel physical memory segment into virtual address space.
@@ -86,10 +86,10 @@ impl PageTable {
     pub fn new_with_kernel_seg() -> Self {
         // Allocate 1 page for the root page table
         let root_paddr: PhysAddr = Self::alloc_table();
-        let boot_root_paddr: PhysAddr = boot::boot_pagetable_paddr().into();
+        let boot_root_paddr: PhysAddr = PhysAddr::from(boot::boot_pagetable_paddr());
 
         // Copy kernel segment
-        unsafe { root_paddr.as_mut_page_slice().copy_from_slice(boot_root_paddr.as_page_slice()) }
+        unsafe { root_paddr.assert_4k().as_mut_page_slice().copy_from_slice(boot_root_paddr.assert_4k().as_page_slice()) }
 
         PageTable {
             root_paddr,
@@ -177,7 +177,7 @@ impl PageTable {
     }
 
     pub fn get_pte_copied_from_vpn(&mut self, vpn: VirtPageNum) -> Option<PageTableEntry> {
-        self.get_entry_mut_opt(vpn.into()).as_deref().copied()
+        self.get_entry_mut_opt(vpn.addr()).as_deref().copied()
     }
 
     pub fn get_paddr_from_vaddr(&self, vaddr: VirtAddr) -> PhysAddr {
@@ -238,19 +238,19 @@ impl PageTable {
         let paddr: PhysAddr = frame::alloc_frame().expect("failed to allocate page");
         // Fill with zeros
         unsafe {
-            paddr.as_mut_page_slice().fill(0);
+            paddr.assert_4k().as_mut_page_slice().fill(0);
         }
         paddr
     }
     fn table_of<'a>(&self, paddr: PhysAddr) -> &'a [PageTableEntry] {
         // use kernel_vaddr here to work after kernel remapped
-        let kernel_vaddr = memory::kernel_phys_to_virt(paddr.into());
+        let kernel_vaddr = memory::kernel_phys_to_virt(paddr.bits());
         unsafe { core::slice::from_raw_parts(kernel_vaddr as _, ENTRY_COUNT) }
     }
 
     fn table_of_mut<'a>(&self, paddr: PhysAddr) -> &'a mut [PageTableEntry] {
         // use kernel_vaddr here to work after kernel remapped
-        let kernel_vaddr = memory::kernel_phys_to_virt(paddr.into());
+        let kernel_vaddr = memory::kernel_phys_to_virt(paddr.bits());
         unsafe { core::slice::from_raw_parts_mut(kernel_vaddr as _, ENTRY_COUNT) }
     }
 

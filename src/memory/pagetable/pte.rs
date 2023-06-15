@@ -58,7 +58,7 @@ impl PageTableEntry {
     // Create a new PageTableEntry with the given physical address and permissions
     pub fn new(paddr: PhysAddr, perm: PTEFlags) -> Self {
         PageTableEntry {
-            bits: ((usize::from(paddr.round_down()) >> 2) & consts::PTE_PPN_MASK_SV39)
+            bits: ((paddr.round_down().bits() >> 2) & consts::PTE_PPN_MASK_SV39)
                 | perm.bits() as usize,
         }
     }
@@ -72,12 +72,12 @@ impl PageTableEntry {
 
     // Get the physical page number from the PageTableEntry
     pub fn ppn(&self) -> PhysPageNum {
-        PhysPageNum((self.bits & consts::PTE_PPN_MASK_SV39) >> 10)
+        PhysPageNum::from((self.bits & consts::PTE_PPN_MASK_SV39) >> 10)
     }
 
     // Get the physical address from the PageTableEntry
     pub fn paddr(&self) -> PhysAddr {
-        self.ppn().into()
+        self.ppn().addr()
     }
 
     // Get the flags from the PageTableEntry
@@ -194,17 +194,14 @@ impl PageTableEntry {
         debug_assert!(!self.is_valid(), "try alloc to a valid pte");
         debug_assert!(!perm.intersects(PTEFlags::U | PTEFlags::R | PTEFlags::W));
         let pa = frame::alloc_frame().unwrap(); // TODO: add error checking
-        *self = Self::new(PhysAddr::from(pa), perm | PTEFlags::V);
+        *self = Self::new(pa, perm | PTEFlags::V);
     }
 
     /// Allocate a physical page for the PageTableEntry with the given permissions
     pub fn alloc(&mut self, perm: PTEFlags) {
         debug_assert!(!self.is_valid(), "try alloc to a valid pte");
         let pa = frame::alloc_frame().unwrap(); // TODO: add error checking
-        *self = Self::new(
-            PhysAddr::from(pa),
-            perm | PTEFlags::D | PTEFlags::A | PTEFlags::V,
-        );
+        *self = Self::new(pa, perm | PTEFlags::D | PTEFlags::A | PTEFlags::V);
     }
 
     // Map a frame to the PageTableEntry with the given permissions and physical address

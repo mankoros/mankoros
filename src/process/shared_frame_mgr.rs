@@ -30,16 +30,16 @@ impl SharedFrameManager {
         }).or_insert_with(|| {
             SharedFrameInfo::new()
         });
-        debug!("add_ref: {:x}, ({:x})", page.0, info.get());
+        debug!("add_ref: {:x}, ({:x})", page, info.get());
     }
 
     pub fn remove_ref(&mut self, page: PhysPageNum) {
         let info = self.map.get_mut(&page)
             .expect("remove_ref: page not found");
-        debug!("remove_ref: {:x}, ({:x})", page.0, info.get() - 1);
+        debug!("remove_ref: {:x}, ({:x})", page, info.get() - 1);
 
         if info.decrease() {
-            debug!("remove_ref: {:x}, removed from manager", page.0);
+            debug!("remove_ref: {:x}, removed from manager", page);
             self.map.remove(&page);
         }
     }
