@@ -27,7 +27,17 @@ struct SleepLockInner {
     waiting: VecDeque<Waker>,
 }
 
-impl<T: ?Sized> SleepLock<T> {
+impl<T: Sized> SleepLock<T> {
+    pub fn new(data: T) -> Self {
+        Self {
+            inner: SpinNoIrqLock::new(SleepLockInner {
+                holding: false,
+                waiting: VecDeque::new(),
+            }),
+            data: UnsafeCell::new(data),
+        }
+    }
+
     pub fn lock(&self) -> SleepLockFuture<'_, T> {
         SleepLockFuture { mutex: self }
     }
