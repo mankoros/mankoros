@@ -17,6 +17,7 @@ pub mod pipe;
 pub mod root;
 pub mod stdio;
 pub mod vfs;
+pub mod new_vfs;
 
 type BlockDevice = driver::VirtIoBlockDev;
 
