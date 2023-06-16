@@ -1,4 +1,4 @@
-use core::{cell::SyncUnsafeCell};
+use core::{cell::SyncUnsafeCell, sync::atomic::Ordering};
 use alloc::{ sync::Weak, vec::Vec, sync::Arc, collections::BTreeMap, string::{String, ToString}};
 use crate::{sync::{SpinNoIrqLock}, here, tools::errors::{SysResult, SysError}};
 use super::inode::VfsNode;
@@ -94,17 +94,17 @@ impl DirEntry {
         Ok(())
     }
 
-    async fn list(self: Arc<Self>) -> SysResult<Vec<String>> {
+    pub async fn list(self: Arc<Self>) -> SysResult<Vec<String>> {
         lock_and_acquire_children_cache!(self, children);
         Ok(children.keys().map(String::clone).collect())
     }
 
-    async fn lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<DirEntry>> {
+    pub async fn lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<DirEntry>> {
         lock_and_acquire_children_cache!(self, children);
         children.get(name).cloned().ok_or(SysError::ENOENT)
     }
 
-    async fn create(self: Arc<Self>, name: &str, is_dir: bool) -> SysResult<Arc<DirEntry>> {
+    pub async fn create(self: Arc<Self>, name: &str, is_dir: bool) -> SysResult<Arc<DirEntry>> {
         lock_and_acquire_children_cache!(self, children);
 
         if children.contains_key(name) {
@@ -112,6 +112,7 @@ impl DirEntry {
         }
 
         // Create must write-back immediately in order to get a valid inode
+        // Because it will write-back, not need to set the dirty flag
         let inode = self.inode.create(name, is_dir).await?;
         let new_entry = DirEntry::new(name, &self, Arc::new(inode), Some(is_dir));
 
@@ -119,21 +120,23 @@ impl DirEntry {
         Ok(new_entry)
     }
 
-    async fn link(self: Arc<Self>, name: &str, inode: Arc<VfsNode>) -> SysResult<Arc<DirEntry>> {
+    pub async fn link(self: Arc<Self>, name: &str, inode: Arc<VfsNode>) -> SysResult<Arc<DirEntry>> {
         lock_and_acquire_children_cache!(self, children);
         
         if children.contains_key(name) {
             return Err(SysError::EEXIST)
         }
 
+        self.dirty.store(true, Ordering::Relaxed);
         let new_entry = DirEntry::new(name, &self, inode, None);
         
         children.insert(name.to_string(), new_entry.clone());
         Ok(new_entry)
     }
 
-    async fn unlink(self: Arc<Self>, name: &str) -> SysResult<()> {
+    pub async fn unlink(self: Arc<Self>, name: &str) -> SysResult<()> {
         lock_and_acquire_children_cache!(self, children);
+        self.dirty.store(true, Ordering::Relaxed);
         children.remove(name).map(|_| ()).ok_or(SysError::ENOENT)
     }
 
