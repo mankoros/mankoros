@@ -17,6 +17,7 @@ pub mod pipe;
 pub mod root;
 pub mod stdio;
 pub mod vfs;
+pub mod new_vfs;
 
 pub fn init_filesystems(blk_dev: Arc<dyn BlockDevice>) {
     info!("Filesystem built-in self testing (BIST)...");
