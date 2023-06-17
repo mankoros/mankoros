@@ -1,12 +1,34 @@
+use alloc::boxed::Box;
 use fdt::Fdt;
 
 use crate::{
-    consts::{self, address_space::K_SEG_DTB},
+    boot,
+    consts::{
+        self,
+        address_space::{self, K_SEG_DTB},
+        platform,
+    },
+    driver,
+    memory::{self, kernel_phys_dev_to_virt, pagetable::pte::PTEFlags},
     println,
 };
 
-pub fn parse_device_tree() -> Fdt<'static> {
-    println!("Start parsing device tree");
+/// early_parse_device_tree
+/// No heap allocator
+/// Parse memory information from device tree
+pub fn early_parse_device_tree() -> Fdt<'static> {
+    println!("Early parsing device tree");
+    let device_tree = unsafe { fdt::Fdt::from_ptr(K_SEG_DTB as _).expect("Parse DTB failed") };
+    // Memory
+    let phy_mem = device_tree.memory().regions().next().expect("No memory region found");
+    unsafe {
+        consts::device::PHYMEM_START = phy_mem.starting_address as usize;
+        consts::device::MAX_PHYSICAL_MEMORY = phy_mem.size.unwrap() as usize;
+    }
+    device_tree
+}
+
+pub fn device_init() {
     let device_tree = unsafe { fdt::Fdt::from_ptr(K_SEG_DTB as _).expect("Parse DTB failed") };
     let chosen = device_tree.chosen();
     if let Some(bootargs) = chosen.bootargs() {
@@ -50,16 +72,54 @@ pub fn parse_device_tree() -> Fdt<'static> {
     }
     let stdout = stdout.expect("Still unable to get stdout device");
     println!("Stdout: {}", stdout.name);
+
+    // Init serial console
     unsafe {
         consts::device::UART0_BASE =
             stdout.reg().unwrap().into_iter().next().unwrap().starting_address as usize
     };
 
-    // Memory
-    let phy_mem = device_tree.memory().regions().next().expect("No memory region found");
-    unsafe {
-        consts::device::PHYMEM_START = phy_mem.starting_address as usize;
-        consts::device::MAX_PHYSICAL_MEMORY = phy_mem.size.unwrap() as usize;
+    // Map devices
+    let mut kernel_page_table = memory::pagetable::pagetable::PageTable::new_with_paddr(
+        (boot::boot_pagetable_paddr()).into(),
+    );
+    kernel_page_table.map_page(
+        (kernel_phys_dev_to_virt(unsafe { consts::device::UART0_BASE })).into(),
+        unsafe { consts::device::UART0_BASE.into() },
+        PTEFlags::R | PTEFlags::W | PTEFlags::A | PTEFlags::D,
+    );
+
+    for reg in platform::VIRTIO_MMIO_REGIONS {
+        kernel_page_table.map_region(
+            kernel_phys_dev_to_virt(reg.0).into(),
+            reg.0.into(),
+            reg.1,
+            PTEFlags::R | PTEFlags::W | PTEFlags::A | PTEFlags::D,
+        );
     }
-    device_tree
+    // Avoid drop
+    core::mem::forget(kernel_page_table);
+
+    // Init device
+    init_serial_console(&stdout);
+}
+
+fn init_serial_console(stdout: &fdt::node::FdtNode) {
+    match stdout.compatible().unwrap().first() {
+        "ns16550a" | "snps,dw-apb-uart" => {}
+        "sifive,uart0" => {
+            // sifive_u QEMU (FU540)
+            // VisionFive 2 (FU740)
+
+            let paddr = stdout.reg().unwrap().into_iter().next().unwrap().starting_address as usize;
+            let vaddr = kernel_phys_dev_to_virt(paddr);
+
+            let uart = driver::SifiveUart::new(
+                vaddr,
+                500 * 1000 * 1000, // 500 MHz hard coded for now
+            );
+            unsafe { *crate::UART0.lock(here!()) = Some(Box::new(uart)) }
+        }
+        _ => panic!("Unsupported serial console"),
+    }
 }

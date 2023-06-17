@@ -92,7 +92,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     println!("Early SBI console initialized");
     println!("Hart {} init booting up", boot_hart_id);
     // Parse device tree
-    let device_tree = device_tree::parse_device_tree();
+    let device_tree = device_tree::early_parse_device_tree();
 
     // Initial logging support
     println!("Logging initializing...");
@@ -139,9 +139,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     unsafe {
         riscv::asm::ebreak();
     }
-    let mut kernal_page_table = memory::pagetable::pagetable::PageTable::new_with_paddr(
-        (boot::boot_pagetable_paddr()).into(),
-    );
+
     // Map physical memory
     pagetable::pagetable::map_kernel_phys_seg();
     info!(
@@ -150,21 +148,8 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
         unsafe { consts::device::PHYMEM_START }
     );
 
-    // Map devices
-    kernal_page_table.map_page(
-        (unsafe { consts::device::UART0_BASE } + address_space::K_SEG_HARDWARE_BEG).into(),
-        unsafe { consts::device::UART0_BASE.into() },
-        PTEFlags::R | PTEFlags::W | PTEFlags::A | PTEFlags::D,
-    );
-
-    for reg in platform::VIRTIO_MMIO_REGIONS {
-        kernal_page_table.map_region(
-            kernel_phys_dev_to_virt(reg.0).into(),
-            reg.0.into(),
-            reg.1,
-            PTEFlags::R | PTEFlags::W | PTEFlags::A | PTEFlags::D,
-        );
-    }
+    // Next stage device initialization
+    device_tree::device_init();
 
     info!("Console switching...");
     DEVICE_REMAPPED.store(true, Ordering::SeqCst);
@@ -189,9 +174,6 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
         riscv::asm::sfence_vma_all();
     }
     info!("Boot memory unmapped");
-
-    // Avoid drop
-    mem::forget(kernal_page_table);
 
     // Probe devices
     let hd0 = driver::probe_virtio_blk().expect("Block device not found");

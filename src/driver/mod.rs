@@ -3,6 +3,7 @@ mod blk;
 mod serial;
 
 pub use serial::EarlyConsole;
+pub use serial::SifiveUart;
 pub use serial::Uart;
 
 /// General Device Operations

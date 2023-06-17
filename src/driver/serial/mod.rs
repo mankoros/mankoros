@@ -1,6 +1,7 @@
 mod sifive;
 mod uart8250;
 
+pub use sifive::SifiveUart;
 pub use uart8250::Uart;
 
 use core::fmt::Write;
