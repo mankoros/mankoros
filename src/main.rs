@@ -17,7 +17,9 @@
 #![feature(get_mut_unchecked)] // VFS workaround
 extern crate alloc;
 
+use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::fmt::Write;
 use core::mem;
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -45,7 +47,7 @@ mod timer;
 mod tools;
 mod trap;
 
-use driver::uart::{EarlyConsole, Uart};
+use driver::{EarlyConsole, Uart};
 use log::{error, info, warn};
 use memory::frame;
 use memory::heap;
@@ -55,7 +57,7 @@ use sync::SpinNoIrqLock;
 use consts::address_space;
 
 use crate::boot::boot_pagetable_paddr;
-use crate::consts::address_space::{K_SEG_DTB, K_SEG_PHY_MEM_BEG};
+use crate::consts::address_space::K_SEG_PHY_MEM_BEG;
 use crate::consts::platform;
 use crate::fs::vfs::filesystem::VfsNode;
 use crate::fs::vfs::node::VfsDirEntry;
@@ -70,16 +72,10 @@ pub static DEVICE_REMAPPED: AtomicBool = AtomicBool::new(false);
 
 pub static BOOT_HART_CNT: AtomicUsize = AtomicUsize::new(0);
 
+// Early console
 pub static mut EARLY_UART: EarlyConsole = EarlyConsole {};
-// Init uart, called uart0
-lazy_static! {
-    pub static ref UART0: SpinNoIrqLock<Uart> = {
-        let mut port =
-            unsafe { Uart::new(consts::device::UART0_BASE + address_space::K_SEG_HARDWARE_BEG) };
-        port.init();
-        SpinNoIrqLock::new(port)
-    };
-}
+
+pub static mut UART0: SpinNoIrqLock<Option<Box<dyn Write>>> = SpinNoIrqLock::new(None);
 
 /// Boot hart rust entry point
 ///
@@ -296,12 +292,16 @@ pub extern "C" fn alt_rust_main(hart_id: usize) -> ! {
     unreachable!();
 }
 
-static PANIC_COUNT: AtomicUsize = AtomicUsize::new(0);
+pub static PANIC_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 /// This function is called on panic.
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     let logging_initialized = unsafe { logging::INITIALIZED.load(Ordering::SeqCst) };
+    if PANIC_COUNT.fetch_add(1, core::sync::atomic::Ordering::SeqCst) >= 1 {
+        error!("Panicked while processing panic. Very Wrong!");
+        loop {}
+    }
     if let Some(location) = info.location() {
         if logging_initialized {
             error!(
@@ -332,11 +332,6 @@ fn panic(info: &PanicInfo) -> ! {
                 println!("Unknown panic: {:?}", info);
             }
         }
-    }
-
-    if PANIC_COUNT.fetch_add(1, core::sync::atomic::Ordering::SeqCst) >= 1 {
-        error!("Panicked while processing panic. Very Wrong!");
-        loop {}
     }
 
     xdebug::backtrace();

@@ -1,16 +1,9 @@
-// Copyright (c) 2023 Easton Man
-// Adapted from https://docs.rs/uart_16550/latest/src/uart_16550/mmio.rs.html
+//! Copyright (c) 2023 Easton Man
+//! Adapted from https://docs.rs/uart_16550/latest/src/uart_16550/mmio.rs.html
 
+use super::wait_for;
 use bitflags::bitflags;
 use core::fmt::Write; // for formatted output
-
-macro_rules! wait_for {
-    ($cond:expr) => {
-        while !$cond {
-            core::hint::spin_loop()
-        }
-    };
-}
 
 // the UART control registers.
 // some have different meanings for
@@ -140,17 +133,6 @@ impl Write for Uart {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         for byte in s.bytes() {
             self.send(byte);
-        }
-        Ok(())
-    }
-}
-
-pub struct EarlyConsole;
-
-impl Write for EarlyConsole {
-    fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        for byte in s.bytes() {
-            sbi_rt::legacy::console_putchar(byte.into());
         }
         Ok(())
     }

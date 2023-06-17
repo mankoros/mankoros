@@ -1,6 +1,9 @@
-pub mod uart;
-
 mod blk;
+
+mod serial;
+
+pub use serial::EarlyConsole;
+pub use serial::Uart;
 
 /// General Device Operations
 /// Adapted from ArceOS

@@ -18,11 +18,18 @@ macro_rules! println {
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
     let remapped = DEVICE_REMAPPED.load(Ordering::SeqCst);
-    if remapped {
-        crate::UART0.lock(here!()).write_fmt(args).unwrap();
-    } else {
-        unsafe { crate::EARLY_UART.write_fmt(args).unwrap() };
-    }
+    unsafe {
+        if remapped {
+            if let Some(serial) = crate::UART0.lock(here!()).as_mut() {
+                serial.write_fmt(args).unwrap();
+                return;
+            }
+            if crate::PANIC_COUNT.load(Ordering::SeqCst) == 0 {
+                panic!("UART0 is not initialized");
+            }
+        }
+        crate::EARLY_UART.write_fmt(args).unwrap();
+    };
 }
 
 /// 获取一个裸指针指向的字符串长度
