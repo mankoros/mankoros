@@ -106,7 +106,9 @@ pub fn device_init() {
 
 fn init_serial_console(stdout: &fdt::node::FdtNode) {
     match stdout.compatible().unwrap().first() {
-        "ns16550a" | "snps,dw-apb-uart" => {}
+        "ns16550a" | "snps,dw-apb-uart" => {
+            todo!()
+        }
         "sifive,uart0" => {
             // sifive_u QEMU (FU540)
             // VisionFive 2 (FU740)
