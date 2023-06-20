@@ -11,7 +11,7 @@ use crate::{
     },
     driver,
     memory::{self, kernel_phys_dev_to_virt, pagetable::pte::PTEFlags},
-    println,
+    println, timer,
 };
 
 /// early_parse_device_tree
@@ -103,6 +103,9 @@ pub fn device_init() {
 
     // Init device
     init_serial_console(&stdout);
+
+    // Init timer frequency
+    unsafe { timer::CLOCK_FREQ = device_tree.cpus().next().unwrap().timebase_frequency() };
 }
 
 fn init_serial_console(stdout: &fdt::node::FdtNode) {
