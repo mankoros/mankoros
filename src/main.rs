@@ -158,7 +158,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     // Start other cores
     let alt_rust_main_phys = kernel_virt_text_to_phys(boot::alt_entry as usize);
     info!("Starting other cores at 0x{:x}", alt_rust_main_phys);
-    for hart_id in 0..hart_cnt {
+    for hart_id in 1..hart_cnt {
         if hart_id != boot_hart_id {
             sbi_rt::hart_start(hart_id, alt_rust_main_phys, boot_pagetable_paddr())
                 .expect("Starting hart failed");
@@ -167,7 +167,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     BOOT_HART_CNT.fetch_add(1, Ordering::SeqCst);
 
     // Wait for all the harts to finish booting
-    while BOOT_HART_CNT.load(Ordering::SeqCst) != hart_cnt {}
+    while BOOT_HART_CNT.load(Ordering::SeqCst) != hart_cnt - 1 {}
     // Remove low memory mappings
     pagetable::pagetable::unmap_boot_seg();
     unsafe {
@@ -280,6 +280,7 @@ pub static PANIC_COUNT: AtomicUsize = AtomicUsize::new(0);
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     let logging_initialized = unsafe { logging::INITIALIZED.load(Ordering::SeqCst) };
+    DEVICE_REMAPPED.store(false, Ordering::SeqCst);
     if PANIC_COUNT.fetch_add(1, core::sync::atomic::Ordering::SeqCst) >= 1 {
         error!("Panicked while processing panic. Very Wrong!");
         loop {}

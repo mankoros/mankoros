@@ -61,7 +61,7 @@ impl<T: ?Sized, S: MutexSupport> Mutex<T, S> {
                 // Release the CPU
                 unsafe { &*self.support.as_ptr() }.cpu_relax();
                 try_count += 1;
-                if try_count == 0x100000 {
+                if try_count == 0x1000000 {
                     // Dead lock detected!
                     panic!("dead lock detected! place: {}", place);
                 }

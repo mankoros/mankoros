@@ -1,5 +1,6 @@
 use alloc::boxed::Box;
 use fdt::Fdt;
+use log::{debug, info};
 
 use crate::{
     boot,
@@ -105,21 +106,41 @@ pub fn device_init() {
 }
 
 fn init_serial_console(stdout: &fdt::node::FdtNode) {
+    let paddr = stdout.reg().unwrap().into_iter().next().unwrap().starting_address as usize;
+    let vaddr = kernel_phys_dev_to_virt(paddr);
     match stdout.compatible().unwrap().first() {
         "ns16550a" | "snps,dw-apb-uart" => {
-            todo!()
+            // VisionFive 2 (FU740)
+            // virt QEMU
+
+            // Parse clock frequency
+            let freq_raw = stdout
+                .property("clock-frequency")
+                .expect("No clock-frequency property of stdout serial device")
+                .as_usize()
+                .expect("Parse clock-frequency to usize failed");
+            let mut reg_io_width = 1;
+            if let Some(reg_io_width_raw) = stdout.property("reg-io-width") {
+                reg_io_width =
+                    reg_io_width_raw.as_usize().expect("Parse reg-io-width to usize failed");
+            }
+            let mut reg_shift = 0;
+            if let Some(reg_shift_raw) = stdout.property("reg-shift") {
+                reg_shift = reg_shift_raw.as_usize().expect("Parse reg-shift to usize failed");
+            }
+            let mut uart =
+                unsafe { driver::Uart::new(vaddr, freq_raw, 115200, reg_io_width, reg_shift) };
+            debug!("UART: {:?}", uart);
+            uart.init();
+            unsafe { *crate::UART0.lock(here!()) = Some(Box::new(uart)) }
         }
         "sifive,uart0" => {
             // sifive_u QEMU (FU540)
-            // VisionFive 2 (FU740)
-
-            let paddr = stdout.reg().unwrap().into_iter().next().unwrap().starting_address as usize;
-            let vaddr = kernel_phys_dev_to_virt(paddr);
-
-            let uart = driver::SifiveUart::new(
+            let mut uart = driver::SifiveUart::new(
                 vaddr,
                 500 * 1000 * 1000, // 500 MHz hard coded for now
             );
+            uart.init();
             unsafe { *crate::UART0.lock(here!()) = Some(Box::new(uart)) }
         }
         _ => panic!("Unsupported serial console"),

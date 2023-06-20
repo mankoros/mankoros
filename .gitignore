@@ -23,6 +23,6 @@ uImage
 # Testing filesystem image
 fs.img
 
-# QEMU device tree
-qemu.dts
-qemu.dtb
+# Any device tree
+*.dtb
+*.dts

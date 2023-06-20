@@ -22,11 +22,11 @@ ifeq ($(MODE), release)
 CARGO_BUILD_ARGS += --release
 endif
 
-QEMU_DEVICES	:= -drive file=fs.img,format=raw,id=hd0 -device virtio-blk-device,drive=hd0
+QEMU_DEVICES	:= #-drive file=fs.img,format=raw,id=hd0 -device virtio-blk-device,drive=hd0
 
 # QEMU cmdline
 QEMU_CMD		:= qemu-system-riscv64 		\
-        				-machine virt 		\
+        				-machine virt		\
             			-nographic 			\
             			-bios default 		\
 						-m $(MEM_SIZE)		\
@@ -92,7 +92,8 @@ qemu-dtb:
 
 # Make a u-boot bootable uImage
 uImage: build
-	mkimage -A riscv -O linux -C none -T kernel -a 0x001fffc0 -e 0x00200000 -n MankorOS -d $(BIN_FILE) uImage
+	mkimage -A riscv -O linux -C none -T kernel -a 0x40200000 -e 0x40200000 -n MankorOS -d $(BIN_FILE) uImage
+	cp uImage /srv/tftp/
 
 clean:
 	@cargo clean

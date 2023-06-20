@@ -9,7 +9,7 @@ use core::fmt::Write;
 macro_rules! wait_for {
     ($cond:expr) => {
         while !$cond {
-            core::hint::spin_loop()
+            core::hint::spin_loop();
         }
     };
 }
