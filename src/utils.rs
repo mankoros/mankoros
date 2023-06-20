@@ -24,6 +24,7 @@ pub fn _print(args: fmt::Arguments) {
                 serial.write_fmt(args).unwrap();
                 return;
             }
+            // Avoid multiple panic print
             if crate::PANIC_COUNT.load(Ordering::SeqCst) == 0 {
                 panic!("UART0 is not initialized");
             }

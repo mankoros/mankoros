@@ -20,7 +20,6 @@ extern crate alloc;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::Write;
-use core::mem;
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use lazy_static::lazy_static;
@@ -47,22 +46,18 @@ mod timer;
 mod tools;
 mod trap;
 
-use driver::{EarlyConsole, Uart};
+use driver::EarlyConsole;
 use log::{error, info, warn};
 use memory::frame;
 use memory::heap;
-use memory::pagetable::pte::PTEFlags;
 use sync::SpinNoIrqLock;
-
-use consts::address_space;
 
 use crate::boot::boot_pagetable_paddr;
 use crate::consts::address_space::K_SEG_PHY_MEM_BEG;
-use crate::consts::platform;
 use crate::fs::vfs::filesystem::VfsNode;
 use crate::fs::vfs::node::VfsDirEntry;
 use crate::memory::address::kernel_virt_text_to_phys;
-use crate::memory::{kernel_phys_dev_to_virt, pagetable};
+use crate::memory::pagetable;
 
 // use trap::ticks;
 
@@ -158,7 +153,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     // Start other cores
     let alt_rust_main_phys = kernel_virt_text_to_phys(boot::alt_entry as usize);
     info!("Starting other cores at 0x{:x}", alt_rust_main_phys);
-    for hart_id in 1..hart_cnt {
+    for hart_id in 0..hart_cnt {
         if hart_id != boot_hart_id {
             sbi_rt::hart_start(hart_id, alt_rust_main_phys, boot_pagetable_paddr())
                 .expect("Starting hart failed");
@@ -167,7 +162,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     BOOT_HART_CNT.fetch_add(1, Ordering::SeqCst);
 
     // Wait for all the harts to finish booting
-    while BOOT_HART_CNT.load(Ordering::SeqCst) != hart_cnt - 1 {}
+    while BOOT_HART_CNT.load(Ordering::SeqCst) != hart_cnt {}
     // Remove low memory mappings
     pagetable::pagetable::unmap_boot_seg();
     unsafe {
