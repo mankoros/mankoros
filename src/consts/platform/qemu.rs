@@ -1,4 +1,4 @@
-pub const DEVICE_START: usize = 0x1000_0000;
+pub const DEVICE_START: usize = 0xc00_0000;
 pub const VIRTIO_MMIO_REGIONS: &[(usize, usize)] = &[
     (0x1000_1000, 0x1000),
     (0x1000_2000, 0x1000),
