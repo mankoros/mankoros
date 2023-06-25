@@ -15,6 +15,7 @@
 #![feature(let_chains)]
 #![feature(const_convert)]
 #![feature(get_mut_unchecked)] // VFS workaround
+#![feature(pointer_byte_offsets)]
 extern crate alloc;
 
 use alloc::boxed::Box;
