@@ -27,7 +27,7 @@ impl MappedPageManager {
 }
 
 impl VfsNode {
-    fn new(fs_node: Box<dyn FsNode>) -> Self {
+    pub(super)  fn new(fs_node: Box<dyn FsNode>) -> Self {
         Self {
             mapped_page_mgr: MappedPageManager::new(),
             fs_node: SleepLock::new(fs_node),
