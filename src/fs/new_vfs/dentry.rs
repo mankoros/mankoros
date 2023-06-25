@@ -4,7 +4,7 @@ use crate::{sync::{SpinNoIrqLock}, here, tools::errors::{SysResult, SysError}};
 use super::inode::VfsNode;
 use core::sync::atomic::{AtomicBool};
 
-struct DirEntry {
+pub struct DirEntry {
     name: String,
     parent: Option<Weak<DirEntry>>,
     cache: SpinNoIrqLock<DirEntryCacheStatus>,
@@ -40,7 +40,17 @@ macro_rules! lock_and_acquire_children_cache {
 }
 
 impl DirEntry {
-    fn new(name: &str, parent: &Arc<DirEntry>, inode: Arc<VfsNode>, is_dir: Option<bool>) -> Arc<Self> {
+    pub(super) fn new_root(inode: Arc<VfsNode>) -> Arc<Self> {
+        Arc::new(Self {
+            name: String::from(""),
+            parent: None,
+            cache: SpinNoIrqLock::new(DirEntryCacheStatus::Dir(SyncUnsafeCell::new(BTreeMap::new()))),
+            inode,
+            dirty: AtomicBool::new(true),
+        })
+    }
+
+    pub fn new(name: &str, parent: &Arc<DirEntry>, inode: Arc<VfsNode>, is_dir: Option<bool>) -> Arc<Self> {
         let cache = match is_dir {
             Some(is_dir) => if is_dir {
                 DirEntryCacheStatus::DirUncached
