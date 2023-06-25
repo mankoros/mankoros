@@ -53,7 +53,10 @@ impl UtsName {
 }
 
 impl<'a> Syscall<'a> {
-    pub fn sys_uname(&mut self, uts: *mut UtsName) -> SyscallResult {
+    pub fn sys_uname(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let uts = args[0] as *mut UtsName;
+
         unsafe {
             riscv::register::sstatus::set_sum();
             (*uts) = UtsName::default();
@@ -62,7 +65,9 @@ impl<'a> Syscall<'a> {
         Ok(0)
     }
 
-    pub fn sys_gettimeofday(&mut self, time_val: *mut TimeVal) -> SyscallResult {
+    pub fn sys_gettimeofday(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let time_val = args[0] as *mut TimeVal;
         info!("Syscall: gettimeofday");
         within_sum(|| unsafe {
             (*time_val) = TimeVal::now();
@@ -70,7 +75,10 @@ impl<'a> Syscall<'a> {
         Ok(0)
     }
 
-    pub fn sys_times(&mut self, tms_ptr: *mut Tms) -> SyscallResult {
+    pub fn sys_times(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let tms_ptr = args[0] as *mut Tms;
+
         info!("Syscall: times");
         match get_curr_lproc() {
             Some(lproc) => {
@@ -95,11 +103,13 @@ impl<'a> Syscall<'a> {
         }
     }
 
-    pub async fn sys_nanosleep(
-        &mut self,
-        req: UserReadPtr<TimeSpec>,
-        rem: UserWritePtr<TimeSpec>,
-    ) -> SyscallResult {
+    pub async fn sys_nanosleep(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (req, rem): (UserReadPtr<TimeSpec>, UserWritePtr<TimeSpec>) = (
+            UserReadPtr::from_usize(args[0]),
+            UserWritePtr::from_usize(args[1]),
+        );
+
         info!("Syscall: nanosleep");
         // Calculate end time
         let end_time = within_sum(|| get_time_f64() + (unsafe { *req.raw_ptr() }).time_in_sec());
@@ -114,6 +124,11 @@ impl<'a> Syscall<'a> {
                 (*rem.raw_ptr_mut()) = TimeSpec::new(0.0);
             })
         }
+        Ok(0)
+    }
+
+    pub async fn sys_sched_yield(&mut self) -> SyscallResult {
+        yield_now().await;
         Ok(0)
     }
 }

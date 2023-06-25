@@ -15,10 +15,10 @@ use crate::{
         vfs::{
             filesystem::{VfsNode, VfsWrapper},
             node::{VfsDirEntry, VfsNodeType},
-            path::Path,
+            path::{self, Path},
         },
     },
-    memory::{UserReadPtr, UserWritePtr},
+    memory::{UserPtr, UserReadPtr, UserWritePtr},
     tools::user_check::UserCheck,
 };
 
@@ -122,12 +122,10 @@ const AT_REMOVEDIR: usize = 1 << 9;
 const AT_FDCWD: usize = -100isize as usize;
 
 impl<'a> Syscall<'a> {
-    pub async fn sys_write(
-        &mut self,
-        fd: usize,
-        buf: UserReadPtr<u8>,
-        len: usize,
-    ) -> SyscallResult {
+    pub async fn sys_write(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (fd, buf, len) = (args[0], UserWritePtr::from_usize(args[1]), args[2]);
+
         info!("Syscall: write, fd {fd}, len: {len}");
 
         let buf = unsafe { core::slice::from_raw_parts(buf.raw_ptr(), len) };
@@ -140,12 +138,10 @@ impl<'a> Syscall<'a> {
             Err(AxError::InvalidInput)
         }
     }
-    pub async fn sys_read(
-        &mut self,
-        fd: usize,
-        buf: UserWritePtr<u8>,
-        len: usize,
-    ) -> SyscallResult {
+    pub async fn sys_read(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (fd, buf, len) = (args[0], UserWritePtr::from_usize(args[1]), args[2]);
+
         info!("Syscall: read, fd {fd}");
 
         // *mut u8 does not implement Send
@@ -160,13 +156,15 @@ impl<'a> Syscall<'a> {
         }
     }
 
-    pub fn sys_openat(
-        &mut self,
-        dir_fd: usize,
-        path: *const u8,
-        raw_flags: u32,
-        _user_mode: i32,
-    ) -> SyscallResult {
+    pub fn sys_openat(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (dir_fd, path, raw_flags, _user_mode) = (
+            args[0],
+            args[1] as *const u8,
+            args[2] as u32,
+            args[3] as i32,
+        );
+
         info!("Syscall: openat");
 
         // Parse flags
@@ -219,7 +217,10 @@ impl<'a> Syscall<'a> {
 
     /// 创建管道，在 *pipe 记录读管道的 fd，在 *(pipe+1) 记录写管道的 fd。
     /// 成功时返回 0，失败则返回 -1
-    pub fn sys_pipe(&mut self, pipe: UserWritePtr<u32>) -> SyscallResult {
+    pub fn sys_pipe(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let pipe = UserWritePtr::from(args[0]);
+
         info!("Syscall: pipe");
         let (pipe_read, pipe_write) = Pipe::new_pipe();
         let user_check = UserCheck::new_with_sum(&self.lproc);
@@ -238,8 +239,10 @@ impl<'a> Syscall<'a> {
         Ok(0)
     }
 
-    pub fn sys_close(&mut self, fd: usize) -> SyscallResult {
+    pub fn sys_close(&mut self) -> SyscallResult {
         info!("Syscall: close");
+        let args = self.cx.syscall_args();
+        let fd = args[0];
 
         self.lproc.with_mut_fdtable(|m| {
             if let Some(_) = m.remove(fd) {
@@ -252,8 +255,11 @@ impl<'a> Syscall<'a> {
         })
     }
 
-    pub fn sys_fstat(&self, fd: usize, kstat: *mut Kstat) -> SyscallResult {
+    pub fn sys_fstat(&self) -> SyscallResult {
         info!("Syscall: fstat");
+        let args = self.cx.syscall_args();
+        let (fd, kstat) = (args[0], args[1] as *mut Kstat);
+
         self.lproc.with_mut_fdtable(|f| {
             if let Some(fd) = f.get(fd) {
                 // TODO: check stat() returned error
@@ -288,7 +294,9 @@ impl<'a> Syscall<'a> {
         })
     }
 
-    pub fn sys_mkdir(&self, _dir_fd: usize, path: *const u8, _user_mode: usize) -> SyscallResult {
+    pub fn sys_mkdir(&self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (_dir_fd, path, _user_mode) = (args[0], args[1] as *const u8, args[2]);
         info!("Syscall: mkdir");
         let user_check = UserCheck::new_with_sum(&self.lproc);
         let path = user_check.checked_read_cstr(path).map_err(|_| AxError::InvalidInput)?;
@@ -312,7 +320,10 @@ impl<'a> Syscall<'a> {
         Ok(0)
     }
 
-    pub fn sys_dup(&mut self, fd: usize) -> SyscallResult {
+    pub fn sys_dup(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let fd = args[0];
+
         self.lproc.with_mut_fdtable(|table| {
             if let Some(old_fd) = table.get(fd) {
                 let new_fd = table.alloc(old_fd.file.clone());
@@ -322,7 +333,10 @@ impl<'a> Syscall<'a> {
             }
         })
     }
-    pub fn sys_dup3(&mut self, old_fd: usize, new_fd: usize) -> SyscallResult {
+    pub fn sys_dup3(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (old_fd, new_fd) = (args[0], args[1]);
+
         self.lproc.with_mut_fdtable(|table| {
             if let Some(old_fd) = table.get(old_fd) {
                 table.insert(new_fd, old_fd.file.clone());
@@ -333,7 +347,10 @@ impl<'a> Syscall<'a> {
         })
     }
 
-    pub fn sys_chdir(&mut self, path: *const u8) -> SyscallResult {
+    pub fn sys_chdir(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let path = args[0] as *const u8;
+
         let user_check = UserCheck::new_with_sum(&self.lproc);
         let path = user_check.checked_read_cstr(path).map_err(|_| AxError::InvalidInput)?;
         let path = Path::from_string(path).map_err(|_| AxError::InvalidInput)?;
@@ -352,7 +369,11 @@ impl<'a> Syscall<'a> {
         Ok(0)
     }
 
-    pub fn sys_getcwd(&mut self, buf: *mut u8, len: usize) -> SyscallResult {
+    pub fn sys_getcwd(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let buf = args[0] as *mut u8;
+        let len = args[1];
+
         info!("Syscall: getcwd");
         let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone()).to_string();
         let length = min(cwd.len(), len);
@@ -363,7 +384,10 @@ impl<'a> Syscall<'a> {
         Ok(buf as usize)
     }
 
-    pub fn sys_getdents(&mut self, fd: usize, buf: *mut u8, len: usize) -> SyscallResult {
+    pub fn sys_getdents(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (fd, buf, len) = (args[0], args[1] as *mut u8, args[2]);
+
         info!(
             "Syscall: getdents (fd: {:?}, buf: {:?}, len: {:?})",
             fd, buf, len
@@ -419,12 +443,10 @@ impl<'a> Syscall<'a> {
         Ok(wroten_len)
     }
 
-    pub fn sys_unlinkat(
-        &mut self,
-        dir_fd: usize,
-        path_name: *const u8,
-        flags: usize,
-    ) -> SyscallResult {
+    pub fn sys_unlinkat(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (dir_fd, path_name, flags) = (args[0], args[1] as *const u8, args[2]);
+
         info!(
             "Syscall: unlinkat (dir_fd: {:?}, path_name: {:?}, flags: {:?})",
             dir_fd, path_name, flags
@@ -476,14 +498,22 @@ impl<'a> Syscall<'a> {
         dir.remove(&file_name).map(|_| 0)
     }
 
-    pub fn sys_mount(
-        &mut self,
-        device: UserReadPtr<u8>,
-        mount_point: UserReadPtr<u8>,
-        _fs_type: UserReadPtr<u8>,
-        _flags: u32,
-        _data: UserReadPtr<u8>,
-    ) -> SyscallResult {
+    pub fn sys_mount(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (device, mount_point, _fs_type, _flags, _data): (
+            UserReadPtr<u8>,
+            UserReadPtr<u8>,
+            UserReadPtr<u8>,
+            u32,
+            UserReadPtr<u8>,
+        ) = (
+            UserReadPtr::from_usize(args[0]),
+            UserReadPtr::from_usize(args[1]),
+            UserReadPtr::from_usize(args[2]),
+            args[3] as u32,
+            UserReadPtr::from_usize(args[4]),
+        );
+
         let user_check = UserCheck::new_with_sum(&self.lproc);
         let device = user_check
             .checked_read_cstr(device.raw_ptr())
@@ -512,7 +542,10 @@ impl<'a> Syscall<'a> {
         Ok(0)
     }
 
-    pub fn sys_umount(&mut self, mount_point: UserReadPtr<u8>, _flags: u32) -> SyscallResult {
+    pub fn sys_umount(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (mount_point, _flags) = (UserReadPtr::from_usize(args[0]), args[1] as u32);
+
         let user_check = UserCheck::new_with_sum(&self.lproc);
         let mount_point = user_check
             .checked_read_cstr(mount_point.raw_ptr())

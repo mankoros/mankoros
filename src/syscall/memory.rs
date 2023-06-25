@@ -5,7 +5,9 @@ use bitflags::bitflags;
 use log::info;
 
 use crate::{
-    axerrno::AxError, consts::PAGE_MASK, memory::{pagetable::pte::PTEFlags, address::VirtAddr},
+    axerrno::AxError,
+    consts::PAGE_MASK,
+    memory::{address::VirtAddr, pagetable::pte::PTEFlags},
     process::user_space::user_area::UserAreaPerm,
 };
 
@@ -77,7 +79,9 @@ bitflags! {
 }
 
 impl<'a> Syscall<'a> {
-    pub fn sys_brk(&mut self, brk: usize) -> SyscallResult {
+    pub fn sys_brk(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let brk = args[0];
         info!("Syscall brk: brk {}", brk);
 
         if brk == 0 {
@@ -93,15 +97,17 @@ impl<'a> Syscall<'a> {
         }
     }
 
-    pub fn sys_mmap(
-        &mut self,
-        start: usize,
-        len: usize,
-        prot: MMAPPROT,
-        flags: MMAPFlags,
-        fd: i32,
-        offset: usize,
-    ) -> SyscallResult {
+    pub fn sys_mmap(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (start, len, prot, flags, fd, offset) = (
+            args[0],
+            args[1],
+            MMAPPROT::from_bits(args[2] as u32).unwrap(),
+            MMAPFlags::from_bits(args[3] as u32).unwrap(),
+            args[4] as i32,
+            args[5],
+        );
+
         info!(
             "Syscall mmap: mmap start={:x} len={:} prot=[{:#?}] flags=[{:#?}] fd={} offset={:x}",
             start, len, prot, flags, fd, offset
@@ -146,7 +152,9 @@ impl<'a> Syscall<'a> {
         Err(AxError::InvalidInput)
     }
 
-    pub fn sys_munmap(&mut self, start: usize, len: usize) -> SyscallResult {
+    pub fn sys_munmap(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (start, len) = (args[0], args[1]);
         info!("Syscall munmap: munmap start={:x} len={:x}", start, len);
 
         if start & PAGE_MASK != 0 {

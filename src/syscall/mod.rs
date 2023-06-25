@@ -39,79 +39,39 @@ impl<'a> Syscall<'a> {
         let args = self.cx.syscall_args();
         let result: SyscallResult = match syscall_no {
             // File related
-            SYSCALL_GETCWD => self.sys_getcwd(args[0] as *mut u8, args[1]),
-            SYSCALL_PIPE2 => self.sys_pipe(UserWritePtr::from_usize(args[0])),
-            SYSCALL_DUP => self.sys_dup(args[0]),
-            SYSCALL_DUP3 => self.sys_dup3(args[0], args[1]),
-            SYSCALL_OPENAT => self.sys_openat(
-                args[0],
-                args[1] as *const u8,
-                args[2] as u32,
-                args[3] as i32,
-            ),
-            SYSCALL_CHDIR => self.sys_chdir(args[0] as *const u8),
-            SYSCALL_CLOSE => self.sys_close(args[0]),
-            SYSCALL_GETDENTS => self.sys_getdents(args[0], args[1] as *mut u8, args[2]),
-            SYSCALL_READ => {
-                self.sys_read(args[0], UserWritePtr::from_usize(args[1]), args[2]).await
-            }
-            SYSCALL_WRITE => {
-                self.sys_write(args[0], UserReadPtr::from_usize(args[1]), args[2]).await
-            }
+            SYSCALL_GETCWD => self.sys_getcwd(),
+            SYSCALL_PIPE2 => self.sys_pipe(),
+            SYSCALL_DUP => self.sys_dup(),
+            SYSCALL_DUP3 => self.sys_dup3(),
+            SYSCALL_OPENAT => self.sys_openat(),
+            SYSCALL_CHDIR => self.sys_chdir(),
+            SYSCALL_CLOSE => self.sys_close(),
+            SYSCALL_GETDENTS => self.sys_getdents(),
+            SYSCALL_READ => self.sys_read().await,
+            SYSCALL_WRITE => self.sys_write().await,
             SYSCALL_LINKAT => todo!(),
-            SYSCALL_UNLINKAT => self.sys_unlinkat(args[0], args[1] as *const u8, args[2]),
-            SYSCALL_MKDIRAT => self.sys_mkdir(args[0], args[1] as *const u8, args[2]),
-            SYSCALL_UMOUNT => self.sys_umount(UserReadPtr::from_usize(args[0]), args[1] as u32),
-            SYSCALL_MOUNT => self.sys_mount(
-                UserReadPtr::from_usize(args[0]),
-                UserReadPtr::from_usize(args[1]),
-                UserReadPtr::from_usize(args[2]),
-                args[3] as u32,
-                UserReadPtr::from_usize(args[4]),
-            ),
-            SYSCALL_FSTAT => self.sys_fstat(args[0], args[1] as *mut fs::Kstat),
+            SYSCALL_UNLINKAT => self.sys_unlinkat(),
+            SYSCALL_MKDIRAT => self.sys_mkdir(),
+            SYSCALL_UMOUNT => self.sys_umount(),
+            SYSCALL_MOUNT => self.sys_mount(),
+            SYSCALL_FSTAT => self.sys_fstat(),
             // Process related
-            SYSCALL_CLONE => self.sys_clone(args[0] as u32, args[1], args[2], args[3], args[4]),
-            SYSCALL_EXECVE => self.sys_execve(
-                args[0] as *const u8,
-                args[1] as *const *const u8,
-                args[2] as *const *const u8,
-            ),
-            SYSCALL_WAIT => self.sys_wait(args[0] as isize, args[1], args[2]).await,
-            SYSCALL_EXIT => {
-                debug!("syscall: exit");
-                self.do_exit = true;
-                self.lproc.set_exit_code(args[0] as i32);
-                Ok(0)
-            }
+            SYSCALL_CLONE => self.sys_clone(),
+            SYSCALL_EXECVE => self.sys_execve(),
+            SYSCALL_WAIT => self.sys_wait().await,
+            SYSCALL_EXIT => self.sys_exit(),
             SYSCALL_GETPPID => self.sys_getppid(),
             SYSCALL_GETPID => self.sys_getpid(),
             // Memory related
-            SYSCALL_BRK => self.sys_brk(args[0]),
-            SYSCALL_MUNMAP => self.sys_munmap(args[0], args[1]),
-            SYSCALL_MMAP => self.sys_mmap(
-                args[0],
-                args[1],
-                memory::MMAPPROT::from_bits(args[2] as u32).unwrap(),
-                memory::MMAPFlags::from_bits(args[3] as u32).unwrap(),
-                args[4] as i32,
-                args[5],
-            ),
+            SYSCALL_BRK => self.sys_brk(),
+            SYSCALL_MUNMAP => self.sys_munmap(),
+            SYSCALL_MMAP => self.sys_mmap(),
             // Misc
-            SYSCALL_TIMES => self.sys_times(args[0] as *mut Tms),
-            SYSCALL_UNAME => self.sys_uname(args[0] as *mut UtsName),
-            SYSCALL_SCHED_YIELD => {
-                yield_now().await;
-                Ok(0)
-            }
-            SYSCALL_GETTIMEOFDAY => self.sys_gettimeofday(args[0] as *mut TimeVal),
-            SYSCALL_NANOSLEEP => {
-                self.sys_nanosleep(
-                    UserReadPtr::from_usize(args[0]),
-                    UserWritePtr::from_usize(args[1]),
-                )
-                .await
-            }
+            SYSCALL_TIMES => self.sys_times(),
+            SYSCALL_UNAME => self.sys_uname(),
+            SYSCALL_SCHED_YIELD => self.sys_sched_yield().await,
+            SYSCALL_GETTIMEOFDAY => self.sys_gettimeofday(),
+            SYSCALL_NANOSLEEP => self.sys_nanosleep().await,
             _ => panic!("Unknown syscall_id: {}", syscall_no),
         };
 
