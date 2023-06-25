@@ -161,12 +161,16 @@ impl Uart {
 
     fn line_sts_u8(&mut self) -> LineStsFlags {
         let ptr = self.base_address as *mut u8;
-        unsafe { LineStsFlags::from_bits_truncate(ptr.add(LSR << self.reg_shift).read_volatile()) }
+        unsafe {
+            LineStsFlags::from_bits_truncate(ptr.byte_add(LSR << self.reg_shift).read_volatile())
+        }
     }
     fn line_sts_u32(&mut self) -> LineStsFlags {
         let ptr = self.base_address as *mut u32;
         unsafe {
-            LineStsFlags::from_bits_truncate(ptr.add(LSR << self.reg_shift).read_volatile() as u8)
+            LineStsFlags::from_bits_truncate(
+                ptr.byte_add(LSR << self.reg_shift).read_volatile() as u8
+            )
         }
     }
 
