@@ -68,12 +68,6 @@ pub struct SleepLockGuard<'a, T: ?Sized + 'a> {
     mutex: &'a SleepLock<T>,
 }
 
-// 睡眠锁的 guard 不能跨线程传递, 或者说, 不能跨越 .await
-// 这在根本上阻止了在持有睡眠锁 A 的情况下, 再因为获取睡眠锁 B 或等待其他 Future 而睡眠
-// 防止了多个睡眠锁之间互相等待的死锁情况
-impl<T> !Send for SleepLockGuard<'_, T> {}
-impl<T> !Sync for SleepLockGuard<'_, T> {}
-
 impl <'a, T: ?Sized> Drop for SleepLockGuard<'a, T> {
     fn drop(&mut self) {
         let mut inner = self.mutex.inner.lock(here!());
