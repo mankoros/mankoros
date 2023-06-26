@@ -6,6 +6,20 @@ pub type SysResult<T = ()> = Result<T, SysError>;
 pub type Async<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 pub type ASysResult<'a, T = ()> = Async<'a, SysResult<T>>;
 
+/// create an `Async<T::Output>` from a future, usually an async block. 
+/// A typical usage is like this:
+/// ```
+/// fn stat(&self) -> ASysResult<NodeStat> {
+///     dyn_future(async {
+///         let f = self.lock.lock().await.stat();
+///         f.await
+///     })
+/// }
+/// ```
+pub fn dyn_future<'a, T: Future + Send + 'a>(async_blk: T) -> Async<'a, T::Output> {
+    Box::pin(async_blk)
+} 
+
 /// Linux specific error codes defined in `errno.h`.
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
