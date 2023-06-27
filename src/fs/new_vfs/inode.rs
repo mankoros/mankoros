@@ -46,8 +46,9 @@ impl VfsNode {
 
     // TODO: map & unmap
 
-    pub async fn list(&self) -> SysResult<Vec<String>> {
-        self.fs_node.lock().await.list().await
+    pub async fn list(&self) -> SysResult<Vec<(String, VfsNode)>> {
+        self.fs_node.lock().await.list().await.map(
+            |l| l.into_iter().map(|(name, node)| (name, Self::new(node))).collect())
     }
 
     pub async fn lookup(&self, name: &str) -> SysResult<VfsNode> {
