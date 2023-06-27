@@ -25,6 +25,7 @@ enum DirEntryCacheStatus {
     Uninit,
     File,
     DirUncached,
+    // TODO: 看看有没有办法复用儿子里的 name 字符串
     Dir(SyncUnsafeCell<BTreeMap<String, Arc<DirEntry>>>),
 }
 
@@ -71,6 +72,14 @@ impl DirEntry {
 
     pub(super) fn inode(&self) -> Arc<VfsNode> {
         self.inode.clone()
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn parent(&self) -> Option<Arc<Self>> {
+        self.parent.as_ref().and_then(Weak::upgrade)
     }
 
     async fn read_dirs_from_inode(self: Arc<Self>) -> SysResult<BTreeMap<String, Arc<DirEntry>>> {
@@ -133,6 +142,16 @@ impl DirEntry {
 
         children.insert(name.to_string(), new_entry.clone());
         Ok(new_entry)
+    }
+
+    pub async fn link_or_replace(self: &Arc<Self>, name: &str, inode: Arc<VfsNode>) -> SysResult<(Option<Arc<DirEntry>>, Arc<DirEntry>)> {
+        lock_and_acquire_children_cache!(self, children);
+
+        self.dirty.store(true, Ordering::Relaxed);
+        let new_entry = DirEntry::new(name, &self, inode, None);
+        let old = children.insert(name.to_string(), new_entry);
+
+        Ok((old, new_entry))
     }
 
     pub async fn link(self: &Arc<Self>, name: &str, inode: Arc<VfsNode>) -> SysResult<Arc<DirEntry>> {

@@ -27,7 +27,9 @@ impl MappedPageManager {
 }
 
 impl VfsNode {
-    pub(super)  fn new(fs_node: Box<dyn FsNode>) -> Self {
+    /// 注意: 一般情况下, 对具体文件系统而言, 你应该通过 dentry.create 方法获得一个 VfsNode
+    /// 只有在实现新的特殊文件系统时, 才需要直接调用这个方法
+    pub fn new(fs_node: Box<dyn FsNode>) -> Self {
         Self {
             mapped_page_mgr: MappedPageManager::new(),
             fs_node: SleepLock::new(fs_node),

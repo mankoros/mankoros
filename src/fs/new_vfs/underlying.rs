@@ -38,3 +38,36 @@ pub trait FsNode {
     /// 在当前文件夹删除一个 名字->文件 的映射
     fn unlink(&self, name: &str) -> ASysResult;
 }
+
+#[macro_export]
+macro_rules! impl_default_non_dir {
+    ($ty:ident) => {
+        fn list(&self) -> crate::tools::errors::ASysResult<alloc::vec::Vec<(alloc::string::String, alloc::boxed::Box<dyn FsNode>)>> {
+            unimplemented!(concat!(stringify!($ty), "::list"))
+        }
+        fn lookup(&self, name: &str) -> crate::tools::errors::ASysResult<alloc::boxed::Box<dyn FsNode>> {
+            unimplemented!(concat!(stringify!($ty), "::lookup"))
+        }
+        fn create(&self, name: &str, is_dir: bool) -> crate::tools::errors::ASysResult<alloc::boxed::Box<dyn FsNode>> {
+            unimplemented!(concat!(stringify!($ty), "::create"))
+        }
+        fn link(&self, name: &str, node: &dyn FsNode) -> crate::tools::errors::ASysResult {
+            unimplemented!(concat!(stringify!($ty), "::link"))
+        }
+        fn unlink(&self, name: &str) -> crate::tools::errors::ASysResult {
+            unimplemented!(concat!(stringify!($ty), "::unlink"))
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_default_non_file {
+    ($ty:ident) => {
+        fn read_at(&self, offset: usize, buf: &mut [u8]) -> crate::tools::errors::ASysResult<usize> {
+            unimplemented!(concat!(stringify!(ty), "::read_at"))
+        }
+        fn write_at(&self, offset: usize, buf: &[u8]) -> crate::tools::errors::ASysResult<usize> {
+            unimplemented!(concat!(stringify!(ty), "::write_at"))
+        }
+    };
+}

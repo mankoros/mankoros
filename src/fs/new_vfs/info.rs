@@ -20,12 +20,34 @@ pub struct NodeStat {
     pub self_device_id: u64,  
     /// 文件大小 (单位为字节)
     pub byte_size: usize,  
+    /// 文件占用的块数量
+    pub block_count: usize,
     /// 文件最近一次访问时间
     pub access_time: usize, 
     /// 文件最近一次修改时间
     pub modify_time: usize, 
     /// 文件被创造的时间
     pub create_time: usize, 
+}
+
+impl NodeStat {
+    pub fn default(t: NodeType) -> Self {
+        let mode = (t.to_bits() as u32) << 12 | (NodePermission::new_all() as u32);
+        NodeStat {
+            device_id: 0,   
+            inode_number: 0,   
+            type_and_mode: mode,  
+            link_count: 0, 
+            user_id: 0,   
+            group_id: 0,   
+            self_device_id: 0,  
+            byte_size: 0,  
+            block_count: 0,
+            access_time: 0, 
+            modify_time: 0, 
+            create_time: 0, 
+        }
+    }
 }
 
 impl NodeStat {
@@ -57,6 +79,9 @@ impl NodeStat {
     }
     pub fn byte_size(&self) -> usize {
         self.byte_size
+    }
+    pub fn block_count(&self) -> usize {
+        self.block_count
     }
     pub fn access_time(&self) -> usize {
         self.access_time
@@ -145,11 +170,22 @@ bitflags! {
         const OTHER_READ    = 0o0004;
         const OTHER_WRITE   = 0o0002;
         const OTHER_EXEC    = 0o0001;
-        const OTHER_ALL     = 0o0007;
     }
 }
 
 impl NodePermission {
+    pub fn new_all() -> Self {
+        NodePermission::OWNER_READ
+            | NodePermission::OWNER_WRITE
+            | NodePermission::OWNER_EXEC
+            | NodePermission::GROUP_READ
+            | NodePermission::GROUP_WRITE
+            | NodePermission::GROUP_EXEC
+            | NodePermission::OTHER_READ
+            | NodePermission::OTHER_WRITE
+            | NodePermission::OTHER_EXEC
+    }
+
     #[inline(always)]
     pub fn owner_ro(&self) -> bool {
         self.contains(NodePermission::OWNER_READ)
