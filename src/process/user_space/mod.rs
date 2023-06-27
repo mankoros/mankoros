@@ -5,9 +5,8 @@ use alloc::{string::String, sync::Arc, vec::Vec};
 
 use crate::{
     arch::get_curr_page_table_addr,
-    fs::vfs::filesystem::VfsNode,
     memory::{address::VirtAddr, pagetable::pagetable::PageTable},
-    process::{aux_vector::AuxElement, user_space::user_area::PageFaultAccessType},
+    process::{aux_vector::AuxElement, user_space::user_area::PageFaultAccessType}, fs::new_vfs::top::VfsFile,
 };
 
 use super::{aux_vector::AuxVector, shared_frame_mgr::with_shared_frame_mgr};
@@ -163,11 +162,11 @@ impl UserSpace {
     }
 
     /// Return: entry_point, auxv
-    pub fn parse_and_map_elf_file(&mut self, elf_file: Arc<dyn VfsNode>) -> (VirtAddr, AuxVector) {
+    pub async fn parse_and_map_elf_file(&mut self, elf_file: VfsFile) -> (VirtAddr, AuxVector) {
         const HEADER_LEN: usize = 1024;
         let mut header_data = [0u8; HEADER_LEN];
         elf_file
-            .sync_read_at(0, header_data.as_mut())
+            .read_at(0, header_data.as_mut()).await
             .expect("failed to read elf header");
 
         let elf = xmas_elf::ElfFile::new(&header_data.as_slice()).expect("failed to parse elf");

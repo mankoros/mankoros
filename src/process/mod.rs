@@ -1,5 +1,5 @@
 use self::{lproc::LightProcess, userloop::OutermostFuture};
-use crate::{executor, fs::vfs::filesystem::VfsNode};
+use crate::{executor, fs::new_vfs::top::VfsFile};
 use alloc::{sync::Arc, vec::Vec};
 
 pub mod aux_vector;
@@ -9,7 +9,7 @@ mod shared_frame_mgr;
 pub mod user_space;
 pub mod userloop;
 
-pub fn spawn_proc_from_file(file: Arc<dyn VfsNode>) {
+pub fn spawn_proc_from_file(file: VfsFile) {
     let lproc = LightProcess::new();
 
     let future = OutermostFuture::new(lproc.clone(), async {

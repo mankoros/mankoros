@@ -6,7 +6,6 @@ use super::{range_map::RangeMap};
 use crate::memory::address::VirtAddr;
 
 use crate::{
-    fs::vfs::filesystem::VfsNode,
     memory::{
         address::{VirtPageNum},
         frame::{alloc_frame},
@@ -25,6 +24,7 @@ use log::{debug, trace};
 use core::ops::Range;
 use crate::memory::frame::dealloc_frame;
 use crate::consts::PAGE_SIZE;
+use crate::fs::new_vfs::top::VfsFile;
 
 pub type VirtAddrRange = Range<VirtAddr>;
 
@@ -129,7 +129,7 @@ enum UserAreaType {
     MmapAnonymous,
     /// 私有映射区域
     MmapPrivate {
-        file: Arc<dyn VfsNode>,
+        file: VfsFile,
         offset: usize,
     },
     // TODO: 共享映射区域
@@ -146,7 +146,7 @@ impl Debug for UserAreaType {
             UserAreaType::MmapPrivate { file, offset } => write!(
                 f,
                 "MmapPrivate {{ file ptr: {:?}, offset: {} }}",
-                file.as_ref() as *const dyn VfsNode, offset
+                file.name(), offset
             ),
         }
     }
@@ -179,7 +179,7 @@ impl UserArea {
 
     pub fn new_private(
         perm: UserAreaPerm,
-        file: Arc<dyn VfsNode>,
+        file: VfsFile,
         offset: usize,
     ) -> Self {
         Self {
@@ -386,7 +386,7 @@ impl UserAreaManager {
         &mut self, 
         size: usize, 
         perm: UserAreaPerm,
-        file: Arc<dyn VfsNode>,
+        file: VfsFile,
         offset: usize,
     ) -> Result<(VirtAddrRange, &UserArea), ()> {
         let (begin, size) = self.find_free_mmap_area(size)?;
@@ -412,7 +412,7 @@ impl UserAreaManager {
         begin_vaddr: VirtAddr, 
         size: usize, 
         perm: UserAreaPerm,
-        file: Arc<dyn VfsNode>,
+        file: VfsFile,
         offset: usize,
     ) -> Result<(VirtAddrRange, &UserArea), ()> {
         let range = VirtAddrRange {

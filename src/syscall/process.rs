@@ -6,7 +6,7 @@ use crate::{
     executor::util_futures::yield_now,
     memory::address::VirtAddr,
     process::{self, lproc::ProcessStatus, user_space::user_area::UserAreaPerm},
-    signal, fs::vfs::{filesystem::VfsNode, path::Path}, tools::user_check::{UserCheck},
+    signal, tools::user_check::{UserCheck}, fs::new_vfs::path::Path,
 };
 
 use super::{Syscall, SyscallResult};
