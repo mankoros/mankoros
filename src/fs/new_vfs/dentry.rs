@@ -69,10 +69,13 @@ impl DirEntry {
         })
     }
 
+    pub(super) fn inode(&self) -> Arc<VfsNode> {
+        self.inode.clone()
+    }
+
     async fn read_dirs_from_inode(self: Arc<Self>) -> SysResult<BTreeMap<String, Arc<DirEntry>>> {
         let mut children = BTreeMap::new();
-        for name in self.inode.list().await? {
-            let inode = self.inode.lookup(&name).await?;
+        for (name, inode) in self.inode.list().await? {
             let child = DirEntry::new(&name, &self, Arc::new(inode), None);
             children.insert(name, child);
         }
@@ -104,17 +107,19 @@ impl DirEntry {
         Ok(())
     }
 
-    pub async fn list(self: Arc<Self>) -> SysResult<Vec<String>> {
+    pub async fn list(self: &Arc<Self>) -> SysResult<Vec<(String, Arc<DirEntry>)>> {
         lock_and_acquire_children_cache!(self, children);
-        Ok(children.keys().map(String::clone).collect())
+        Ok(children.into_iter().map(|(s, de)| (s.clone(), de.clone())).collect())
     }
 
-    pub async fn lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<DirEntry>> {
+    pub async fn lookup(self: &Arc<Self>, name: &str) -> SysResult<Arc<DirEntry>> {
         lock_and_acquire_children_cache!(self, children);
         children.get(name).cloned().ok_or(SysError::ENOENT)
     }
 
-    pub async fn create(self: Arc<Self>, name: &str, is_dir: bool) -> SysResult<Arc<DirEntry>> {
+    // TODO-PERF: 思考要如何使其能返回迭代器, 以及迭代器中锁的处理
+
+    pub async fn create(self: &Arc<Self>, name: &str, is_dir: bool) -> SysResult<Arc<DirEntry>> {
         lock_and_acquire_children_cache!(self, children);
 
         if children.contains_key(name) {
@@ -130,7 +135,7 @@ impl DirEntry {
         Ok(new_entry)
     }
 
-    pub async fn link(self: Arc<Self>, name: &str, inode: Arc<VfsNode>) -> SysResult<Arc<DirEntry>> {
+    pub async fn link(self: &Arc<Self>, name: &str, inode: Arc<VfsNode>) -> SysResult<Arc<DirEntry>> {
         lock_and_acquire_children_cache!(self, children);
         
         if children.contains_key(name) {
@@ -144,7 +149,7 @@ impl DirEntry {
         Ok(new_entry)
     }
 
-    pub async fn unlink(self: Arc<Self>, name: &str) -> SysResult<()> {
+    pub async fn unlink(self: &Arc<Self>, name: &str) -> SysResult<()> {
         lock_and_acquire_children_cache!(self, children);
         self.dirty.store(true, Ordering::Relaxed);
         children.remove(name).map(|_| ()).ok_or(SysError::ENOENT)
@@ -154,4 +159,3 @@ impl DirEntry {
         todo!("find a way that can directly overwrite all data in inode")
     }
 }
-

@@ -13,7 +13,7 @@ pub trait FsFileSystem {
 /// 每个具体文件系统 (fat32/devfs/...) 中的文件都应该实现这个 trait
 /// "文件夹" 指的是底层 FS 应该有的一类特殊文件, 它至少能支持该 trait 中的所有文件夹操作
 pub trait FsNode {
-    // 通用文件操作
+    // 文件操作
     /// 获取文件的各类属性,
     /// 例如文件类型, 文件大小, 文件创建时间等等
     fn stat(&self) -> ASysResult<NodeStat>;
@@ -24,7 +24,7 @@ pub trait FsNode {
 
     // 文件夹操作
     /// 列出文件夹中的所有文件的名字
-    fn list(&self) -> ASysResult<Vec<String>>;
+    fn list(&self) -> ASysResult<Vec<(String, Box<dyn FsNode>)>>;
     /// 根据名字查找文件夹中的文件, 不会递归查找
     /// 下层 FS 可以直接新建新的一个 dyn FsNode 返回, 不需要保证唯一性
     /// 上层 VFS 会确保对同一个文件只存在一个 dyn FsNode

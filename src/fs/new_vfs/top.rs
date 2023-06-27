@@ -1,19 +1,20 @@
 //! 给予进程使用的顶层模块
 
-use alloc::{sync::Arc, boxed::Box};
-use super::{inode::VfsNode, underlying::{FsNode, FsFileSystem}, dentry::DirEntry};
+use alloc::{sync::Arc, boxed::Box, string::String, vec::Vec};
+use super::{inode::VfsNode, underlying::{FsNode, FsFileSystem}, dentry::DirEntry, info::NodeStat, path::Path};
+use crate::tools::errors::{ASysResult, SysResult};
 
 struct Vfs {
     fs: Box<dyn FsFileSystem>,
-    root: VfsFile,
+    root: Arc<VfsFile>,
 }
 
 impl Vfs {
     pub fn new(fs: Box<dyn FsFileSystem>) -> Self {
         let fs_node = fs.root();
         let vfs_node = Arc::new(VfsNode::new(fs_node));
-        let vfs_dentry = DirEntry::new_root(vfs_node.clone());
-        let vfs_file = VfsFile::new(vfs_node, vfs_dentry);
+        let vfs_dentry = DirEntry::new_root(vfs_node);
+        let vfs_file = VfsFile::new(vfs_dentry);
 
         Self {
             fs,
@@ -21,22 +22,75 @@ impl Vfs {
         }
     }
 
-    pub fn root(&self) -> Arc<VfsNode> {
-        self.root.node.clone()
+    pub fn root(&self) -> Arc<VfsFile> {
+        self.root.clone()
+    }
+
+    pub async fn resolve(&self, path: &Path) -> SysResult<Arc<VfsFile>> {
+        self.root.resolve(path).await
     }
 }
 
 
 struct VfsFile {
-    node: Arc<VfsNode>,
     dentry: Arc<DirEntry>,
 }
 
 impl VfsFile {
-    fn new(node: Arc<VfsNode>, dentry: Arc<DirEntry>) -> Self {
-        Self {
-            node,
+    fn new(dentry: Arc<DirEntry>) -> Arc<Self> {
+        Arc::new(Self {
             dentry,
+        })
+    }
+
+    fn node(&self) -> Arc<VfsNode> {
+        self.dentry.inode()
+    }
+
+    // 文件操作
+    /// 获取文件的各类属性,
+    /// 例如文件类型, 文件大小, 文件创建时间等等
+    pub async fn stat(&self) -> SysResult<NodeStat> {
+        self.node().stat().await
+    }
+    /// 读取文件内容
+    pub async fn read_at(&self, offset: usize, buf: &mut [u8]) -> SysResult<usize> {
+        self.node().read_at(offset, buf).await
+    }
+    /// 写入文件内容
+    pub async fn write_at(&self, offset: usize, buf: &[u8]) -> SysResult<usize> {
+        self.node().write_at(offset, buf).await
+    }
+
+    // 文件夹操作
+    /// 列出文件夹中的所有文件的名字
+    pub async fn list(&self) -> SysResult<Vec<(String, Arc<VfsFile>)>> {
+        self.dentry.list().await.map(
+            |l| { l.into_iter().map(|(name, node)| (name, Self::new(node))).collect() })
+    }
+    /// 根据名字查找文件夹中的文件, 不会递归查找
+    pub async fn lookup(&self, name: &str) -> SysResult<Arc<Self>> {
+        self.dentry.lookup(name).await.map(Self::new)
+    }
+    /// 新建一个文件, 并在当前文件夹中创建一个 名字->新建文件 的映射
+    pub async fn create(&self, name: &str, is_dir: bool) -> SysResult<Arc<Self>> {
+        self.dentry.create(name, is_dir).await.map(Self::new)
+    }
+    /// 在当前文件夹创建一个 名字->文件 的映射
+    pub async fn link(&self, name: &str, file: Arc<VfsFile>) -> SysResult<Arc<Self>> {
+        self.dentry.link(name, file.node()).await.map(Self::new)
+    }
+    /// 在当前文件夹删除一个 名字->文件 的映射
+    pub async fn unlink(&self, name: &str) -> SysResult {
+        self.dentry.unlink(name).await
+    }
+
+    /// 以当前文件夹为根, 递归解析路径
+    pub async fn resolve(&self, path: &Path) -> SysResult<Arc<Self>> {
+        let mut dir = self.dentry.clone();
+        for name in path.iter() {
+            dir = dir.lookup(name).await?;
         }
+        return Ok(Self::new(dir));
     }
 }
