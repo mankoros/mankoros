@@ -1,121 +1,53 @@
 use alloc::collections::BTreeMap;
 use alloc::sync::{Arc, Weak};
 use spin::RwLock;
+use crate::process::lproc::FsInfo;
+use crate::fs::new_vfs::underlying::FsNode;
+use crate::tools::errors::{ASysResult, dyn_future};
+use crate::fs::new_vfs::info::NodeStat;
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::boxed::Box;
+use crate::fs::new_vfs::inode::VfsNode;
+use crate::fs::new_vfs::top::VfsFile;
 
-use crate::fs::vfs::filesystem::{VfsNode, VfsNodeRef};
-use crate::fs::vfs::node::{VfsDirEntry, VfsNodeAttr, VfsNodeType};
-use crate::fs::vfs::{VfsError, VfsResult};
-use crate::impl_vfs_dir_default;
+pub struct InMemoryDir {}
 
-/// The directory node in the device filesystem.
-///
-/// It implements [`axfs_vfs::VfsNodeOps`].
-pub struct DirNode {
-    parent: RwLock<Weak<dyn VfsNode>>,
-    children: RwLock<BTreeMap<&'static str, VfsNodeRef>>,
-}
-
-impl DirNode {
-    pub(super) fn new(parent: Option<&VfsNodeRef>) -> Arc<Self> {
-        let parent = parent.map_or(Weak::<Self>::new() as _, Arc::downgrade);
-        Arc::new(Self {
-            parent: RwLock::new(parent),
-            children: RwLock::new(BTreeMap::new()),
-        })
+// 这个 Node 不需要存任何信息, 元信息和目录信息都会在缓存层中被维护
+// 它只需要在第一次查询元信息/目录时返回一个空的即可, 因为是 in-memory 的, 
+// 写回之后也不需要保存
+impl FsNode for InMemoryDir {
+    fn stat(&self) -> ASysResult<NodeStat> {
+        dyn_future(async { NodeStat::default_dir(0) })
     }
 
-    pub(super) fn set_parent(&self, parent: Option<&VfsNodeRef>) {
-        *self.parent.write() = parent.map_or(Weak::<Self>::new() as _, Arc::downgrade);
+    fn read_at(&self, _offset: usize, _buf: &mut [u8]) -> ASysResult<usize> {
+        unimplemented!("dir")
     }
 
-    /// Create a subdirectory at this directory.
-    pub fn mkdir(self: &Arc<Self>, name: &'static str) -> Arc<Self> {
-        let parent = self.clone() as VfsNodeRef;
-        let node = Self::new(Some(&parent));
-        self.children.write().insert(name, node.clone());
-        node
+    fn write_at(&self, _offset: usize, _buf: &[u8]) -> ASysResult<usize> {
+        unimplemented!("dir")
     }
 
-    /// Add a node to this directory.
-    pub fn add(&self, name: &'static str, node: VfsNodeRef) {
-        self.children.write().insert(name, node);
-    }
-}
-
-impl VfsNode for DirNode {
-    fn stat(&self) -> VfsResult<VfsNodeAttr> {
-        Ok(VfsNodeAttr::new_dir(4096, 0))
+    fn list(&self) -> ASysResult<Vec<(String, Box<dyn FsNode>)>> {
+        Vec::new()
     }
 
-    fn parent(&self) -> Option<VfsNodeRef> {
-        self.parent.read().upgrade()
+    fn lookup(&self, name: &str) -> ASysResult<Box<dyn FsNode>> {
+        // do nothing
     }
 
-    fn lookup(self: Arc<Self>, path: &str) -> VfsResult<VfsNodeRef> {
-        let (name, rest) = split_path(path);
-        let node = match name {
-            "" | "." => Ok(self.clone() as VfsNodeRef),
-            ".." => self.parent().ok_or(VfsError::NotFound),
-            _ => self.children.read().get(name).cloned().ok_or(VfsError::NotFound),
-        }?;
-
-        if let Some(rest) = rest {
-            node.lookup(rest)
-        } else {
-            Ok(node)
-        }
+    fn create(&self, name: &str, is_dir: bool) -> ASysResult<Box<dyn FsNode>> {
+        Self::new()
     }
 
-    fn read_dir(&self, start_idx: usize, dirents: &mut [VfsDirEntry]) -> VfsResult<usize> {
-        let children = self.children.read();
-        let mut children = children.iter().skip(start_idx.max(2) - 2);
-        for (i, ent) in dirents.iter_mut().enumerate() {
-            match i + start_idx {
-                0 => *ent = VfsDirEntry::new(".", VfsNodeType::Dir),
-                1 => *ent = VfsDirEntry::new("..", VfsNodeType::Dir),
-                _ => {
-                    if let Some((name, node)) = children.next() {
-                        *ent = VfsDirEntry::new(name, node.stat().unwrap().file_type());
-                    } else {
-                        return Ok(i);
-                    }
-                }
-            }
-        }
-        Ok(dirents.len())
+    fn link(&self, name: &str, node: &dyn FsNode) -> ASysResult {
+        // do nothing
     }
 
-    fn create(&self, path: &str, ty: VfsNodeType) -> VfsResult {
-        log::debug!("create {:?} at devfs: {}", ty, path);
-        let (name, rest) = split_path(path);
-        if let Some(rest) = rest {
-            match name {
-                "" | "." => self.create(rest, ty),
-                ".." => self.parent().ok_or(VfsError::NotFound)?.create(rest, ty),
-                _ => self.children.read().get(name).ok_or(VfsError::NotFound)?.create(rest, ty),
-            }
-        } else if name.is_empty() || name == "." || name == ".." {
-            Ok(()) // already exists
-        } else {
-            Err(VfsError::PermissionDenied) // do not support to create nodes dynamically
-        }
+    fn unlink(&self, name: &str) -> ASysResult {
+        // do nothing
     }
-
-    fn remove(&self, path: &str) -> VfsResult {
-        log::debug!("remove at devfs: {}", path);
-        let (name, rest) = split_path(path);
-        if let Some(rest) = rest {
-            match name {
-                "" | "." => self.remove(rest),
-                ".." => self.parent().ok_or(VfsError::NotFound)?.remove(rest),
-                _ => self.children.read().get(name).ok_or(VfsError::NotFound)?.remove(rest),
-            }
-        } else {
-            Err(VfsError::PermissionDenied) // do not support to remove nodes dynamically
-        }
-    }
-
-    impl_vfs_dir_default! {}
 }
 
 fn split_path(path: &str) -> (&str, Option<&str>) {

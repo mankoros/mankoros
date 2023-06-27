@@ -1,49 +1,28 @@
-use alloc::boxed::Box;
+use crate::{fs::new_vfs::{underlying::FsNode, info::NodeStat}, tools::errors::ASysResult, impl_default_non_dir};
 
-use crate::{
-    fs::vfs::{
-        filesystem::VfsNode,
-        node::{VfsNodeAttr, VfsNodePermission, VfsNodeType},
-        AVfsResult, VfsResult,
-    },
-    impl_vfs_non_dir_default,
-};
+pub struct ZeroDev {}
 
-// A zero device behaves like `/dev/zero`.
-///
-/// It always returns a chunk of `\0` bytes when read, and all writes are discarded.
-#[derive(Debug, Clone)]
-pub struct ZeroDev;
+impl ZeroDev {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
 
-impl VfsNode for ZeroDev {
-    fn stat(&self) -> VfsResult<VfsNodeAttr> {
-        Ok(VfsNodeAttr::new(
-            VfsNodePermission::default_file(),
-            VfsNodeType::CharDevice,
-            0,
-            0,
-        ))
+impl FsNode for ZeroDev {
+    fn stat(&self) -> ASysResult<NodeStat> {
+        NodeStat::default_file(0)
     }
 
-    fn sync_read_at(&self, _offset: u64, buf: &mut [u8]) -> VfsResult<usize> {
-        buf.fill(0);
+    fn read_at(&self, offset: usize, buf: &mut [u8]) -> ASysResult<usize> {
+        for i in buf.iter_mut() {
+            *i = 0;
+        }
         Ok(buf.len())
     }
 
-    fn sync_write_at(&self, _offset: u64, buf: &[u8]) -> VfsResult<usize> {
+    fn write_at(&self, offset: usize, buf: &[u8]) -> ASysResult<usize> {
         Ok(buf.len())
     }
-    fn read_at<'a>(&'a self, offset: u64, buf: &'a mut [u8]) -> AVfsResult<usize> {
-        Box::pin(async move { self.sync_read_at(offset, buf) })
-    }
 
-    fn write_at<'a>(&'a self, offset: u64, buf: &'a [u8]) -> AVfsResult<usize> {
-        Box::pin(async move { self.sync_write_at(offset, buf) })
-    }
-
-    fn truncate(&self, _size: u64) -> VfsResult {
-        Ok(())
-    }
-
-    impl_vfs_non_dir_default! {}
+    impl_default_non_dir!(ZeroDev);
 }
