@@ -1,13 +1,5 @@
 use core::cell::Cell;
 
-use alloc::boxed::Box;
-
-use super::vfs::filesystem::VfsNode;
-use super::vfs::node::VfsNodeAttr;
-use super::vfs::node::VfsNodePermission;
-use super::vfs::node::VfsNodeType;
-use super::vfs::AVfsResult;
-use super::vfs::VfsResult;
 /// Disk related
 ///
 /// Copyright (C) 2023 by ArceOS
@@ -18,7 +10,13 @@ use super::BlockDevice;
 use crate::axerrno::AxError;
 use crate::driver::BlockDriverOps;
 use crate::driver::DevResult;
-use crate::impl_vfs_non_dir_default;
+use super::new_vfs::underlying::FsNode;
+use crate::tools::errors::SysResult;
+use super::new_vfs::info::NodeStat;
+use crate::tools::errors::ASysResult;
+use super::new_vfs::info::NodeType;
+use crate::tools::errors::dyn_future;
+use crate::impl_default_non_dir;
 
 pub const BLOCK_SIZE: usize = 512;
 
@@ -124,11 +122,8 @@ impl Disk {
     }
 }
 
-/// A disk can be a dev file
-impl VfsNode for Disk {
-    impl_vfs_non_dir_default! {}
-
-    fn sync_write_at(&self, offset: u64, mut buf: &[u8]) -> VfsResult<usize> {
+impl Disk {
+    pub fn sync_write_at(&self, offset: u64, mut buf: &[u8]) -> SysResult<usize> {
         let mut write_len = 0;
         self.set_position(offset);
         while !buf.is_empty() {
@@ -144,37 +139,30 @@ impl VfsNode for Disk {
         Ok(write_len)
     }
 
-    fn fsync(&self) -> VfsResult {
-        // No cache is used here
-        Ok(())
-    }
-
-    fn truncate(&self, _size: u64) -> VfsResult {
-        crate::ax_err!(Unsupported)
-    }
-    fn sync_read_at(&self, _offset: u64, buf: &mut [u8]) -> VfsResult<usize> {
+    pub fn sync_read_at(&self, _offset: u64, buf: &mut [u8]) -> SysResult<usize> {
         // Offset is ignored
-
+    
         if buf.len() == 0 {
             return Ok(0);
         }
         // TODO: implement read
         Ok(1)
     }
-    fn read_at<'a>(&'a self, offset: u64, buf: &'a mut [u8]) -> AVfsResult<usize> {
-        Box::pin(async move { self.sync_read_at(offset, buf) })
+}
+
+/// A disk can be a dev file
+impl FsNode for Disk {
+    fn stat(&self) -> ASysResult<NodeStat> {
+        NodeStat::default(NodeType::BlockDevice)
     }
 
-    fn write_at<'a>(&'a self, offset: u64, buf: &'a [u8]) -> AVfsResult<usize> {
-        Box::pin(async move { self.sync_write_at(offset, buf) })
+    fn read_at(&self, offset: usize, buf: &mut [u8]) -> ASysResult<usize> {
+        dyn_future(async move { self.sync_read_at(offset as u64, buf) })
     }
-    /// 文件属性
-    fn stat(&self) -> VfsResult<VfsNodeAttr> {
-        Ok(VfsNodeAttr::new(
-            VfsNodePermission::all(),
-            VfsNodeType::CharDevice,
-            0,
-            0,
-        ))
+
+    fn write_at(&self, offset: usize, buf: &[u8]) -> ASysResult<usize> {
+        dyn_future(async move { self.sync_write_at(offset as u64, buf) })
     }
+
+    impl_default_non_dir!(Disk);
 }

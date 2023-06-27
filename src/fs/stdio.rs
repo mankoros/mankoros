@@ -4,15 +4,10 @@
 //! Copyright 2022 (C) MaturinOS
 //! Copyright 2023 (C) MankorOS
 
-use crate::{axerrno::AxError, impl_vfs_non_dir_default};
-
-use super::vfs::{
-    filesystem::VfsNode,
-    node::{VfsNodeAttr, VfsNodePermission, VfsNodeType},
-    AVfsResult, VfsResult,
-};
 use alloc::boxed::Box;
 use log::warn;
+use super::new_vfs::{underlying::FsNode, info::NodeStat};
+use crate::{tools::errors::{ASysResult, SysResult, dyn_future, SysError}, impl_default_non_dir};
 
 /// 标准输入流
 pub struct Stdin;
@@ -22,24 +17,11 @@ pub struct Stdout;
 /// TODO: 当stdout卡死的时候照常输出
 pub struct Stderr;
 
-impl VfsNode for Stdin {
-    impl_vfs_non_dir_default! {}
-
-    fn write_at(&self, _offset: u64, _buf: &[u8]) -> AVfsResult<usize> {
-        // Stdin is not writable
-        Box::pin(async move { crate::ax_err!(Unsupported) })
-    }
-
-    fn fsync(&self) -> VfsResult {
-        crate::ax_err!(Unsupported)
-    }
-
-    fn truncate(&self, _size: u64) -> VfsResult {
-        crate::ax_err!(Unsupported)
-    }
-    fn read_at<'a>(&'a self, _offset: u64, buf: &'a mut [u8]) -> AVfsResult<usize> {
+impl FsNode for Stdin {
+    
+    fn read_at<'a>(&'a self, _offset: u64, buf: &'a mut [u8]) -> ASysResult<usize> {
         // Offset is ignored
-        Box::pin(async move {
+        dyn_future(async move {
             if buf.len() == 0 {
                 return Ok(0);
             }
@@ -47,21 +29,22 @@ impl VfsNode for Stdin {
             Ok(1)
         })
     }
-    /// 文件属性
-    fn stat(&self) -> VfsResult<VfsNodeAttr> {
-        Ok(VfsNodeAttr::new(
-            VfsNodePermission::all(),
-            VfsNodeType::CharDevice,
-            0,
-            0,
-        ))
+    fn write_at(&self, _offset: u64, _buf: &[u8]) -> ASysResult<usize> {
+        // Stdin is not writable
+        dyn_future(async { Err(SysError::EPERM) })
     }
+
+    fn stat(&self) -> ASysResult<NodeStat> {
+        dyn_future(async {
+            Ok(NodeStat::default(super::new_vfs::info::NodeType::CharDevice))
+        })
+    }
+
+    impl_default_non_dir!(Stdin);
 }
 
-impl VfsNode for Stdout {
-    impl_vfs_non_dir_default! {}
-
-    fn write_at<'a>(&'a self, _offset: u64, buf: &'a [u8]) -> AVfsResult<usize> {
+impl FsNode for Stdout {
+    fn write_at<'a>(&'a self, _offset: u64, buf: &'a [u8]) -> ASysResult<usize> {
         Box::pin(async move {
             if let Ok(data) = core::str::from_utf8(buf) {
                 cfg_if::cfg_if! {
@@ -74,37 +57,27 @@ impl VfsNode for Stdout {
                 }
                 Ok(buf.len())
             } else {
-                Err(AxError::InvalidData)
+                Err(SysError::EINVAL)
             }
         })
     }
 
-    fn fsync(&self) -> VfsResult {
-        crate::ax_err!(Unsupported)
+    fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> ASysResult<usize> {
+        // Stdout is not readable
+        dyn_future(async move { Err(SysError::EPERM) })
     }
 
-    fn truncate(&self, _size: u64) -> VfsResult {
-        crate::ax_err!(Unsupported)
+    fn stat(&self) -> ASysResult<NodeStat> {
+        dyn_future(async {
+            Ok(NodeStat::default(super::new_vfs::info::NodeType::CharDevice))
+        })
     }
-    fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> AVfsResult<usize> {
-        // Stdout is not readable
-        Box::pin(async move { crate::ax_err!(Unsupported) })
-    }
-    /// 文件属性
-    fn stat(&self) -> VfsResult<VfsNodeAttr> {
-        Ok(VfsNodeAttr::new(
-            VfsNodePermission::all(),
-            VfsNodeType::CharDevice,
-            0,
-            0,
-        ))
-    }
+
+    impl_default_non_dir!(Stdout);
 }
 
-impl VfsNode for Stderr {
-    impl_vfs_non_dir_default! {}
-
-    fn write_at<'a>(&'a self, _offset: u64, buf: &'a [u8]) -> AVfsResult<usize> {
+impl FsNode for Stderr {
+    fn write_at<'a>(&'a self, _offset: u64, buf: &'a [u8]) -> ASysResult<usize> {
         Box::pin(async move {
             if let Ok(data) = core::str::from_utf8(buf) {
                 warn!("User stderr: {}", data);
@@ -118,24 +91,16 @@ impl VfsNode for Stderr {
         })
     }
 
-    fn fsync(&self) -> VfsResult {
-        crate::ax_err!(Unsupported)
+    fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> ASysResult<usize> {
+        // Stdout is not readable
+        dyn_future(async move { Err(SysError::EPERM) })
     }
 
-    fn truncate(&self, _size: u64) -> VfsResult {
-        crate::ax_err!(Unsupported)
+    fn stat(&self) -> ASysResult<NodeStat> {
+        dyn_future(async {
+            Ok(NodeStat::default(super::new_vfs::info::NodeType::CharDevice))
+        })
     }
-    fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> AVfsResult<usize> {
-        // Stderr is not readable
-        Box::pin(async move { crate::ax_err!(Unsupported) })
-    }
-    /// 文件属性
-    fn stat(&self) -> VfsResult<VfsNodeAttr> {
-        Ok(VfsNodeAttr::new(
-            VfsNodePermission::all(),
-            VfsNodeType::CharDevice,
-            0,
-            0,
-        ))
-    }
+
+    impl_default_non_dir!(Stderr);
 }
