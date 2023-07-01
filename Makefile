@@ -95,6 +95,13 @@ uImage: build
 	mkimage -A riscv -O linux -C none -T kernel -a 0x40200000 -e 0x40200000 -n MankorOS -d $(BIN_FILE) uImage
 	cp uImage /srv/tftp/
 
+# Make a u-boot gzip compressed image
+# Load to normal address, leave a space for unzipped
+zImage: build
+	gzip -f $(BIN_FILE)
+	mkimage -A riscv -O linux -C gzip -T kernel -a 0x40400000 -e 0x40400000 -n MankorOS -d $(BIN_FILE).gz zImage
+	cp zImage /srv/tftp/
+
 clean:
 	@cargo clean
 	@rm -rf $(BIN_FILE)

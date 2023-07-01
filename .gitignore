@@ -19,6 +19,8 @@ tmp
 kernel-qemu
 sbi-qemu
 uImage
+*.bin.gz
+zImage
 
 # Testing filesystem image
 fs.img
