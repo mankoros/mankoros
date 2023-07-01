@@ -150,6 +150,12 @@ impl Path {
         }
         true
     }
+
+    pub fn split_dir_file(&self) -> (Self, String) {
+        let mut new = self.clone();
+        let file = new.pop_back().unwrap();
+        (new, file)
+    }
 }
 
 #[allow(unused)]

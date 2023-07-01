@@ -1,107 +1,85 @@
-//! 给予进程使用的顶层模块
+use alloc::{sync::Arc, string::String, vec::Vec};
+use super::{VfsFileAttr, VfsFileKind};
+use crate::{tools::errors::ASysResult, memory::address::PhysAddr4K};
 
-use alloc::{sync::Arc, boxed::Box, string::String, vec::Vec};
-use super::{inode::VfsNode, underlying::{FsNode, FsFileSystem}, dentry::DirEntry, info::NodeStat, path::Path};
-use crate::tools::errors::{ASysResult, SysResult};
+pub type VfsFileRef = Arc<dyn VfsFile>;
 
-pub struct Vfs {
-    fs: Box<dyn FsFileSystem>,
-    root: Arc<VfsFile>,
+pub trait FsFileSystem {
+    fn root(&self) -> VfsFileRef;
 }
 
-impl Vfs {
-    pub fn new(fs: Box<dyn FsFileSystem>) -> Self {
-        let fs_node = fs.root();
-        let vfs_node = Arc::new(VfsNode::new(fs_node));
-        let vfs_dentry = DirEntry::new_root(vfs_node);
-        let vfs_file = VfsFile::new(vfs_dentry);
-
-        Self {
-            fs,
-            root: vfs_file,
-        }
-    }
-
-    pub fn mount(&self, mount_point: Arc<VfsFile>) {
-        // replace parent
-        let name = mount_point.dentry.name();
-        if let Some(parent) = mount_point.dentry.parent() {
-            parent.link(name, mount_point.dentry.inode());
-        }
-    }
-
-    pub fn root(&self) -> Arc<VfsFile> {
-        self.root.clone()
-    }
-
-    pub async fn resolve(&self, path: &Path) -> SysResult<Arc<VfsFile>> {
-        self.root.resolve(path).await
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MmapKind {
+    Shared,
+    Private,
 }
 
-#[derive(Clone)]
-pub struct VfsFile {
-    dentry: Arc<DirEntry>,
-}
-
-impl VfsFile {
-    fn new(dentry: Arc<DirEntry>) -> Self {
-        Self { dentry }
-    }
-
-    fn node(&self) -> Arc<VfsNode> {
-        self.dentry.inode()
-    }
-
+pub trait VfsFile : Send + Sync {
     // 文件操作
     /// 获取文件的各类属性,
     /// 例如文件类型, 文件大小, 文件创建时间等等
-    pub async fn stat(&self) -> SysResult<NodeStat> {
-        self.node().stat().await
-    }
+    fn attr(&self) -> ASysResult<VfsFileAttr>;
     /// 读取文件内容
-    pub async fn read_at(&self, offset: usize, buf: &mut [u8]) -> SysResult<usize> {
-        self.node().read_at(offset, buf).await
-    }
+    fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize>;
     /// 写入文件内容
-    pub async fn write_at(&self, offset: usize, buf: &[u8]) -> SysResult<usize> {
-        self.node().write_at(offset, buf).await
-    }
-
-    pub async fn link_raw<T: FsNode>(self: &Arc<Self>, name: &str, fs_node: T) -> SysResult<Arc<VfsFile>> {
-        let vfs_node = Arc::new(VfsNode::new(fs_node));
-        self.dentry.link(name, vfs_node).await.map(Self::new)
-    }
+    fn write_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> ASysResult<usize>;
+    /// 获得代表文件 [offset, offset + PAGE_SIZE) 范围内内容的物理页.
+    /// offset 必须是 PAGE_SIZE 的倍数.
+    fn get_page(&self, offset: usize, kind: MmapKind) -> ASysResult<PhysAddr4K>;
 
     // 文件夹操作
     /// 列出文件夹中的所有文件的名字
-    pub async fn list(&self) -> SysResult<Vec<(String, VfsFile)>> {
-        self.dentry.list().await.map(
-            |l| { l.into_iter().map(|(name, node)| (name, Self::new(node))).collect() })
-    }
+    fn list(&self) -> ASysResult<Vec<(String, VfsFileRef)>>;
     /// 根据名字查找文件夹中的文件, 不会递归查找
-    pub async fn lookup(&self, name: &str) -> SysResult<Self> {
-        self.dentry.lookup(name).await.map(Self::new)
-    }
+    fn lookup<'a>(&'a self, name: &'a str) -> ASysResult<VfsFileRef>;
     /// 新建一个文件, 并在当前文件夹中创建一个 名字->新建文件 的映射
-    pub async fn create(&self, name: &str, is_dir: bool) -> SysResult<Self> {
-        self.dentry.create(name, is_dir).await.map(Self::new)
-    }
-    /// 在当前文件夹创建一个 名字->文件 的映射
-    pub async fn link(&self, name: &str, file: Arc<VfsFile>) -> SysResult<Self> {
-        self.dentry.link(name, file.node()).await.map(Self::new)
-    }
-    /// 在当前文件夹删除一个 名字->文件 的映射
-    pub async fn unlink(&self, name: &str) -> SysResult {
-        self.dentry.unlink(name).await
-    }
+    fn create<'a>(&'a self, name: &'a str, kind: VfsFileKind) -> ASysResult<VfsFileRef>;
+    /// 删除一个文件, 并在当前文件夹中删除一个 名字->文件 的映射
+    fn remove<'a>(&'a self, name: &'a str) -> ASysResult;
 
-    /// 以当前文件夹为根, 递归解析路径
-    pub async fn resolve(&self, path: &Path) -> SysResult<Self> {
-        let mut dir = self.dentry.clone();
-        for name in path.iter() {
-            dir = dir.lookup(name).await?;
+    /// 在目录中删除 名字->文件 的映射, 但并不真的删掉它.
+    /// 可用于实现延迟删除
+    fn detach<'a>(&'a self, name: &'a str) -> ASysResult<VfsFileRef>;
+    /// 尝试将一个可能并不属于当前文件系统的文件 "贴" 到当前文件夹中.
+    /// 可用于实现 mount
+    fn attach<'a>(&'a self, name: &'a str, file: VfsFileRef) -> ASysResult;
+}
+
+#[macro_export]
+macro_rules! impl_vfs_default_non_dir {
+    ($ty:ident) => {
+        fn list(&self) -> crate::tools::errors::ASysResult<alloc::vec::Vec<(alloc::string::String, crate::fs::new_vfs::top::VfsFileRef)>> {
+            unimplemented!(concat!(stringify!($ty), "::list"))
         }
-        return Ok(Self::new(dir));
-    }
+        fn lookup(&self, _name: &str) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
+            unimplemented!(concat!(stringify!($ty), "::lookup"))
+        }
+        fn create(&self, _name: &str, _kind: crate::fs::new_vfs::VfsFileKind) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
+            unimplemented!(concat!(stringify!($ty), "::create"))
+        }
+        fn remove(&self, _name: &str) -> crate::tools::errors::ASysResult {
+            unimplemented!(concat!(stringify!($ty), "::remove"))
+        }
+        fn detach(&self, _name: &str) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
+            unimplemented!(concat!(stringify!($ty), "::detach"))
+        }
+        fn attach(&self, _name: &str, _node: crate::fs::new_vfs::top::VfsFileRef) -> crate::tools::errors::ASysResult {
+            unimplemented!(concat!(stringify!($ty), "::attach"))
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_vfs_default_non_file {
+    ($ty:ident) => {
+        fn read_at(&self, _offset: usize, _buf: &mut [u8]) -> crate::tools::errors::ASysResult<usize> {
+            unimplemented!(concat!(stringify!(ty), "::read_at"))
+        }
+        fn write_at(&self, _offset: usize, _buf: &[u8]) -> crate::tools::errors::ASysResult<usize> {
+            unimplemented!(concat!(stringify!(ty), "::write_at"))
+        }
+        fn get_page(&self, _offset: usize, _kind: crate::fs::new_vfs::top::MmapKind) -> crate::tools::errors::ASysResult<crate::memory::address::PhysAddr4K> {
+            unimplemented!(concat!(stringify!(ty), "::get_page"))
+        }
+    };
 }
