@@ -1,68 +1,17 @@
-use core::cell::UnsafeCell;
-
-use crate::impl_vfs_dir_default;
-use crate::sync::SpinNoIrqLock;
-use crate::{here, impl_vfs_non_dir_default, sync};
-
+use core::cell::{SyncUnsafeCell};
 use super::disk::BLOCK_SIZE;
-use super::vfs::filesystem::*;
-use super::vfs::node::*;
-use super::vfs::*;
-use super::{
-    partition::Partition,
-    vfs::{self, filesystem::VfsNode},
-};
-use alloc::boxed::Box;
-use alloc::sync::Arc;
-use fatfs::{self, Read, Seek, Write};
-use log::{trace, warn};
-
-/// fatfs trait for vfs wrapper
-pub struct FatVfsWrapper {
-    offset: u64,
-    file: Arc<dyn VfsNode>,
-}
-
-impl fatfs::IoBase for FatVfsWrapper {
-    type Error = ();
-}
-
-impl fatfs::Read for FatVfsWrapper {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        let read_len = self.file.sync_read_at(self.offset, buf).expect("VfsWrapper read error");
-        self.offset += read_len as u64;
-        Ok(read_len)
-    }
-}
-
-impl fatfs::Write for FatVfsWrapper {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
-        let write_len = self.file.sync_write_at(self.offset, buf).expect("VfsWrapper write error");
-        self.offset += write_len as u64;
-        Ok(write_len)
-    }
-    fn flush(&mut self) -> Result<(), Self::Error> {
-        self.file.fsync();
-        Ok(())
-    }
-}
-
-impl fatfs::Seek for FatVfsWrapper {
-    fn seek(&mut self, pos: fatfs::SeekFrom) -> Result<u64, Self::Error> {
-        let size = self.file.stat().expect("VfsWrapper stat error").size();
-        let new_pos = match pos {
-            fatfs::SeekFrom::Start(pos) => Some(pos),
-            fatfs::SeekFrom::Current(off) => self.offset.checked_add_signed(off),
-            fatfs::SeekFrom::End(off) => size.checked_add_signed(off),
-        }
-        .ok_or(())?;
-        if new_pos > size {
-            warn!("Seek beyond the end of the block device");
-        }
-        self.offset = new_pos;
-        Ok(new_pos)
-    }
-}
+use fatfs::{self, Read, Seek, Write, IoError, IoBase};
+use log::{warn};
+use super::new_vfs::underlying::{ConcreteFile, DEntryRef};
+use crate::tools::errors::{SysError, ASysResult, dyn_future};
+use super::new_vfs::{VfsFileAttr, VfsFileKind};
+use super::partition::Partition;
+use alloc::string::String;
+use alloc::vec::Vec;
+use super::new_vfs::top::{VfsFileRef, VfsFS};
+use core::mem::MaybeUninit;
+use super::new_vfs::sync_attr_cache::SyncAttrCacheFile;
+use super::new_vfs::dentry_cache::DEntryCacheDir;
 
 /// Implementation of the fatfs glue code
 /// FAT32 FS is supposed to work upon a partition
@@ -128,44 +77,17 @@ impl fatfs::Seek for Partition {
 
 // Impl for VFS
 
-const fn as_vfs_err(err: fatfs::Error<()>) -> VfsError {
-    use fatfs::Error::*;
-    match err {
-        AlreadyExists => VfsError::AlreadyExists,
-        CorruptedFileSystem => VfsError::InvalidData,
-        DirectoryIsNotEmpty => VfsError::DirectoryNotEmpty,
-        InvalidInput | InvalidFileNameLength | UnsupportedFileNameCharacter => {
-            VfsError::InvalidInput
-        }
-        NotEnoughSpace => VfsError::StorageFull,
-        NotFound => VfsError::NotFound,
-        UnexpectedEof => VfsError::UnexpectedEof,
-        WriteZero => VfsError::WriteZero,
-        Io(_) => VfsError::Io,
-        _ => VfsError::Io,
-    }
+fn as_vfs_err(_f: impl IoError) -> SysError {
+    SysError::EINVAL
 }
 
 pub struct FatFileSystem {
     inner: fatfs::FileSystem<Partition, fatfs::NullTimeProvider, fatfs::LossyOemCpConverter>,
-    root_dir: UnsafeCell<Option<vfs::filesystem::VfsNodeRef>>,
+    root: SyncUnsafeCell<MaybeUninit<VfsFileRef>>,
 }
-
-pub struct FileWrapper<'a>(
-    sync::SpinNoIrqLock<
-        fatfs::File<'a, Partition, fatfs::NullTimeProvider, fatfs::LossyOemCpConverter>,
-    >,
-);
-pub struct DirWrapper<'a>(
-    fatfs::Dir<'a, Partition, fatfs::NullTimeProvider, fatfs::LossyOemCpConverter>,
-);
 
 unsafe impl Sync for FatFileSystem {}
 unsafe impl Send for FatFileSystem {}
-unsafe impl<'a> Send for FileWrapper<'a> {}
-unsafe impl<'a> Sync for FileWrapper<'a> {}
-unsafe impl<'a> Send for DirWrapper<'a> {}
-unsafe impl<'a> Sync for DirWrapper<'a> {}
 
 impl FatFileSystem {
     pub fn new(parition: Partition) -> Self {
@@ -173,173 +95,219 @@ impl FatFileSystem {
             .expect("failed to initialize FAT filesystem");
         Self {
             inner,
-            root_dir: UnsafeCell::new(None),
+            root: SyncUnsafeCell::new(MaybeUninit::uninit()),
         }
     }
 
     pub fn init(&'static self) {
-        // must be called before later operations
-        unsafe { *self.root_dir.get() = Some(Self::new_dir(self.inner.root_dir())) }
-    }
-
-    fn new_file(
-        file: fatfs::File<'_, Partition, fatfs::NullTimeProvider, fatfs::LossyOemCpConverter>,
-    ) -> Arc<FileWrapper> {
-        Arc::new(FileWrapper(SpinNoIrqLock::new(file)))
-    }
-
-    fn new_dir(
-        dir: fatfs::Dir<'_, Partition, fatfs::NullTimeProvider, fatfs::LossyOemCpConverter>,
-    ) -> Arc<DirWrapper> {
-        Arc::new(DirWrapper(dir))
-    }
-}
-
-impl Vfs for FatFileSystem {
-    fn root_dir(&self) -> VfsNodeRef {
-        let root_dir = unsafe { (*self.root_dir.get()).as_ref().unwrap() };
-        root_dir.clone()
+        let root = self.inner.root_dir();
+        let root = FatConcreteGenericFile::new_dir(root);
+        // TODO: size & dev id
+        let root = SyncAttrCacheFile::new_direct(root, VfsFileAttr { 
+            kind: VfsFileKind::Directory, 
+            device_id: 0, 
+            self_device_id: 0, 
+            byte_size: 0, 
+            block_count: 0, 
+            access_time: 0, 
+            modify_time: 0, 
+            create_time: 0 
+        });
+        let root = DEntryCacheDir::new_root(root);
+        let root = VfsFileRef::new(root);
+        unsafe { &mut *self.root.get() }.write(root);
     }
 }
 
-impl VfsNode for FileWrapper<'static> {
-    impl_vfs_non_dir_default! {}
-
-    fn stat(&self) -> VfsResult<VfsNodeAttr> {
-        let size = self.0.lock(here!()).seek(fatfs::SeekFrom::End(0)).map_err(as_vfs_err)?;
-        let blocks = (size + BLOCK_SIZE as u64 - 1) / BLOCK_SIZE as u64;
-        // FAT fs doesn't support permissions, we just set everything to 755
-        let perm = VfsNodePermission::from_bits_truncate(0o755);
-        Ok(VfsNodeAttr::new(perm, VfsNodeType::File, size, blocks))
-    }
-
-    fn sync_read_at(&self, offset: u64, mut buf: &mut [u8]) -> VfsResult<usize> {
-        let mut file = self.0.lock(here!());
-        let mut read_len = 0;
-        let mut file_end = false;
-        file.seek(fatfs::SeekFrom::Start(offset)).map_err(as_vfs_err)?;
-        // This for loop is needed since fatfs do not guarantee read the whole buffer, may only read a sector
-        while buf.len() != 0 && !file_end {
-            let fat_read_len = file.read(buf).map_err(as_vfs_err)?;
-            if fat_read_len == 0 {
-                file_end = true;
-            }
-            read_len += fat_read_len;
-            buf = &mut buf[fat_read_len..];
-        }
-        Ok(read_len)
-    }
-
-    fn sync_write_at(&self, offset: u64, buf: &[u8]) -> VfsResult<usize> {
-        let mut file = self.0.lock(here!());
-        // TODO: impl a read_at like write, not sure how long fatfs can write
-        file.seek(fatfs::SeekFrom::Start(offset)).map_err(as_vfs_err)?;
-        file.write(buf).map_err(as_vfs_err)
-    }
-
-    fn read_at<'a>(&'a self, offset: u64, buf: &'a mut [u8]) -> AVfsResult<usize> {
-        Box::pin(async move { self.sync_read_at(offset, buf) })
-    }
-
-    fn write_at<'a>(&'a self, offset: u64, buf: &'a [u8]) -> AVfsResult<usize> {
-        Box::pin(async move { self.sync_write_at(offset, buf) })
-    }
-
-    fn truncate(&self, size: u64) -> VfsResult {
-        let mut file = self.0.lock(here!());
-        file.seek(fatfs::SeekFrom::Start(size)).map_err(as_vfs_err)?; // TODO: more efficient
-        file.truncate().map_err(as_vfs_err)
+impl VfsFS for FatFileSystem {
+    fn root(&self) -> VfsFileRef {
+        unsafe { (&*self.root.get()).assume_init_ref() }.clone()
     }
 }
 
-impl VfsNode for DirWrapper<'static> {
-    impl_vfs_dir_default! {}
+type FatFile = fatfs::File<'static, Partition, fatfs::NullTimeProvider, fatfs::LossyOemCpConverter>;
+type FatDir = fatfs::Dir<'static, Partition, fatfs::NullTimeProvider, fatfs::LossyOemCpConverter>;
+type FatDEntry = fatfs::DirEntry<'static, Partition, fatfs::NullTimeProvider, fatfs::LossyOemCpConverter>;
 
-    fn stat(&self) -> VfsResult<VfsNodeAttr> {
-        // FAT fs doesn't support permissions, we just set everything to 755
-        Ok(VfsNodeAttr::new(
-            VfsNodePermission::from_bits_truncate(0o755),
-            VfsNodeType::Dir,
-            BLOCK_SIZE as u64,
-            1,
-        ))
+pub enum FatConcreteGenericFile {
+    File(SyncUnsafeCell<FatFile>),
+    Dir(SyncUnsafeCell<FatDir>),
+}
+
+impl FatConcreteGenericFile {
+    fn file(&self) -> &mut FatFile {
+        match self {
+            FatConcreteGenericFile::File(f) => unsafe { &mut *f.get() },
+            _ => panic!("not a file"),
+        }
     }
 
-    fn parent(&self) -> Option<VfsNodeRef> {
-        self.0.open_dir("..").map_or(None, |dir| Some(FatFileSystem::new_dir(dir)))
+    fn dir(&self) -> &mut FatDir {
+        match self {
+            FatConcreteGenericFile::Dir(f) => unsafe { &mut *f.get() }
+            _ => panic!("not a dir"),
+        }
     }
 
-    fn lookup(self: Arc<Self>, path: &str) -> VfsResult<VfsNodeRef> {
-        trace!("lookup at fatfs: {}", path);
-        let path = path.trim_matches('/');
-        if path.is_empty() || path == "." {
-            return Ok(self.clone());
-        }
-        if let Some(rest) = path.strip_prefix("./") {
-            return self.lookup(rest);
-        }
+    fn new_file(f: FatFile) -> Self {
+        FatConcreteGenericFile::File(SyncUnsafeCell::new(f))
+    }
 
-        // TODO: use `fatfs::Dir::find_entry`, but it's not public.
-        if let Ok(file) = self.0.open_file(path) {
-            Ok(FatFileSystem::new_file(file))
-        } else if let Ok(dir) = self.0.open_dir(path) {
-            Ok(FatFileSystem::new_dir(dir))
+    fn new_dir(f: FatDir) -> Self {
+        FatConcreteGenericFile::Dir(SyncUnsafeCell::new(f))
+    }
+}
+
+impl Clone for FatConcreteGenericFile {
+    fn clone(&self) -> Self {
+        use FatConcreteGenericFile::*;
+        match self {
+            File(_) => Self::new_file(self.file().clone()),
+            Dir(_) => Self::new_dir(self.dir().clone()),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FatConcreteDirEntry(FatDEntry);
+
+impl DEntryRef for FatConcreteDirEntry {
+    type FileT = FatConcreteGenericFile;
+    fn name(&self) -> String {
+        self.0.file_name()
+    }
+    fn attr(&self) -> VfsFileAttr {
+        let kind = if self.0.is_dir() {
+            VfsFileKind::Directory
         } else {
-            Err(VfsError::NotFound)
+            VfsFileKind::RegularFile
+        };
+
+        let byte_size = self.0.len() as usize;
+        let block_count = byte_size / BLOCK_SIZE;
+
+        VfsFileAttr { 
+            kind, 
+            device_id: 1, 
+            self_device_id: 0, 
+            byte_size, 
+            block_count, 
+            modify_time: 0, 
+            access_time: 0, 
+            create_time: 0 
         }
     }
-
-    fn create(&self, path: &str, ty: VfsNodeType) -> VfsResult {
-        trace!("create {:?} at fatfs: {}", ty, path);
-        let path = path.trim_matches('/');
-        if path.is_empty() || path == "." {
-            return Ok(());
-        }
-        if let Some(rest) = path.strip_prefix("./") {
-            return self.create(rest, ty);
-        }
-
-        match ty {
-            VfsNodeType::File => {
-                self.0.create_file(path).map_err(as_vfs_err)?;
-                Ok(())
-            }
-            VfsNodeType::Dir => {
-                self.0.create_dir(path).map_err(as_vfs_err)?;
-                Ok(())
-            }
-            _ => Err(VfsError::Unsupported),
+    fn file(&self) -> Self::FileT {
+        if self.0.is_dir() {
+            FatConcreteGenericFile::new_dir(self.0.to_dir())
+        } else {
+            FatConcreteGenericFile::new_file(self.0.to_file())
         }
     }
+}
 
-    fn remove(&self, path: &str) -> VfsResult {
-        trace!("remove at fatfs: {}", path);
-        let path = path.trim_matches('/');
-        assert!(!path.is_empty()); // already check at `root.rs`
-        if let Some(rest) = path.strip_prefix("./") {
-            return self.remove(rest);
-        }
-        self.0.remove(path).map_err(as_vfs_err)
-    }
+unsafe impl Sync for FatConcreteDirEntry {}
+unsafe impl Send for FatConcreteDirEntry {}
+unsafe impl Sync for FatConcreteGenericFile {}
+unsafe impl Send for FatConcreteGenericFile {}
 
-    fn read_dir(&self, start_idx: usize, dirents: &mut [VfsDirEntry]) -> VfsResult<usize> {
-        let mut iter = self.0.iter().skip(start_idx);
-        for (i, out_entry) in dirents.iter_mut().enumerate() {
-            let x = iter.next();
-            match x {
-                Some(Ok(entry)) => {
-                    let ty = if entry.is_dir() {
-                        VfsNodeType::Dir
-                    } else if entry.is_file() {
-                        VfsNodeType::File
-                    } else {
-                        unreachable!()
-                    };
-                    *out_entry = VfsDirEntry::new(&entry.file_name(), ty);
+impl ConcreteFile for FatConcreteGenericFile {
+    type DEntryRefT = FatConcreteDirEntry;
+
+    fn read_at(&self, offset: usize, buf: &mut [u8]) -> ASysResult<usize> {
+        let file = self.file();
+        let sync_read_at = move || -> Result<usize, <FatFile as IoBase>::Error> {
+            let mut read_len = 0;
+            let mut file_end = false;
+            file.seek(fatfs::SeekFrom::Start(offset as u64))?;
+            // This for loop is needed since fatfs do not guarantee read the whole buffer, may only read a sector
+            let mut buf = buf;
+            while buf.len() != 0 && !file_end {
+                let fat_read_len = file.read(buf)?;
+                if fat_read_len == 0 {
+                    file_end = true;
                 }
-                _ => return Ok(i),
+                read_len += fat_read_len;
+                buf = &mut buf[fat_read_len..];
             }
+            Ok(read_len)
+        };
+
+        let result = sync_read_at().map_err(as_vfs_err);
+        dyn_future(async move { result })
+    }
+
+    fn write_at(&self, offset: usize, buf: &[u8]) -> ASysResult<usize> {
+        let file = self.file();
+
+        // TODO: impl a read_at like write, not sure how long fatfs can write
+        let mut sync_write_at = || -> Result<usize, <FatFile as IoBase>::Error> {
+            file.seek(fatfs::SeekFrom::Start(offset as u64))?;
+            file.write(buf)
+        };
+
+        let result = sync_write_at().map_err(as_vfs_err);
+        dyn_future(async move { result })
+    }
+
+    fn lookup_batch(&self, skip_n: usize, _name: Option<&str>) -> ASysResult<(bool, Vec<Self::DEntryRefT>)> {
+        let dir = self.dir();
+
+        if skip_n != 0 {
+            todo!("skip_n != 0 is not supported")
         }
-        Ok(dirents.len())
+        
+        let sync_list = || -> Result<(bool, Vec<Self::DEntryRefT>), <FatFile as IoBase>::Error> {
+            let mut v = Vec::new();
+            for de in dir.iter() {
+                v.push(FatConcreteDirEntry(de?))     
+            }
+            Ok((true, v))
+        };
+        
+        let result = sync_list().map_err(as_vfs_err);
+        dyn_future(async move { result })
+    }
+
+    fn set_attr(&self, _dentry_ref: Self::DEntryRefT, _attr: VfsFileAttr) -> ASysResult {
+        todo!("set_attr")
+    }
+
+    fn create(&self, name: &str, kind: VfsFileKind) -> ASysResult<Self::DEntryRefT> {
+        let dir = self.dir();
+
+        let sync_create = || -> Result<Self::DEntryRefT, <FatFile as IoBase>::Error> {
+            match kind {
+                VfsFileKind::RegularFile => {
+                    dir.create_file(name)?;
+                    let dentry = dir.iter().map(Result::unwrap).filter(|x| x.file_name() == name).next().unwrap();
+                    Ok(FatConcreteDirEntry(dentry))
+                }
+                VfsFileKind::Directory => {
+                    dir.create_dir(name)?;
+                    let dentry = dir.iter().map(Result::unwrap).filter(|x| x.file_name() == name).next().unwrap();
+                    Ok(FatConcreteDirEntry(dentry))
+                }
+                _ => unimplemented!()
+            }
+        };
+
+        let result = sync_create().map_err(as_vfs_err);
+        dyn_future(async move { result })
+    }
+
+    fn remove(&self, dentry_ref: Self::DEntryRefT) -> ASysResult {
+        let dir = self.dir();
+
+        let sync_remove = || -> Result<(), <FatFile as IoBase>::Error> {
+            dir.remove(&dentry_ref.name())
+        };
+
+        let result = sync_remove().map_err(as_vfs_err);
+        dyn_future(async move { result })
+    }
+
+    fn detach(&self, _dentry_ref: Self::DEntryRefT) -> ASysResult<Self> {
+        todo!("detach")
     }
 }

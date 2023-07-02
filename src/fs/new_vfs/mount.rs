@@ -1,8 +1,8 @@
-use super::{top::{VfsFS, VfsFile, VfsFileRef}, path::Path, DeviceID, underlying::ConcreteFS};
+use super::{top::{VfsFS, VfsFile, VfsFileRef}, path::Path, DeviceID};
 use alloc::{sync::Arc, vec::Vec, collections::BTreeMap};
 use crate::{impl_vfs_default_non_file, impl_vfs_forward_dir};
 
-struct MountPoint {
+pub struct MountPoint {
     fs: Arc<dyn VfsFS>,
     root: VfsFileRef,
 }

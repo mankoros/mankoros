@@ -6,8 +6,7 @@ use crate::{
     arch::{switch_page_table, within_sum},
     consts::PAGE_SIZE,
     fs::{
-        self,
-        vfs::{filesystem::VfsNode, path::Path},
+        self, new_vfs::{top::VfsFileRef, path::Path},
     },
     memory::address::VirtAddr,
     process::user_space::{init_stack, THREAD_STACK_SIZE},
@@ -208,7 +207,7 @@ impl LightProcess {
 
     pub fn do_exec(
         self: Arc<Self>,
-        elf_file: Arc<dyn VfsNode>,
+        elf_file: VfsFileRef,
         args: Vec<String>,
         envp: Vec<String>,
     ) {
@@ -362,11 +361,11 @@ impl FsInfo {
 }
 
 pub struct FileDescriptor {
-    pub file: Arc<dyn VfsNode>,
+    pub file: VfsFileRef,
 }
 
 impl FileDescriptor {
-    pub fn new(file: Arc<dyn VfsNode>) -> Arc<Self> {
+    pub fn new(file: VfsFileRef) -> Arc<Self> {
         Arc::new(Self { file })
     }
 }
@@ -387,23 +386,23 @@ impl FdTable {
 
     pub fn new_with_std() -> Self {
         let mut t = Self::new_empty();
-        let fd = t.alloc(Arc::new(fs::stdio::Stdin));
+        let fd = t.alloc(VfsFileRef::new(fs::stdio::Stdin));
         debug_assert_eq!(fd, 0);
-        let fd = t.alloc(Arc::new(fs::stdio::Stdout));
+        let fd = t.alloc(VfsFileRef::new(fs::stdio::Stdout));
         debug_assert_eq!(fd, 1);
-        let fd = t.alloc(Arc::new(fs::stdio::Stderr));
+        let fd = t.alloc(VfsFileRef::new(fs::stdio::Stderr));
         debug_assert_eq!(fd, 2);
         t
     }
 
     // alloc finds a fd and insert the file descriptor into the table
-    pub fn alloc(&mut self, file: Arc<dyn VfsNode>) -> usize {
+    pub fn alloc(&mut self, file: VfsFileRef) -> usize {
         let fd = self.pool.get();
         self.table.insert(fd, FileDescriptor::new(file));
         fd
     }
     // insert inserts the file descriptor into the table using specified fd
-    pub fn insert(&mut self, fd: usize, file: Arc<dyn VfsNode>) {
+    pub fn insert(&mut self, fd: usize, file: VfsFileRef) {
         self.table.insert(fd, FileDescriptor::new(file));
     }
 

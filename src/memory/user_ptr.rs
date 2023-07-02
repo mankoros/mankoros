@@ -81,6 +81,12 @@ impl<T: Clone + Copy + 'static, P: Policy> UserPtr<T, P> {
             _mark: PhantomData,
         }
     }
+    pub fn add(self, count: usize) -> Self {
+        Self {
+            ptr: unsafe { self.ptr.add(count) },
+            _mark: PhantomData,
+        }
+    }
 }
 impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
     pub fn nonnull(self) -> Option<Self> {

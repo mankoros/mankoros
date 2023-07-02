@@ -1,25 +1,19 @@
 //! Filesystem related syscall
 //!
 
-use alloc::sync::Arc;
+
 use core::cmp::min;
 use log::{debug, info};
 
 use crate::{
     arch::within_sum,
-    axerrno::AxError,
     executor::util_futures::within_sum_async,
     fs::{
         self,
-        pipe::Pipe,
-        vfs::{
-            filesystem::{VfsNode, VfsWrapper},
-            node::{VfsDirEntry, VfsNodeType},
-            path::{self, Path},
-        },
+        pipe::Pipe, new_vfs::{path::{Path}, VfsFileKind, top::VfsFileRef}, memfs::{zero::ZeroDev}, disk::BLOCK_SIZE
     },
-    memory::{UserPtr, UserReadPtr, UserWritePtr},
-    tools::user_check::UserCheck,
+    memory::{UserReadPtr, UserWritePtr},
+    tools::{user_check::UserCheck, errors::SysError},
 };
 
 use super::{Syscall, SyscallResult};
@@ -135,7 +129,7 @@ impl<'a> Syscall<'a> {
             let write_len = within_sum_async(fd.file.write_at(0, buf)).await?;
             Ok(write_len)
         } else {
-            Err(AxError::InvalidInput)
+            Err(SysError::EBADF)
         }
     }
     pub async fn sys_read(&mut self) -> SyscallResult {
@@ -152,15 +146,15 @@ impl<'a> Syscall<'a> {
             let read_len = within_sum_async(fd.file.read_at(0, buf)).await?;
             Ok(read_len)
         } else {
-            Err(AxError::InvalidInput)
+            Err(SysError::EBADF)
         }
     }
 
-    pub fn sys_openat(&mut self) -> SyscallResult {
+    pub async fn sys_openat(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
         let (dir_fd, path, raw_flags, _user_mode) = (
             args[0],
-            args[1] as *const u8,
+            args[1],
             args[2] as u32,
             args[3] as i32,
         );
@@ -171,44 +165,45 @@ impl<'a> Syscall<'a> {
         let flags = OpenFlags::from_bits_truncate(raw_flags);
 
         let user_check = UserCheck::new_with_sum(&self.lproc);
-        let path = user_check.checked_read_cstr(path).map_err(|_| AxError::InvalidInput)?;
+        let path = user_check.checked_read_cstr(path as *const u8)?;
         let path = Path::from_string(path).expect("Error parsing path");
 
-        let dir = if path.is_absolute {
+        let dir = if path.is_absolute() {
             fs::root::get_root_dir()
         } else {
             if dir_fd == AT_FDCWD {
-                let cwd = self.lproc.with_fsinfo(|f| f.cwd.to_string());
-                fs::root::get_root_dir().lookup(&cwd).map_err(|_| AxError::InvalidInput)?
+                let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone());
+                fs::root::get_root_dir().resolve(&cwd).await?
             } else {
                 let file = self
                     .lproc
                     .with_mut_fdtable(|f| f.get(dir_fd as usize))
                     .map(|fd| fd.file.clone())
-                    .ok_or(AxError::InvalidInput)?; // TODO: return EBADF
-                if file.stat().unwrap().file_type() != VfsNodeType::Dir {
-                    return Err(AxError::InvalidInput);
+                    .ok_or(SysError::EBADF)?;
+                if file.attr().await?.kind != VfsFileKind::Directory {
+                    return Err(SysError::ENOTDIR);
                 }
                 file
             }
         };
 
-        let file = match dir.clone().lookup(&path.to_string()) {
+        let file = match dir.resolve(&path).await {
             Ok(file) => file,
-            Err(AxError::NotFound) => {
+            Err(SysError::ENOENT) => {
                 // Check if CREATE flag is set
                 if !flags.contains(OpenFlags::CREATE) {
-                    return Err(AxError::NotFound);
+                    return Err(SysError::ENOENT);
                 }
                 // Create file
-                dir.create(path.to_string().as_str(), VfsNodeType::File)?;
-                let file = dir
-                    .lookup(&path.to_string())
-                    .expect("File just created is not found, very wrong");
+                // 1. ensure file dir exists
+                let (dir_path, file_name) = path.split_dir_file(); 
+                let direct_dir = dir.resolve(&dir_path).await?;
+                // 2. create file
+                let file = direct_dir.create(&file_name, VfsFileKind::RegularFile).await?;
                 file
             }
-            Err(_) => {
-                return Err(AxError::NotFound);
+            Err(e) => {
+                return Err(e);
             }
         };
 
@@ -223,11 +218,11 @@ impl<'a> Syscall<'a> {
 
         info!("Syscall: pipe");
         let (pipe_read, pipe_write) = Pipe::new_pipe();
-        let user_check = UserCheck::new_with_sum(&self.lproc);
+        let _user_check = UserCheck::new_with_sum(&self.lproc);
 
         self.lproc.with_mut_fdtable(|table| {
-            let read_fd = table.alloc(Arc::new(pipe_read));
-            let write_fd = table.alloc(Arc::new(pipe_write));
+            let read_fd = table.alloc(VfsFileRef::new(pipe_read));
+            let write_fd = table.alloc(VfsFileRef::new(pipe_write));
 
             debug!("read_fd: {}", read_fd);
             debug!("write_fd: {}", write_fd);
@@ -250,61 +245,58 @@ impl<'a> Syscall<'a> {
                 // https://man7.org/linux/man-pages/man2/close.2.html
                 Ok(0)
             } else {
-                Err(AxError::InvalidInput)
+                Err(SysError::EBADF)
             }
         })
     }
 
-    pub fn sys_fstat(&self) -> SyscallResult {
+    pub async fn sys_fstat(&self) -> SyscallResult {
         info!("Syscall: fstat");
         let args = self.cx.syscall_args();
-        let (fd, kstat) = (args[0], args[1] as *mut Kstat);
+        let (fd, kstat) = (args[0], args[1]);
+        if let Some(fd) = self.lproc.with_mut_fdtable(|f| f.get(fd)) {
+            // TODO: check stat() returned error
+            let fstat = fd.file.attr().await?;
 
-        self.lproc.with_mut_fdtable(|f| {
-            if let Some(fd) = f.get(fd) {
-                // TODO: check stat() returned error
-                let fstat = fd.file.stat().unwrap();
-
-                within_sum(|| unsafe {
-                    *kstat = Kstat {
-                        st_dev: 1,
-                        st_ino: 1,
-                        st_mode: 0,
-                        // TODO: when linkat is implemented, use their infrastructure to check link num
-                        st_nlink: 1,
-                        st_uid: 0,
-                        st_gid: 0,
-                        st_rdev: 0,
-                        _pad0: 0,
-                        st_size: fstat.size(),
-                        st_blksize: 0,
-                        _pad1: 0,
-                        st_blocks: 0,
-                        st_atime_sec: 0,
-                        st_atime_nsec: 0,
-                        st_mtime_sec: 0,
-                        st_mtime_nsec: 0,
-                        st_ctime_sec: 0,
-                        st_ctime_nsec: 0,
-                    }
-                });
-                return Ok(0);
-            }
-            Err(AxError::NotFound)
-        })
+            within_sum(|| unsafe {
+                *(kstat as *mut Kstat) = Kstat {
+                    st_dev: fstat.device_id as u64,
+                    st_ino: 1,
+                    st_mode: 0,
+                    // TODO: when linkat is implemented, use their infrastructure to check link num
+                    st_nlink: 1,
+                    st_uid: 0,
+                    st_gid: 0,
+                    st_rdev: 0,
+                    _pad0: 0,
+                    st_size: fstat.byte_size as u64,
+                    st_blksize: BLOCK_SIZE as u32,
+                    _pad1: 0,
+                    st_blocks: fstat.block_count as u64,
+                    st_atime_sec: 0,
+                    st_atime_nsec: 0,
+                    st_mtime_sec: 0,
+                    st_mtime_nsec: 0,
+                    st_ctime_sec: 0,
+                    st_ctime_nsec: 0,
+                }
+            });
+            return Ok(0);
+        }
+        Err(SysError::EBADF)
     }
 
-    pub fn sys_mkdir(&self) -> SyscallResult {
+    pub async fn sys_mkdir(&self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (_dir_fd, path, _user_mode) = (args[0], args[1] as *const u8, args[2]);
+        let (_dir_fd, path, _user_mode) = (args[0], args[1], args[2]);
         info!("Syscall: mkdir");
         let user_check = UserCheck::new_with_sum(&self.lproc);
-        let path = user_check.checked_read_cstr(path).map_err(|_| AxError::InvalidInput)?;
+        let path = user_check.checked_read_cstr(path as *const u8)?;
         let mut path = Path::from_string(path).expect("Error parsing path");
 
         let root_fs = fs::root::get_root_dir();
 
-        if !path.is_absolute {
+        if !path.is_absolute() {
             // FIXME: us dir_fd to determine current dir
             let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone()).to_string();
             let mut path_str = path.to_string();
@@ -312,11 +304,11 @@ impl<'a> Syscall<'a> {
             path = Path::from_str(path_str.as_str()).expect("Error parsing path");
         }
         debug!("Creating directory: {:?}", path);
-        if root_fs.clone().lookup(&path.to_string()).is_ok() {
+        if root_fs.clone().resolve(&path).await.is_ok() {
             debug!("Directory already exists: {:?}", path);
             return Ok(0);
         }
-        root_fs.create(path.to_string().as_str(), VfsNodeType::Dir)?;
+        root_fs.create(path.to_string().as_str(), VfsFileKind::Directory).await?;
         Ok(0)
     }
 
@@ -329,7 +321,7 @@ impl<'a> Syscall<'a> {
                 let new_fd = table.alloc(old_fd.file.clone());
                 Ok(new_fd)
             } else {
-                Err(AxError::InvalidInput)
+                Err(SysError::EBADF)
             }
         })
     }
@@ -342,25 +334,24 @@ impl<'a> Syscall<'a> {
                 table.insert(new_fd, old_fd.file.clone());
                 Ok(new_fd)
             } else {
-                Err(AxError::InvalidInput)
+                Err(SysError::EBADF)
             }
         })
     }
 
-    pub fn sys_chdir(&mut self) -> SyscallResult {
+    pub async fn sys_chdir(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let path = args[0] as *const u8;
+        let path = args[0];
 
         let user_check = UserCheck::new_with_sum(&self.lproc);
-        let path = user_check.checked_read_cstr(path).map_err(|_| AxError::InvalidInput)?;
-        let path = Path::from_string(path).map_err(|_| AxError::InvalidInput)?;
+        let path = user_check.checked_read_cstr(path as *const u8)?;
+        let path = Path::from_string(path)?;
 
         // check whether the path is a directory
         let root_fs = fs::root::get_root_dir();
-        let node = root_fs.lookup(&path.to_string())?;
-        let node_stat = node.stat()?;
-        if node_stat.file_type() != VfsNodeType::Dir {
-            return Err(AxError::NotADirectory);
+        let file = root_fs.resolve(&path).await?;
+        if file.attr().await?.kind != VfsFileKind::Directory {
+            return Err(SysError::ENOTDIR);
         }
 
         // change the cwd
@@ -384,17 +375,16 @@ impl<'a> Syscall<'a> {
         Ok(buf as usize)
     }
 
-    pub fn sys_getdents(&mut self) -> SyscallResult {
+    pub async fn sys_getdents(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (fd, buf, len) = (args[0], args[1] as *mut u8, args[2]);
+        let (fd, buf, len) = (args[0], UserWritePtr::<u8>::from(args[1]), args[2]);
 
         info!(
             "Syscall: getdents (fd: {:?}, buf: {:?}, len: {:?})",
-            fd, buf, len
+            fd, buf.as_usize(), len
         );
 
-        // TODO: should return EBADF
-        let fd_obj = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(AxError::InvalidInput)?;
+        let fd_obj = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
         let file = fd_obj.file.clone();
 
         /// 目录信息类
@@ -408,13 +398,37 @@ impl<'a> Syscall<'a> {
             // dynmaic-len cstr d_name followsing here
         }
 
+        impl DirentFront {
+            const DT_UNKNOWN    : u8 = 0;
+            const DT_FIFO       : u8 = 1;
+            const DT_CHR        : u8 = 2;
+            const DT_DIR        : u8 = 4;
+            const DT_BLK        : u8 = 6;
+            const DT_REG        : u8 = 8;
+            const DT_LNK        : u8 = 10;
+            const DT_SOCK       : u8 = 12;
+            const DT_WHT        : u8 = 14;
+
+            pub fn as_dtype(kind: VfsFileKind) -> u8 {
+                match kind {
+                    VfsFileKind::Unknown => Self::DT_UNKNOWN,
+                    VfsFileKind::Pipe => Self::DT_FIFO,
+                    VfsFileKind::CharDevice => Self::DT_CHR,
+                    VfsFileKind::Directory => Self::DT_DIR,
+                    VfsFileKind::BlockDevice => Self::DT_BLK,
+                    VfsFileKind::RegularFile => Self::DT_REG,
+                    VfsFileKind::SymbolLink => Self::DT_LNK,
+                    VfsFileKind::SocketFile => Self::DT_SOCK,
+                }
+            }
+        }
+
         let mut wroten_len = 0;
 
-        let vfs_entry_iter = VfsDirEntryIter::new(file);
-        for vfs_entry in vfs_entry_iter {
-            // TODO-BUG: 检查写入后的长度是否满足 u64 的对齐要求，不满足补 0
+        for (name, vfs_entry) in file.list().await? {
+            // TODO-BUG: 检查写入后的长度是否满足 u64 的对齐要求, 不满足补 0
             // TODO: d_name 是 &str, 末尾可能会有很多 \0, 想办法去掉它们
-            let this_entry_len = core::mem::size_of::<DirentFront>() + vfs_entry.d_name().len() + 1;
+            let this_entry_len = core::mem::size_of::<DirentFront>() + name.len() + 1;
             if wroten_len + this_entry_len > len {
                 break;
             }
@@ -423,21 +437,17 @@ impl<'a> Syscall<'a> {
                 d_ino: 1,
                 d_off: this_entry_len as u64,
                 d_reclen: this_entry_len as u16,
-                d_type: vfs_entry.d_type().as_char() as u8,
+                d_type: DirentFront::as_dtype(vfs_entry.attr().await?.kind),
             };
 
-            let dirent_beg = unsafe { buf.add(wroten_len) } as *mut DirentFront;
-            let d_name_beg = unsafe { buf.add(wroten_len + core::mem::size_of::<DirentFront>()) };
+            let dirent_beg = buf.add(wroten_len).as_usize() as *mut DirentFront;
+            let d_name_beg = buf.add(wroten_len + core::mem::size_of::<DirentFront>());
 
             debug!("dirent: {:x}", dirent_beg as usize);
 
             let user_check = UserCheck::new_with_sum(&self.lproc);
-            user_check
-                .checked_write(dirent_beg, dirent_front.clone())
-                .map_err(|_| AxError::InvalidInput)?;
-            user_check
-                .checked_write_cstr(d_name_beg, vfs_entry.d_name())
-                .map_err(|_| AxError::InvalidInput)?;
+            user_check.checked_write(dirent_beg, dirent_front.clone())?;
+            user_check.checked_write_cstr(d_name_beg.as_usize() as *mut u8, &name)?;
 
             wroten_len += this_entry_len;
         }
@@ -445,9 +455,9 @@ impl<'a> Syscall<'a> {
         Ok(wroten_len)
     }
 
-    pub fn sys_unlinkat(&mut self) -> SyscallResult {
+    pub async fn sys_unlinkat(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (dir_fd, path_name, flags) = (args[0], args[1] as *const u8, args[2]);
+        let (dir_fd, path_name, flags) = (args[0], args[1], args[2]);
 
         info!(
             "Syscall: unlinkat (dir_fd: {:?}, path_name: {:?}, flags: {:?})",
@@ -457,50 +467,49 @@ impl<'a> Syscall<'a> {
         let need_to_be_dir = (flags & AT_REMOVEDIR) != 0;
 
         let user_check = UserCheck::new_with_sum(&self.lproc);
-        let path_name =
-            user_check.checked_read_cstr(path_name).map_err(|_| AxError::InvalidInput)?;
+        let path_name = user_check.checked_read_cstr(path_name as *const u8)?;
 
         debug!("unlinkat: path_name: {:?}", path_name);
 
-        let path = Path::from_string(path_name).map_err(|_| AxError::InvalidInput)?;
+        let path = Path::from_string(path_name)?;
 
         let dir;
         let file_name;
-        if path.is_absolute {
+        if path.is_absolute() {
             let dir_path = path.remove_tail();
-            dir = fs::root::get_root_dir().lookup(&dir_path.to_string())?;
+            dir = fs::root::get_root_dir().resolve(&dir_path).await?;
             file_name = path.last();
         } else {
             let fd_dir = if dir_fd == AT_FDCWD {
                 let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone());
-                fs::root::get_root_dir().lookup(&cwd.to_string())?
+                fs::root::get_root_dir().resolve(&cwd).await?
             } else {
                 self.lproc
                     .with_fdtable(|f| f.get(dir_fd))
-                    .ok_or(AxError::InvalidInput)?
+                    .ok_or(SysError::EBADF)?
                     .file
                     .clone()
             };
 
             let rel_dir_path = path.remove_tail();
-            dir = fd_dir.lookup(&rel_dir_path.to_string())?;
+            dir = fd_dir.resolve(&rel_dir_path).await?;
             file_name = path.last();
         }
 
-        let file_type = dir.clone().lookup(file_name)?.stat()?.file_type();
-        if need_to_be_dir && file_type != VfsNodeType::Dir {
-            return Err(AxError::NotADirectory);
+        let file_type = dir.clone().lookup(file_name).await?.attr().await?.kind;
+        if need_to_be_dir && file_type != VfsFileKind::Directory {
+            return Err(SysError::ENOTDIR);
         }
-        if !need_to_be_dir && file_type == VfsNodeType::Dir {
-            return Err(AxError::IsADirectory);
+        if !need_to_be_dir && file_type == VfsFileKind::Directory {
+            return Err(SysError::EISDIR);
         }
 
-        // TODO: 延迟删除：这个操作会直接让底层 FS 删除文件，但是如果有其他进程正在使用这个文件，应该延迟删除
-        // 已知 fat32 fs 要求被删除的文件夹是空的，不然会返回错误，可能该行为需要被明确到 VFS 层
-        dir.remove(&file_name).map(|_| 0)
+        // TODO: 延迟删除: 这个操作会直接让底层 FS 删除文件, 但是如果有其他进程正在使用这个文件, 应该延迟删除
+        // 已知 fat32 fs 要求被删除的文件夹是空的, 不然会返回错误, 可能该行为需要被明确到 VFS 层
+        dir.remove(&file_name).await.map(|_| 0)
     }
 
-    pub fn sys_mount(&mut self) -> SyscallResult {
+    pub async fn sys_mount(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
         let (device, mount_point, _fs_type, _flags, _data): (
             UserReadPtr<u8>,
@@ -517,83 +526,44 @@ impl<'a> Syscall<'a> {
         );
 
         let user_check = UserCheck::new_with_sum(&self.lproc);
-        let device = user_check
-            .checked_read_cstr(device.raw_ptr())
-            .map_err(|_| AxError::InvalidInput)?;
-        let mount_point = user_check
-            .checked_read_cstr(mount_point.raw_ptr())
-            .map_err(|_| AxError::InvalidInput)?;
+        let device = user_check.checked_read_cstr(device.raw_ptr())?;
+        let mount_point = user_check.checked_read_cstr(mount_point.raw_ptr())?;
         info!(
             "Syscall: mount (device: {:?}, mount_point: {:?})",
             device, mount_point
         );
+        let device_path = Path::from_string(device)?;
 
         // TODO: deal with relative path?
-        let dir = fs::root::get_root_dir().lookup(&device)?;
+        let _dir = fs::root::get_root_dir().resolve(&device_path).await?;
         let cwd = self.lproc.with_mut_fsinfo(|f| f.cwd.clone());
-        let mut mount_point = Path::from_string(mount_point).map_err(|_| AxError::InvalidInput)?;
+        let mut mount_point = Path::from_string(mount_point)?;
         if !mount_point.is_root() {
             // Canonicalize path
             let tmp = cwd.to_string() + "/" + &mount_point.to_string();
-            mount_point = Path::from_string(tmp).map_err(|_| AxError::InvalidInput)?;
+            mount_point = Path::from_string(tmp)?;
         }
-        unsafe {
-            Arc::get_mut_unchecked(&mut fs::root::get_root_dir())
-                .mount(mount_point.to_string(), Arc::new(VfsWrapper::new(dir)))?;
-        }
+
+        let path = mount_point.remove_tail();
+        let name = mount_point.last();
+        fs::root::get_root_dir().resolve(&path).await?.attach(name, VfsFileRef::new(ZeroDev));
         Ok(0)
     }
 
-    pub fn sys_umount(&mut self) -> SyscallResult {
+    pub async fn sys_umount(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
         let (mount_point, _flags) = (UserReadPtr::from_usize(args[0]), args[1] as u32);
 
         let user_check = UserCheck::new_with_sum(&self.lproc);
-        let mount_point = user_check
-            .checked_read_cstr(mount_point.raw_ptr())
-            .map_err(|_| AxError::InvalidInput)?;
+        let mount_point = user_check.checked_read_cstr(mount_point.raw_ptr())?;
         info!("Syscall: umount (mount_point: {:?})", mount_point);
 
         let cwd = self.lproc.with_mut_fsinfo(|f| f.cwd.clone());
         let mount_point = cwd.to_string() + "/" + &mount_point;
         // Canonicalize path
-        let mount_point = Path::from_string(mount_point).map_err(|_| AxError::InvalidInput)?;
-        unsafe {
-            Arc::get_mut_unchecked(&mut fs::root::get_root_dir()).umount(&mount_point.to_string());
-        }
+        let mount_point = Path::from_string(mount_point)?;
+        let (dir_path, file_name) = mount_point.split_dir_file();
+        fs::root::get_root_dir().resolve(&dir_path).await?.detach(&file_name).await?;
         Ok(0)
-    }
-}
-
-// 下面是用来实现 getdents 的基建，可能需要修改 VFS 的接口
-struct VfsDirEntryIter {
-    dir: Arc<dyn VfsNode>,
-    vfs_ent_cnt: usize,
-}
-
-impl Iterator for VfsDirEntryIter {
-    type Item = VfsDirEntry;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        #[allow(invalid_value)]
-        let mut vfs_entries: [VfsDirEntry; 1] =
-            unsafe { core::mem::MaybeUninit::uninit().assume_init() };
-
-        let read_cnt = self.dir.read_dir(self.vfs_ent_cnt, &mut vfs_entries).unwrap();
-        if read_cnt == 0 {
-            return None;
-        }
-
-        self.vfs_ent_cnt += 1;
-        Some(vfs_entries[0].clone())
-    }
-}
-
-impl VfsDirEntryIter {
-    fn new(dir: Arc<dyn VfsNode>) -> Self {
-        Self {
-            dir,
-            vfs_ent_cnt: 0,
-        }
     }
 }

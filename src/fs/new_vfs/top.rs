@@ -1,8 +1,7 @@
 use alloc::{sync::Arc, string::String, vec::Vec};
-use super::{VfsFileAttr, VfsFileKind};
-use crate::{tools::errors::ASysResult, memory::address::PhysAddr4K};
-
-pub type VfsFileRef = Arc<dyn VfsFile>;
+use super::{VfsFileAttr, VfsFileKind, path::Path};
+use crate::{tools::errors::{ASysResult, SysResult}, memory::address::PhysAddr4K};
+use core::ops::{Deref, DerefMut};
 
 pub trait VfsFS {
     fn root(&self) -> VfsFileRef;
@@ -43,6 +42,36 @@ pub trait VfsFile : Send + Sync {
     /// 尝试将一个可能并不属于当前文件系统的文件 "贴" 到当前文件夹中.
     /// 可用于实现 mount
     fn attach<'a>(&'a self, name: &'a str, file: VfsFileRef) -> ASysResult;
+}
+
+#[derive(Clone)]
+pub struct VfsFileRef(Arc<dyn VfsFile>);
+
+impl Deref for VfsFileRef {
+    type Target = dyn VfsFile;
+    fn deref(&self) -> &Self::Target {
+        &*self.0
+    }
+}
+
+impl DerefMut for VfsFileRef {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        Arc::get_mut(&mut self.0).expect("VfsFileRef is not unique")
+    }
+}
+
+impl VfsFileRef {
+    pub fn new<T: VfsFile + 'static>(file: T) -> Self {
+        Self(Arc::new(file))
+    }
+
+    pub async fn resolve(&self, path: &Path) -> SysResult<Self> {
+        let mut cur = self.clone();
+        for name in path.iter() {
+            cur = cur.lookup(name).await?;
+        }
+        Ok(cur)  
+    }
 }
 
 #[macro_export]

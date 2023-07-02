@@ -9,15 +9,11 @@ use alloc::{boxed::Box, sync::Arc};
 use ringbuffer::{AllocRingBuffer, RingBuffer, RingBufferRead, RingBufferWrite};
 
 use crate::{
-    axerrno::AxError, consts, executor::util_futures::yield_now, here, impl_vfs_non_dir_default,
-    sync::SpinNoIrqLock,
+    consts, executor::util_futures::yield_now, here,
+    sync::SpinNoIrqLock, impl_vfs_default_non_dir, tools::errors::{ASysResult, dyn_future, SysError},
 };
+use super::new_vfs::{top::VfsFile, VfsFileAttr, DeviceIDCollection};
 
-use super::vfs::{
-    filesystem::VfsNode,
-    node::{VfsNodeAttr, VfsNodePermission, VfsNodeType},
-    AVfsResult, VfsResult,
-};
 
 /// 管道本体，每次创建两份，一个是读端，一个是写端
 pub struct Pipe {
@@ -55,14 +51,14 @@ impl Pipe {
     }
 }
 
-impl VfsNode for Pipe {
-    impl_vfs_non_dir_default! {}
+impl VfsFile for Pipe {
+    impl_vfs_default_non_dir!(Pipe);
 
-    fn write_at<'a>(&'a self, _offset: u64, buf: &'a [u8]) -> AVfsResult<usize> {
+    fn write_at<'a>(&'a self, _offset: usize, buf: &'a [u8]) -> ASysResult<usize> {
         Box::pin(async move {
             // Check if the pipe is writable
             if self.is_read {
-                return Err(AxError::Unsupported);
+                return Err(SysError::EPERM);
             }
             // Check if the pipe is hang up
             if self.is_hang_up() {
@@ -91,18 +87,11 @@ impl VfsNode for Pipe {
         })
     }
 
-    fn fsync(&self) -> VfsResult {
-        crate::ax_err!(Unsupported)
-    }
-
-    fn truncate(&self, _size: u64) -> VfsResult {
-        crate::ax_err!(Unsupported)
-    }
-    fn read_at<'a>(&'a self, _offset: u64, buf: &'a mut [u8]) -> AVfsResult<usize> {
+    fn read_at<'a>(&'a self, _offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
         Box::pin(async move {
             // Check if the pipe is readable
             if !self.is_read {
-                return Err(AxError::Unsupported);
+                return Err(SysError::EPERM);
             }
             // Check if the pipe is hang up
             if self.is_hang_up() {
@@ -128,13 +117,24 @@ impl VfsNode for Pipe {
             Ok(buf_len)
         })
     }
+
+    fn get_page(&self, _offset: usize, _kind: super::new_vfs::top::MmapKind) -> ASysResult<crate::memory::address::PhysAddr4K> {
+        unimplemented!("Should never get page for a pipe")
+    }
+
     /// 文件属性
-    fn stat(&self) -> VfsResult<VfsNodeAttr> {
-        Ok(VfsNodeAttr::new(
-            VfsNodePermission::all(),
-            VfsNodeType::CharDevice,
-            0,
-            0,
-        ))
+    fn attr(&self) -> ASysResult<VfsFileAttr> {
+        dyn_future(async {
+            Ok(VfsFileAttr {
+                kind: super::new_vfs::VfsFileKind::Pipe,
+                device_id: DeviceIDCollection::PIPE_FS_ID,
+                self_device_id: 0,
+                byte_size: 0,
+                block_count: 0,
+                access_time: 0,
+                modify_time: 0,
+                create_time: 0,
+            })
+        })
     }
 }

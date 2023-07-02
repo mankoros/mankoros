@@ -1,9 +1,6 @@
-use crate::{sync::{SleepLock, SpinNoIrqLock, SpinNoIrqLockGuard, SleepLockGuard, SleepLockFuture}, here, tools::errors::{SysResult, dyn_future, SysError}, memory::frame::alloc_frame};
-use super::{underlying::{ConcreteFile, DEntryRef}, VfsFileAttr, top::{VfsFile, VfsFileRef}, VfsFileKind};
-use core::{sync::atomic::{AtomicBool, Ordering}, ops::{Deref, DerefMut}, mem::MaybeUninit, future::Future};
-use alloc::vec::Vec;
-use crate::alloc::string::ToString;
-use alloc::sync::Arc;
+use crate::{sync::{SleepLock, SpinNoIrqLock, SleepLockFuture}, here};
+use super::{underlying::{ConcreteFile, DEntryRef}, VfsFileAttr, VfsFileKind};
+use core::{sync::atomic::{AtomicBool, Ordering}};
 
 pub struct SyncAttrCacheFile<F: ConcreteFile> {
     file: SleepLock<F>,
@@ -13,12 +10,16 @@ pub struct SyncAttrCacheFile<F: ConcreteFile> {
 }
 
 impl<F: ConcreteFile> SyncAttrCacheFile<F> {
-    pub async fn new(dentry_ref: &F::DEntryRefT) -> SysResult<Self> {
-        Ok(Self {
-            file: SleepLock::new(dentry_ref.file()),
-            attr: SpinNoIrqLock::new(dentry_ref.attr()),
+    pub fn new_direct(file: F, attr: VfsFileAttr) -> Self {
+        Self {
+            file: SleepLock::new(file),
+            attr: SpinNoIrqLock::new(attr),
             attr_dirty: AtomicBool::new(false),
-        })
+        }
+    }
+
+    pub fn new(dentry_ref: &F::DEntryRefT) -> Self {
+        Self::new_direct(dentry_ref.file(), dentry_ref.attr())
     }
 
     pub fn kind(&self) -> VfsFileKind {

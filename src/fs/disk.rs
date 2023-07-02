@@ -4,22 +4,32 @@ use core::fmt::Debug;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 
-use super::vfs::filesystem::VfsNode;
-use super::vfs::node::VfsNodeAttr;
-use super::vfs::node::VfsNodePermission;
-use super::vfs::node::VfsNodeType;
-use super::vfs::AVfsResult;
-use super::vfs::VfsResult;
 /// Disk related
 ///
 /// Copyright (C) 2023 by ArceOS
 /// Copyright (C) 2023 by MankorOS
 ///
 /// Adapted from ArceOS
-use crate::axerrno::AxError;
-use crate::drivers::BlockDevice;
-use crate::drivers::DevResult;
-use crate::impl_vfs_non_dir_default;
+use super::BlockDevice;
+
+use crate::driver::BlockDriverOps;
+use crate::driver::DevResult;
+
+
+use crate::tools::errors::SysResult;
+use crate::tools::errors::ASysResult;
+use super::new_vfs::VfsFileAttr;
+use super::new_vfs::DeviceIDCollection;
+use crate::tools::errors::dyn_future;
+use crate::tools::errors::SysError;
+use super::new_vfs::underlying::ConcreteFile;
+use super::new_vfs::underlying::DEntryRef;
+
+
+
+use super::new_vfs::top::VfsFileRef;
+use super::new_vfs::page_cache::SyncPageCacheFile;
+use super::new_vfs::sync_attr_cache::SyncAttrCacheFile;
 
 pub const BLOCK_SIZE: usize = 512;
 
@@ -53,6 +63,23 @@ impl Disk {
             offset: Cell::new(0),
             dev: dev,
         }
+    }
+
+    pub fn to_vfs_file(self) -> VfsFileRef {
+        let block_count = self.dev.num_blocks() as usize;
+        let byte_size = block_count * self.dev.block_size();
+        let attr = VfsFileAttr {
+            kind: super::new_vfs::VfsFileKind::BlockDevice,
+            device_id: 0, // TODO: Device id
+            self_device_id: 0,
+            byte_size,
+            block_count,
+            access_time: 0,
+            modify_time: 0,
+            create_time: 0,
+        };
+        let file = SyncPageCacheFile::new(SyncAttrCacheFile::new_direct(self, attr));
+        VfsFileRef::new(file)
     }
 
     /// Get the size of the disk.
@@ -135,11 +162,41 @@ impl Disk {
     }
 }
 
-/// A disk can be a dev file
-impl VfsNode for Disk {
-    impl_vfs_non_dir_default! {}
+impl Disk {
+    fn sync_read_at(&self, _offset: u64, buf: &mut [u8]) -> SysResult<usize> {
+        // Offset is ignored
 
-    fn sync_write_at(&self, offset: u64, mut buf: &[u8]) -> VfsResult<usize> {
+        if buf.len() == 0 {
+            return Ok(0);
+        }
+        // TODO: implement read
+        Ok(1)
+    }
+    fn read_at<'a>(&'a self, offset: u64, buf: &'a mut [u8]) -> ASysResult<usize> {
+        Box::pin(async move { self.sync_read_at(offset, buf) })
+    }
+
+    fn write_at<'a>(&'a self, offset: u64, buf: &'a [u8]) -> ASysResult<usize> {
+        Box::pin(async move { self.sync_write_at(offset, buf) })
+    }
+    /// 文件属性
+    fn stat(&self) -> SysResult<VfsFileAttr> {
+        let block_count = self.dev.num_blocks() as usize;
+        let byte_size = self.dev.block_size() * block_count;
+
+        Ok(VfsFileAttr {
+            kind: super::new_vfs::VfsFileKind::CharDevice,
+            device_id: DeviceIDCollection::DEV_FS_ID,
+            self_device_id: 0, // TODO: 让每一个 BlockDevice 有一个 id
+            byte_size,
+            block_count,
+            access_time: 0,
+            modify_time: 0,
+            create_time: 0, // TODO: create time
+        })
+    }
+
+    fn sync_write_at(&self, offset: u64, mut buf: &[u8]) -> SysResult<usize> {
         let mut write_len = 0;
         self.set_position(offset);
         while !buf.is_empty() {
@@ -149,43 +206,58 @@ impl VfsNode for Disk {
                     buf = &buf[n..];
                     write_len += n;
                 }
-                Err(_) => return Err(AxError::Io),
+                Err(_) => return Err(SysError::EIO),
             }
         }
         Ok(write_len)
     }
+}
 
-    fn fsync(&self) -> VfsResult {
-        // No cache is used here
-        Ok(())
+#[derive(Clone)]
+pub struct FakeDEntry;
+impl DEntryRef for FakeDEntry {
+    type FileT = Disk;
+    fn name(&self) -> alloc::string::String {
+        panic!("Should never use DirEntry for Disk")
+    }
+    fn attr(&self) -> VfsFileAttr {
+        panic!("Should never use DirEntry for Disk")
+    }
+    fn file(&self) -> Self::FileT {
+        panic!("Should never use DirEntry for Disk")
+    }
+}
+
+/// A disk can be a dev file
+impl ConcreteFile for Disk {
+    type DEntryRefT = FakeDEntry;
+
+    // TODO: async dir read/write
+    fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
+        dyn_future(async move {
+            self.sync_read_at(offset as u64, buf)
+        })
     }
 
-    fn truncate(&self, _size: u64) -> VfsResult {
-        crate::ax_err!(Unsupported)
-    }
-    fn sync_read_at(&self, _offset: u64, buf: &mut [u8]) -> VfsResult<usize> {
-        // Offset is ignored
-
-        if buf.len() == 0 {
-            return Ok(0);
-        }
-        // TODO: implement read
-        Ok(1)
-    }
-    fn read_at<'b>(&'b self, offset: u64, buf: &'b mut [u8]) -> AVfsResult<usize> {
-        Box::pin(async move { self.sync_read_at(offset, buf) })
+    fn write_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> ASysResult<usize> {
+        dyn_future(async move {
+            self.sync_write_at(offset as u64, buf)
+        })
     }
 
-    fn write_at<'b>(&'b self, offset: u64, buf: &'b [u8]) -> AVfsResult<usize> {
-        Box::pin(async move { self.sync_write_at(offset, buf) })
+    fn lookup_batch(&self, _skip_n: usize, _name: Option<&str>) -> ASysResult<(bool, alloc::vec::Vec<Self::DEntryRefT>)> {
+        unimplemented!("Should never use dir-op for Disk")
     }
-    /// 文件属性
-    fn stat(&self) -> VfsResult<VfsNodeAttr> {
-        Ok(VfsNodeAttr::new(
-            VfsNodePermission::all(),
-            VfsNodeType::CharDevice,
-            0,
-            0,
-        ))
+    fn set_attr(&self, _dentry_ref: Self::DEntryRefT, _attr: VfsFileAttr) -> ASysResult {
+        unimplemented!("Should never use dir-op for Disk")
+    }
+    fn create(&self, _name: &str, _kind: super::new_vfs::VfsFileKind) -> ASysResult<Self::DEntryRefT> {
+        unimplemented!("Should never use dir-op for Disk")
+    }
+    fn remove(&self, _dentry_ref: Self::DEntryRefT) -> ASysResult {
+        unimplemented!("Should never use dir-op for Disk")
+    }
+    fn detach(&self, _dentry_ref: Self::DEntryRefT) -> ASysResult<Self> {
+        unimplemented!("Should never use dir-op for Disk")
     }
 }

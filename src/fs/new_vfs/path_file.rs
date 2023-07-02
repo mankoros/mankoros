@@ -1,6 +1,6 @@
 use super::{top::{VfsFile, VfsFileRef}, path::Path};
 use alloc::{sync::{Weak, Arc}, string::ToString};
-use crate::{tools::errors::{dyn_future, SysResult}, impl_vfs_forward_dir, impl_vfs_forward_file};
+use crate::{tools::errors::{SysResult}, impl_vfs_forward_dir, impl_vfs_forward_file};
 
 pub struct VfsPathFile(Arc<VfsPathFileInner>);
 

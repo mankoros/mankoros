@@ -1,12 +1,11 @@
-use alloc::sync::Arc;
+
 use bitflags::bitflags;
 
 
 use super::{range_map::RangeMap};
-use crate::memory::address::VirtAddr;
+use crate::memory::address::{VirtAddr};
 
 use crate::{
-    fs::vfs::filesystem::VfsNode,
     memory::{
         address::{VirtPageNum},
         frame::{alloc_frame},
@@ -25,6 +24,9 @@ use log::{debug, trace};
 use core::ops::Range;
 use crate::memory::frame::dealloc_frame;
 use crate::consts::PAGE_SIZE;
+use crate::fs::new_vfs::top::{VfsFileRef, MmapKind};
+use crate::executor::block_on;
+use crate::tools::errors::{SysResult, SysError};
 
 pub type VirtAddrRange = Range<VirtAddr>;
 
@@ -142,12 +144,12 @@ enum UserAreaType {
     MmapAnonymous,
     /// 私有映射区域
     MmapPrivate {
-        file: Arc<dyn VfsNode>,
+        file: VfsFileRef,
         offset: usize,
     },
     // TODO: 共享映射区域
     // MmapShared {
-    //     file: Arc<dyn VfsNode>,
+    //     file: VfsFileRef,
     //     offset: usize,
     // },
 }
@@ -156,10 +158,10 @@ impl Debug for UserAreaType {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             UserAreaType::MmapAnonymous => write!(f, "MmapAnonymous"),
-            UserAreaType::MmapPrivate { file, offset } => write!(
+            UserAreaType::MmapPrivate { file: _, offset } => write!(
                 f,
-                "MmapPrivate {{ file ptr: {:?}, offset: {} }}",
-                file.as_ref() as *const dyn VfsNode, offset
+                "MmapPrivate {{ offset: {} }}",
+                offset
             ),
         }
     }
@@ -192,7 +194,7 @@ impl UserArea {
 
     pub fn new_private(
         perm: UserAreaPerm,
-        file: Arc<dyn VfsNode>,
+        file: VfsFileRef,
         offset: usize,
     ) -> Self {
         Self {
@@ -220,8 +222,8 @@ impl UserArea {
         }
 
         // anyway we need a new frame
-        let frame = alloc_frame()
-            .ok_or(PageFaultErr::KernelOOM)?;
+        let mut frame = 0.into();
+        debug_assert!(frame == 0); // depress the warning of unused value
     
         // perpare the data for the new frame
         let pte = page_table.get_pte_copied_from_vpn(access_vpn);
@@ -242,6 +244,7 @@ impl UserArea {
             // copy the data
             // assert we are in process's page table now
             debug_assert!(page_table.root_paddr().bits() == get_curr_page_table_addr());
+            frame = alloc_frame().ok_or(PageFaultErr::KernelOOM)?;
             unsafe {
                 frame.as_mut_page_slice()
                     .copy_from_slice(old_frame.as_page_slice());
@@ -250,18 +253,24 @@ impl UserArea {
             // a lazy alloc or lazy load (demand paging)
             match &self.kind {
                 // If lazy alloc, do nothing (or maybe memset it to zero?)
-                UserAreaType::MmapAnonymous => {}
+                UserAreaType::MmapAnonymous => {
+                    frame = alloc_frame().ok_or(PageFaultErr::KernelOOM)?;
+                }
                 // If lazy load, read from fs
                 UserAreaType::MmapPrivate { file, offset } => {
                     let access_vaddr = access_vpn.addr();
                     let real_offset = offset + (access_vaddr.into() - range_begin);
-                    let slice = unsafe { frame.as_mut_page_slice() };
-                    let _read_length = file.sync_read_at(real_offset as u64, slice).expect("read file failed");
+                    let borrow_file = file.clone();
+                    // TODO-PERF: block on read_at
+                    frame = block_on(async move {
+                        borrow_file.get_page(real_offset, MmapKind::Private).await
+                    }).expect("read file failed");
                     // Read length may be less than PAGE_SIZE, due to file mmap
                 }
             }
         }
 
+        debug_assert!(frame != 0);
         // remap the frame
         page_table.remap_page(access_vpn.addr(), frame, self.perm().into());
         Ok(())
@@ -366,7 +375,7 @@ impl UserAreaManager {
         end
     }
 
-    pub fn reset_heap_break(&mut self, new_brk: VirtAddr) -> Result<(), ()> {
+    pub fn reset_heap_break(&mut self, new_brk: VirtAddr) -> SysResult<()> {
         // TODO-PERF: 缓存 heap 的位置，减少一次查询
         let (Range { start, end }, _) = self.map.get(Self::HEAP_BEG)
             .expect("brk without heap");
@@ -374,10 +383,11 @@ impl UserAreaManager {
         if end < new_brk {
             // when larger, create a new area [heap_end, new_brk), then merge it with current heap
             self.map.extend_back(start, new_brk)
+                .map_err(|_| SysError::ENOMEM)
         } else if new_brk < end {
             // when smaller, split the area into [heap_start, new_brk), [new_brk, heap_end), then remove the second one
             self.map.reduce_back(start, new_brk)
-                .map(|_| ())
+                .map(|_| ()).map_err(|_| SysError::ENOMEM)
             // TODO: release page
         } else {
             // when equal, do nothing
@@ -385,14 +395,14 @@ impl UserAreaManager {
         }
     }
 
-    fn find_free_mmap_area(&self, size: usize) -> Result<(VirtAddr, usize), ()> {
+    fn find_free_mmap_area(&self, size: usize) -> SysResult<(VirtAddr, usize)> {
         self.map
             .find_free_range(Self::MMAP_RANGE, size, |va, n| (va + n).round_up().into())
             .map(|r| (r.start, r.end - r.start))
-            .ok_or(()) 
+            .ok_or(SysError::ENOMEM) 
     }
 
-    pub fn insert_mmap_anonymous(&mut self, size: usize, perm: UserAreaPerm) -> Result<(VirtAddrRange, &UserArea), ()> {
+    pub fn insert_mmap_anonymous(&mut self, size: usize, perm: UserAreaPerm) -> SysResult<(VirtAddrRange, &UserArea)> {
         let (begin, size) = self.find_free_mmap_area(size)?;
         self.insert_mmap_anonymous_at(begin, size, perm)
     }
@@ -401,9 +411,9 @@ impl UserAreaManager {
         &mut self, 
         size: usize, 
         perm: UserAreaPerm,
-        file: Arc<dyn VfsNode>,
+        file: VfsFileRef,
         offset: usize,
-    ) -> Result<(VirtAddrRange, &UserArea), ()> {
+    ) -> SysResult<(VirtAddrRange, &UserArea)> {
         let (begin, size) = self.find_free_mmap_area(size)?;
         self.insert_mmap_private_at(begin, size, perm, file, offset)
     }
@@ -413,13 +423,14 @@ impl UserAreaManager {
         begin_vaddr: VirtAddr, 
         size: usize, 
         perm: UserAreaPerm
-    ) -> Result<(VirtAddrRange, &UserArea), ()> {
+    ) -> SysResult<(VirtAddrRange, &UserArea)> {
         let range = VirtAddrRange {
             start: begin_vaddr,
             end: begin_vaddr + size,
         };
         let area = UserArea::new_anonymous(perm);
-        self.map.try_insert(range.clone(), area).map(|v| (range, &*v)).map_err(|_| ())
+        self.map.try_insert(range.clone(), area)
+            .map(|v| (range, &*v)).map_err(|_| SysError::ENOMEM)
     }
 
     pub fn insert_mmap_private_at(
@@ -427,15 +438,16 @@ impl UserAreaManager {
         begin_vaddr: VirtAddr, 
         size: usize, 
         perm: UserAreaPerm,
-        file: Arc<dyn VfsNode>,
+        file: VfsFileRef,
         offset: usize,
-    ) -> Result<(VirtAddrRange, &UserArea), ()> {
+    ) -> SysResult<(VirtAddrRange, &UserArea)> {
         let range = VirtAddrRange {
             start: begin_vaddr,
             end: begin_vaddr + size,
         };
         let area = UserArea::new_private(perm, file, offset);
-        self.map.try_insert(range.clone(), area).map(|v| (range, &*v)).map_err(|_| ())
+        self.map.try_insert(range.clone(), area)
+            .map(|v| (range, &*v)).map_err(|_| SysError::ENOMEM)
     }
 
     pub fn page_fault(&mut self, page_table: &mut PageTable, access_vpn: VirtPageNum, access_type: PageFaultAccessType) -> Result<(), PageFaultErr> {

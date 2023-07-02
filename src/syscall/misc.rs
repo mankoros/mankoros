@@ -1,15 +1,13 @@
 //! Misc syscall
 //!
 
-use log::{info, warn};
+use log::{info};
 
 use crate::{
     arch::within_sum,
-    axerrno::AxError,
     executor::{hart_local::get_curr_lproc, util_futures::yield_now},
     here,
     memory::{UserReadPtr, UserWritePtr},
-    process::lproc,
     timer::{get_time_f64, TimeSpec, TimeVal, Tms},
 };
 
@@ -97,8 +95,7 @@ impl<'a> Syscall<'a> {
                 return Ok(0);
             }
             None => {
-                warn!("Current hart have no lporc");
-                return Err(AxError::NotFound);
+                panic!("Current hart have no lporc");
             }
         }
     }

@@ -1,7 +1,7 @@
 use super::{underlying::ConcreteFile, top::{VfsFileRef, VfsFile}, sync_attr_cache::SyncAttrCacheFile};
-use crate::{sync::{SleepLock, SpinNoIrqLock}, impl_vfs_default_non_file, tools::errors::{ASysResult, dyn_future, SysResult, SysError}, fs::{new_vfs::{VfsFileKind, page_cache::SyncPageCacheFile}, vfs}, here};
-use alloc::{collections::BTreeMap, string::String, vec::Vec, sync::Arc};
-use core::{sync::atomic::{AtomicBool, Ordering}, future::Future, pin::pin, cell::{SyncUnsafeCell, UnsafeCell}};
+use crate::{sync::{SpinNoIrqLock}, impl_vfs_default_non_file, tools::errors::{ASysResult, dyn_future, SysResult, SysError}, fs::{new_vfs::{VfsFileKind, page_cache::SyncPageCacheFile}}, here};
+use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use core::{sync::atomic::{AtomicBool, Ordering}, cell::{SyncUnsafeCell}};
 use crate::fs::new_vfs::underlying::DEntryRef;
 use crate::alloc::string::ToString;
 
@@ -32,7 +32,7 @@ impl<T: Sized> AsyncUnsafeCell<T> {
     }
 }
 
-type EntriesMap<F: ConcreteFile> = BTreeMap<String, AsyncUnsafeCell<DEntryCache<F>>>;
+type EntriesMap<F> = BTreeMap<String, AsyncUnsafeCell<DEntryCache<F>>>;
 
 pub struct DEntryCacheDir<F: ConcreteFile> {
     all_cached: AtomicBool,
@@ -41,12 +41,12 @@ pub struct DEntryCacheDir<F: ConcreteFile> {
 }
 
 async fn pack_entry<F: ConcreteFile>(dentry_ref: &F::DEntryRefT) -> SysResult<VfsFileRef> {
-    let sync_file = SyncAttrCacheFile::<F>::new(dentry_ref).await?;
+    let sync_file = SyncAttrCacheFile::<F>::new(dentry_ref);
     let vfs_file: VfsFileRef = 
         if sync_file.kind() == VfsFileKind::Directory {
-            Arc::new(DEntryCacheDir::new(sync_file))
+            VfsFileRef::new(DEntryCacheDir::new(sync_file))
         } else {
-            Arc::new(SyncPageCacheFile::new(sync_file))
+            VfsFileRef::new(SyncPageCacheFile::new(sync_file))
         };
     Ok(vfs_file)
 }
@@ -94,6 +94,10 @@ impl<F: ConcreteFile> DEntryCache<F> {
 
 
 impl<F: ConcreteFile> DEntryCacheDir<F> {
+    pub fn new_root(dir: SyncAttrCacheFile<F>) -> Self {
+        Self::new(dir)
+    }
+
     fn new(dir: SyncAttrCacheFile<F>) -> Self {
         Self {
             all_cached: AtomicBool::new(false),

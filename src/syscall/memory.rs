@@ -5,10 +5,9 @@ use bitflags::bitflags;
 use log::info;
 
 use crate::{
-    axerrno::AxError,
     consts::PAGE_MASK,
     memory::{address::VirtAddr, pagetable::pte::PTEFlags},
-    process::user_space::user_area::UserAreaPerm,
+    process::user_space::user_area::UserAreaPerm, tools::errors::SysError,
 };
 
 use super::{Syscall, SyscallResult};
@@ -92,7 +91,6 @@ impl<'a> Syscall<'a> {
                 m.areas_mut()
                     .reset_heap_break(VirtAddr::from(brk))
                     .map(|_| 0)
-                    .map_err(|_| AxError::NoMemory)
             })
         }
     }
@@ -115,7 +113,7 @@ impl<'a> Syscall<'a> {
 
         // start == 0 表明需要 OS 为其找一段内存，而 MAP_FIXED 表明必须 mmap 在固定位置。两者是冲突的
         if start == 0 && flags.contains(MMAPFlags::MAP_FIXED) {
-            return Err(AxError::InvalidInput);
+            return Err(SysError::EINVAL);
         }
         // 是否可以放在任意位置
         let _anywhere = start == 0 || !flags.contains(MMAPFlags::MAP_FIXED);
@@ -127,7 +125,6 @@ impl<'a> Syscall<'a> {
                     m.areas_mut()
                         .insert_mmap_anonymous(len, prot.into())
                         .map(|(r, _)| r.start.bits())
-                        .map_err(|_| AxError::NoMemory)
                 });
             }
         } else {
@@ -137,19 +134,19 @@ impl<'a> Syscall<'a> {
                 return self.lproc.with_mut_fdtable(|f| {
                     if let Some(fd) = f.get(fd) {
                         // Currently, we don't support shared mappings.
-                        return self.lproc.with_mut_memory(|m| {
+                        self.lproc.with_mut_memory(|m| {
                             m.areas_mut()
                                 .insert_mmap_private(len, prot.into(), fd.file.clone(), offset)
                                 .map(|(r, _)| r.start.bits())
-                                .map_err(|_| AxError::NoMemory)
-                        });
+                        })
+                    } else {
+                        Err(SysError::EBADF)
                     }
-                    Err(AxError::NotFound)
                 });
             }
         }
 
-        Err(AxError::InvalidInput)
+        Err(SysError::EINVAL)
     }
 
     pub fn sys_munmap(&mut self) -> SyscallResult {
@@ -158,7 +155,7 @@ impl<'a> Syscall<'a> {
         info!("Syscall munmap: munmap start={:x} len={:x}", start, len);
 
         if start & PAGE_MASK != 0 {
-            return Err(AxError::InvalidInput);
+            return Err(SysError::EINVAL);
         }
 
         let range = VirtAddr::from(start)..VirtAddr::from(start + len);

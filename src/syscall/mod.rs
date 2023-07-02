@@ -1,9 +1,9 @@
-use crate::executor::util_futures::yield_now;
-use crate::memory::{UserReadPtr, UserWritePtr};
+
+
 use crate::process::lproc::LightProcess;
 
-use crate::timer::{TimeSpec, TimeVal, Tms};
-use crate::{axerrno::AxError, syscall::misc::UtsName, trap::context::UKContext};
+
+use crate::{trap::context::UKContext};
 
 use log::debug;
 
@@ -14,6 +14,7 @@ mod process;
 
 use alloc::sync::Arc;
 pub use process::CloneFlags;
+use crate::tools::errors::SysResult;
 
 pub struct Syscall<'a> {
     cx: &'a mut UKContext,
@@ -36,28 +37,28 @@ impl<'a> Syscall<'a> {
         self.cx.set_user_pc_to_next(4);
 
         let syscall_no = self.cx.syscall_no();
-        let args = self.cx.syscall_args();
+        let _args = self.cx.syscall_args();
         let result: SyscallResult = match syscall_no {
             // File related
             SYSCALL_GETCWD => self.sys_getcwd(),
             SYSCALL_PIPE2 => self.sys_pipe(),
             SYSCALL_DUP => self.sys_dup(),
             SYSCALL_DUP3 => self.sys_dup3(),
-            SYSCALL_OPENAT => self.sys_openat(),
-            SYSCALL_CHDIR => self.sys_chdir(),
+            SYSCALL_OPENAT => self.sys_openat().await,
+            SYSCALL_CHDIR => self.sys_chdir().await,
             SYSCALL_CLOSE => self.sys_close(),
-            SYSCALL_GETDENTS => self.sys_getdents(),
+            SYSCALL_GETDENTS => self.sys_getdents().await,
             SYSCALL_READ => self.sys_read().await,
             SYSCALL_WRITE => self.sys_write().await,
             SYSCALL_LINKAT => todo!(),
-            SYSCALL_UNLINKAT => self.sys_unlinkat(),
-            SYSCALL_MKDIRAT => self.sys_mkdir(),
-            SYSCALL_UMOUNT => self.sys_umount(),
-            SYSCALL_MOUNT => self.sys_mount(),
-            SYSCALL_FSTAT => self.sys_fstat(),
+            SYSCALL_UNLINKAT => self.sys_unlinkat().await,
+            SYSCALL_MKDIRAT => self.sys_mkdir().await,
+            SYSCALL_UMOUNT => self.sys_umount().await,
+            SYSCALL_MOUNT => self.sys_mount().await,
+            SYSCALL_FSTAT => self.sys_fstat().await,
             // Process related
             SYSCALL_CLONE => self.sys_clone(),
-            SYSCALL_EXECVE => self.sys_execve(),
+            SYSCALL_EXECVE => self.sys_execve().await,
             SYSCALL_WAIT => self.sys_wait().await,
             SYSCALL_EXIT => self.sys_exit(),
             SYSCALL_GETPPID => self.sys_getppid(),
@@ -89,7 +90,7 @@ impl<'a> Syscall<'a> {
     }
 }
 
-pub type SyscallResult = Result<usize, AxError>;
+pub type SyscallResult = SysResult<usize>;
 
 // only for debug usage
 pub const SYSCALL_DBG_1: usize = 0;

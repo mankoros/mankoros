@@ -14,7 +14,7 @@ use crate::consts::{device::PHYMEM_START, PAGE_SIZE};
 use crate::sync::SpinNoIrqLock;
 use log::*;
 
-use super::address::{kernel_virt_text_to_phys, PhysAddr, PhysAddr4K};
+use super::address::{kernel_virt_text_to_phys, PhysAddr4K};
 
 // Support 64GiB (?)
 pub type FrameAllocator = bitmap_allocator::BitAlloc16M;

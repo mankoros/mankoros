@@ -4,15 +4,9 @@
 //! Copyright 2022 (C) MaturinOS
 //! Copyright 2023 (C) MankorOS
 
-use crate::{axerrno::AxError, impl_vfs_non_dir_default};
-
-use super::vfs::{
-    filesystem::VfsNode,
-    node::{VfsNodeAttr, VfsNodePermission, VfsNodeType},
-    AVfsResult, VfsResult,
-};
-use alloc::boxed::Box;
 use log::warn;
+use super::new_vfs::{top::VfsFile, VfsFileAttr, DeviceIDCollection};
+use crate::{impl_vfs_default_non_dir, tools::errors::{dyn_future, SysError, ASysResult}};
 
 /// 标准输入流
 pub struct Stdin;
@@ -22,24 +16,16 @@ pub struct Stdout;
 /// TODO: 当stdout卡死的时候照常输出
 pub struct Stderr;
 
-impl VfsNode for Stdin {
-    impl_vfs_non_dir_default! {}
+impl VfsFile for Stdin {
+    impl_vfs_default_non_dir!(Stdin);
 
-    fn write_at(&self, _offset: u64, _buf: &[u8]) -> AVfsResult<usize> {
-        // Stdin is not writable
-        Box::pin(async move { crate::ax_err!(Unsupported) })
+    fn write_at<'a>(&'a self, _offset: usize, _buf: &'a [u8]) -> ASysResult<usize> {
+        dyn_future(async { Err(SysError::EPERM) })
     }
 
-    fn fsync(&self) -> VfsResult {
-        crate::ax_err!(Unsupported)
-    }
-
-    fn truncate(&self, _size: u64) -> VfsResult {
-        crate::ax_err!(Unsupported)
-    }
-    fn read_at<'a>(&'a self, _offset: u64, buf: &'a mut [u8]) -> AVfsResult<usize> {
+    fn read_at<'a>(&'a self, _offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
         // Offset is ignored
-        Box::pin(async move {
+        dyn_future(async move {
             if buf.len() == 0 {
                 return Ok(0);
             }
@@ -47,65 +33,73 @@ impl VfsNode for Stdin {
             Ok(1)
         })
     }
-    /// 文件属性
-    fn stat(&self) -> VfsResult<VfsNodeAttr> {
-        Ok(VfsNodeAttr::new(
-            VfsNodePermission::all(),
-            VfsNodeType::CharDevice,
-            0,
-            0,
-        ))
+
+    fn get_page(&self, _offset: usize, _kind: super::new_vfs::top::MmapKind) -> ASysResult<crate::memory::address::PhysAddr4K> {
+        unimplemented!("Stdin::get_page")
+    }
+
+    fn attr(&self) -> ASysResult<VfsFileAttr> {
+        dyn_future(async { 
+            Ok(VfsFileAttr {
+                kind: super::new_vfs::VfsFileKind::CharDevice,
+                device_id: DeviceIDCollection::DEV_FS_ID,
+                self_device_id: DeviceIDCollection::STDIN_FS_ID,
+                byte_size: 0,
+                block_count: 0,
+                access_time: 0,
+                modify_time: 0,
+                create_time: 0, // TODO: create time
+            })
+        })
     }
 }
 
-impl VfsNode for Stdout {
-    impl_vfs_non_dir_default! {}
+impl VfsFile for Stdout {
+    impl_vfs_default_non_dir!(Stdout);
 
-    fn write_at<'a>(&'a self, _offset: u64, buf: &'a [u8]) -> AVfsResult<usize> {
-        Box::pin(async move {
+    fn write_at<'a>(&'a self, _offset: usize, buf: &'a [u8]) -> ASysResult<usize> {
+        dyn_future(async move {
             if let Ok(data) = core::str::from_utf8(buf) {
-                cfg_if::cfg_if! {
-                    // See https://doc.rust-lang.org/reference/conditional-compilation.html#debug_assertions
-                    if #[cfg(debug_assertions)] {
-                        warn!("User stdout: {}", data);
-                    } else {
-                        crate::print!("{}", data);
-                    }
-                }
+                warn!("User stdout: {}", data);
                 Ok(buf.len())
             } else {
-                Err(AxError::InvalidData)
+                for i in 0..buf.len() {
+                    warn!("User stdout (non-utf8): {} ", buf[i]);
+                }
+                Ok(buf.len())
             }
         })
     }
 
-    fn fsync(&self) -> VfsResult {
-        crate::ax_err!(Unsupported)
+    fn read_at<'a>(&'a self, _offset: usize, _buf: &'a mut [u8]) -> ASysResult<usize> {
+        dyn_future(async move { Err(SysError::EPERM) })
     }
 
-    fn truncate(&self, _size: u64) -> VfsResult {
-        crate::ax_err!(Unsupported)
+    fn get_page(&self, _offset: usize, _kind: super::new_vfs::top::MmapKind) -> ASysResult<crate::memory::address::PhysAddr4K> {
+        unimplemented!("Stdout::get_page")
     }
-    fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> AVfsResult<usize> {
-        // Stdout is not readable
-        Box::pin(async move { crate::ax_err!(Unsupported) })
-    }
-    /// 文件属性
-    fn stat(&self) -> VfsResult<VfsNodeAttr> {
-        Ok(VfsNodeAttr::new(
-            VfsNodePermission::all(),
-            VfsNodeType::CharDevice,
-            0,
-            0,
-        ))
+
+    fn attr(&self) -> ASysResult<VfsFileAttr> {
+        dyn_future(async { 
+            Ok(VfsFileAttr {
+                kind: super::new_vfs::VfsFileKind::CharDevice,
+                device_id: DeviceIDCollection::DEV_FS_ID,
+                self_device_id: DeviceIDCollection::STDOUT_FS_ID,
+                byte_size: 0,
+                block_count: 0,
+                access_time: 0,
+                modify_time: 0,
+                create_time: 0, // TODO: create time
+            })
+        })
     }
 }
 
-impl VfsNode for Stderr {
-    impl_vfs_non_dir_default! {}
+impl VfsFile for Stderr {
+    impl_vfs_default_non_dir!(Stderr);
 
-    fn write_at<'a>(&'a self, _offset: u64, buf: &'a [u8]) -> AVfsResult<usize> {
-        Box::pin(async move {
+    fn write_at<'a>(&'a self, _offset: usize, buf: &'a [u8]) -> ASysResult<usize> {
+        dyn_future(async move {
             if let Ok(data) = core::str::from_utf8(buf) {
                 warn!("User stderr: {}", data);
                 Ok(buf.len())
@@ -118,24 +112,26 @@ impl VfsNode for Stderr {
         })
     }
 
-    fn fsync(&self) -> VfsResult {
-        crate::ax_err!(Unsupported)
+    fn read_at<'a>(&'a self, _offset: usize, _buf: &'a mut [u8]) -> ASysResult<usize> {
+        dyn_future(async move { Err(SysError::EPERM) })
     }
 
-    fn truncate(&self, _size: u64) -> VfsResult {
-        crate::ax_err!(Unsupported)
+    fn get_page(&self, _offset: usize, _kind: super::new_vfs::top::MmapKind) -> ASysResult<crate::memory::address::PhysAddr4K> {
+        unimplemented!("Stderr::get_page")
     }
-    fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> AVfsResult<usize> {
-        // Stderr is not readable
-        Box::pin(async move { crate::ax_err!(Unsupported) })
-    }
-    /// 文件属性
-    fn stat(&self) -> VfsResult<VfsNodeAttr> {
-        Ok(VfsNodeAttr::new(
-            VfsNodePermission::all(),
-            VfsNodeType::CharDevice,
-            0,
-            0,
-        ))
+
+    fn attr(&self) -> ASysResult<VfsFileAttr> {
+        dyn_future(async { 
+            Ok(VfsFileAttr {
+                kind: super::new_vfs::VfsFileKind::CharDevice,
+                device_id: DeviceIDCollection::DEV_FS_ID,
+                self_device_id: DeviceIDCollection::STDERR_FS_ID,
+                byte_size: 0,
+                block_count: 0,
+                access_time: 0,
+                modify_time: 0,
+                create_time: 0, // TODO: create time
+            })
+        })
     }
 }

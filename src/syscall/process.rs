@@ -2,13 +2,11 @@ use alloc::{string::String, vec::Vec};
 use bitflags::bitflags;
 
 use crate::{
-    axerrno::AxError,
     executor::util_futures::yield_now,
-    fs::vfs::{filesystem::VfsNode, path::Path},
     memory::address::VirtAddr,
     process::{self, lproc::ProcessStatus, user_space::user_area::UserAreaPerm},
     signal,
-    tools::user_check::UserCheck,
+    tools::{user_check::UserCheck, errors::{SysError, SysResult}}, fs::new_vfs::path::Path,
 };
 
 use super::super::fs;
@@ -94,7 +92,7 @@ impl<'a> Syscall<'a> {
             let status = ((result_lproc.exit_code() as u32 & 0xff) << 8) | 0x00;
             debug!("wstatus: {:#x}", status);
             let user_check = UserCheck::new_with_sum(&self.lproc);
-            user_check.checked_write(wstatus, status).map_err(|_| AxError::InvalidInput)?;
+            user_check.checked_write(wstatus, status)?;
         }
 
         Ok(result_lproc.id().into())
@@ -106,7 +104,7 @@ impl<'a> Syscall<'a> {
         let (flags, child_stack, parent_tid_ptr, child_tid_ptr, new_thread_local_storage_ptr) =
             (args[0] as u32, args[1], args[2], args[3], args[4]);
 
-        let flags = CloneFlags::from_bits(flags & !0xff).ok_or(AxError::InvalidInput)?;
+        let flags = CloneFlags::from_bits(flags & !0xff).ok_or(SysError::EINVAL)?;
 
         debug!("clone flags: {:#?}", flags);
 
@@ -130,13 +128,13 @@ impl<'a> Syscall<'a> {
             todo!("clear child tid, wait for signal subsystem");
         }
 
-        let checked_write_u32 = |ptr, value| -> Result<(), AxError> {
+        let checked_write_u32 = |ptr, value| -> SysResult<()> {
             let vaddr = VirtAddr::from(ptr);
             let writeable = new_lproc.with_memory(|m| m.has_perm(vaddr, UserAreaPerm::WRITE));
 
             if !writeable {
                 // todo: is that right?
-                return Err(AxError::PermissionDenied);
+                return Err(SysError::EPERM);
             }
             unsafe {
                 let ctptr = &mut *(vaddr.as_mut_ptr() as *mut u32);
@@ -170,22 +168,22 @@ impl<'a> Syscall<'a> {
         Ok(new_proc_tid.into())
     }
 
-    pub fn sys_execve(&mut self) -> SyscallResult {
+    pub async fn sys_execve(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
         let (path, argv, envp) = (
-            args[0] as *const u8,
-            args[1] as *const *const u8,
-            args[2] as *const *const u8,
+            args[0],
+            args[1],
+            args[2],
         );
 
         let user_check = UserCheck::new_with_sum(&self.lproc);
 
-        let path_str = user_check.checked_read_cstr(path).map_err(|_| AxError::InvalidInput)?;
-        let path = Path::from_string(path_str).map_err(|_| AxError::InvalidInput)?;
+        let path_str = user_check.checked_read_cstr(path as *const u8)?;
+        let path = Path::from_string(path_str)?;
         let filename = path.last().clone();
 
-        let mut argv = user_check.checked_read_2d_cstr(argv).map_err(|_| AxError::InvalidInput)?;
-        let mut envp = user_check.checked_read_2d_cstr(envp).map_err(|_| AxError::InvalidInput)?;
+        let mut argv = user_check.checked_read_2d_cstr(argv as *const *const u8)?;
+        let mut envp = user_check.checked_read_2d_cstr(envp as *const *const u8)?;
 
         drop(user_check);
         info!(
@@ -215,11 +213,9 @@ impl<'a> Syscall<'a> {
         let file = if filename.ends_with(".sh") {
             argv.insert(0, String::from("busybox"));
             argv.insert(1, String::from("sh"));
-            fs::root::get_root_dir().lookup("busybox").unwrap()
+            fs::root::get_root_dir().lookup("busybox").await?
         } else {
-            fs::root::get_root_dir()
-                .lookup(&path.to_string())
-                .map_err(|_| AxError::NotFound)?
+            fs::root::get_root_dir().resolve(&path).await?
         };
 
         self.lproc.clone().do_exec(file, argv, envp);

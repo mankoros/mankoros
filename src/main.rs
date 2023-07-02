@@ -24,6 +24,8 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::Write;
 use core::hint;
+
+use core::mem;
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use lazy_static::lazy_static;
@@ -40,7 +42,6 @@ mod syscall;
 mod utils;
 #[macro_use]
 mod xdebug;
-mod axerrno;
 mod device_tree;
 mod executor;
 mod lazy_init;
@@ -58,11 +59,13 @@ use sync::SpinNoIrqLock;
 
 use crate::boot::boot_pagetable_paddr;
 use crate::consts::address_space::K_SEG_PHY_MEM_BEG;
-use crate::fs::vfs::filesystem::VfsNode;
-use crate::fs::vfs::node::VfsDirEntry;
-use crate::memory::address::kernel_virt_text_to_phys;
-use crate::memory::pagetable;
 use crate::utils::SerialWrapper;
+
+use crate::consts::platform;
+use crate::memory::address::{kernel_virt_text_to_phys, PhysAddr4K, VirtAddr4K};
+use crate::memory::{kernel_phys_dev_to_virt, pagetable};
+use crate::executor::block_on;
+
 
 // use trap::ticks;
 
@@ -193,31 +196,6 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
 
     fs::init_filesystems(manager.disks()[0].clone());
 
-    let root_dir = fs::root::get_root_dir();
-
-    let mut test_cases = Vec::new();
-    for _ in 0..64 {
-        test_cases.push(VfsDirEntry::new_empty());
-    }
-
-    let test_cases_amount = root_dir
-        .clone()
-        .lookup("/")
-        .unwrap()
-        .read_dir(0, &mut test_cases[..])
-        .expect("Read root dir failed");
-
-    let test_cases = test_cases[..test_cases_amount].to_vec();
-
-    info!("Total cases: {}", test_cases.len());
-    for case in test_cases.into_iter() {
-        info!("{}", case.d_name());
-    }
-
-    let run_test_case = |path: &'static str| {
-        let test_case = root_dir.clone().lookup(path).expect("Read test case failed");
-        process::spawn_proc_from_file(test_case);
-    };
 
     cfg_if::cfg_if! {
         if #[cfg(debug_assertions)] {
@@ -260,12 +238,19 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
         }
     }
 
+    let root_dir = fs::root::get_root_dir();
     for case_name in cases.into_iter() {
         warn!(
             "============== Running test case: {} ================",
             case_name
         );
-        run_test_case(case_name);
+        let test_case = {
+            let root_dir_for_async = root_dir.clone();
+            block_on(async move {    
+                root_dir_for_async.lookup(case_name).await.expect("Read test case failed")
+            })
+        };
+        process::spawn_proc_from_file(test_case);
         executor::run_until_idle();
     }
 
@@ -285,7 +270,6 @@ pub extern "C" fn alt_rust_main(hart_id: usize) -> ! {
     // Initialize interrupt controller
     // trap::trap::init();
     loop {}
-    unreachable!();
 }
 
 pub static PANIC_COUNT: AtomicUsize = AtomicUsize::new(0);

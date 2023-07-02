@@ -1,5 +1,5 @@
 use super::{underlying::ConcreteFile, top::{VfsFile, MmapKind}, sync_attr_cache::SyncAttrCacheFile};
-use crate::{sync::SleepLock, impl_vfs_default_non_dir, tools::errors::{dyn_future, SysError, ASysResult}, memory::{frame::alloc_frame, address::PhysAddr4K}};
+use crate::{impl_vfs_default_non_dir, tools::errors::{dyn_future, SysError, ASysResult}, memory::{frame::alloc_frame, address::PhysAddr4K}};
 
 pub struct SyncPageCacheFile<F: ConcreteFile> {
     mgr: PageManager,

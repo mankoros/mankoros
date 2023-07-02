@@ -6,7 +6,8 @@ use crate::{
     },
 };
 use alloc::{string::String, vec::Vec};
-use log::{debug, trace};
+use log::trace;
+use super::errors::{SysResult, SysError};
 
 pub struct UserCheck<'a> {
     lproc: &'a LightProcess,
@@ -26,16 +27,16 @@ impl<'a> UserCheck<'a> {
         self.lproc.with_memory(|m| m.has_perm(vaddr, perm))
     }
 
-    pub fn checked_read<T>(&self, ptr: *const T) -> Result<T, ()> {
+    pub fn checked_read<T>(&self, ptr: *const T) -> SysResult<T> {
         let vaddr = VirtAddr::from(ptr as usize);
         if self.has_perm(vaddr, UserAreaPerm::READ) {
             unsafe { Ok(ptr.read()) }
         } else {
-            Err(())
+            Err(SysError::EFAULT)
         }
     }
 
-    pub fn checked_write<T>(&self, ptr: *mut T, val: T) -> Result<(), ()> {
+    pub fn checked_write<T>(&self, ptr: *mut T, val: T) -> SysResult<()> {
         let vaddr = VirtAddr::from(ptr as usize);
         let pte = self.lproc.with_mut_memory(|m| {
             m.page_table.get_pte_copied_from_vpn(vaddr.round_down().page_num())
@@ -50,12 +51,14 @@ impl<'a> UserCheck<'a> {
             unsafe {
                 ptr.write(val);
             }
-            return Ok(());
+            Ok(())
+        } else {
+            Err(SysError::EFAULT)
         }
         Err(())
     }
 
-    pub fn checked_read_cstr(&self, ptr: *const u8) -> Result<String, ()> {
+    pub fn checked_read_cstr(&self, ptr: *const u8) -> SysResult<String> {
         let mut s = String::new();
         let mut p = ptr;
         loop {
@@ -73,7 +76,7 @@ impl<'a> UserCheck<'a> {
         Ok(s)
     }
 
-    pub fn checked_write_cstr(&self, ptr: *mut u8, value: &str) -> Result<(), ()> {
+    pub fn checked_write_cstr(&self, ptr: *mut u8, value: &str) -> SysResult<()> {
         let mut p = ptr;
         for c in value.chars() {
             self.checked_write(p, c as u8)?;
@@ -83,7 +86,7 @@ impl<'a> UserCheck<'a> {
         Ok(())
     }
 
-    pub fn checked_read_2d_cstr(&self, ptr: *const *const u8) -> Result<Vec<String>, ()> {
+    pub fn checked_read_2d_cstr(&self, ptr: *const *const u8) -> SysResult<Vec<String>> {
         let mut v = Vec::new();
         let mut p = ptr;
         loop {

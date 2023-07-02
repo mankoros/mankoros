@@ -5,23 +5,22 @@ use mbr_nostd::PartitionTable;
 use crate::{
     drivers::{self, BlockDevice, Device},
     here,
-    sync::SpinNoIrqLock,
+    sync::SpinNoIrqLock, fs::{memfs::{tmpdir::TmpDir, zero::{ZeroDev}}, new_vfs::top::{VfsFileRef}},
 };
 
 pub mod disk;
 pub mod fatfs;
 pub mod partition;
 
-pub mod devfs;
 pub mod pipe;
 pub mod root;
 pub mod stdio;
-pub mod vfs;
 pub mod new_vfs;
+pub mod memfs;
 
 pub fn init_filesystems(blk_dev: Arc<dyn BlockDevice>) {
     info!("Filesystem built-in self testing (BIST)...");
-    vfs::path::path_test();
+    new_vfs::path::path_test();
 
     info!("Initialize filesystems...");
     info!("  use block device: {:?}", blk_dev.name());
@@ -49,20 +48,13 @@ pub fn init_filesystems(blk_dev: Arc<dyn BlockDevice>) {
             disk.clone(),
         ))
     }
+
     self::root::init_rootfs(partitions[0].clone());
 
-    let mut root_dir = self::root::get_root_dir();
+    let root_dir = self::root::get_root_dir();
     // Mount devfs
-    let devfs = devfs::DeviceFileSystem::new();
-    let zero = devfs::ZeroDev;
-
-    devfs.add("zero", Arc::new(zero.clone()));
-    // TODO: switch to real device here
-    devfs.add("vda2", Arc::new(zero));
-    // TODO: solve this issue when refactoring VFS
-    unsafe {
-        Arc::get_mut_unchecked(&mut root_dir)
-            .mount("/dev".to_string(), Arc::new(devfs))
-            .expect("failed to mount devfs at /dev")
-    };
+    let dev_dir = VfsFileRef::new(TmpDir::new()); 
+    root_dir.attach("dev", dev_dir.clone());
+    dev_dir.attach("zero", VfsFileRef::new(ZeroDev));
+    dev_dir.attach("vda2", VfsFileRef::new(ZeroDev));
 }

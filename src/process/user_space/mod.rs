@@ -1,18 +1,12 @@
 pub mod range_map;
 pub mod user_area;
 
-use alloc::{string::String, sync::Arc, vec::Vec};
+use alloc::{string::String, vec::Vec};
 
 use crate::{
     arch::get_curr_page_table_addr,
-    consts::{PAGE_SIZE, PTE_FLAGS_BITS},
-    fs::vfs::filesystem::VfsNode,
-    memory::{
-        address::{PhysAddr, VirtAddr},
-        frame::alloc_frame,
-        pagetable::{pagetable::PageTable, pte::PTEFlags},
-    },
-    process::{aux_vector::AuxElement, user_space::user_area::PageFaultAccessType},
+    memory::{address::{VirtAddr, PhysAddr}, pagetable::{pagetable::PageTable, pte::PTEFlags}, frame::alloc_frame},
+    process::{aux_vector::AuxElement, user_space::user_area::PageFaultAccessType}, fs::new_vfs::top::VfsFileRef, executor::block_on, consts::PAGE_SIZE,
 };
 
 use super::{aux_vector::AuxVector, shared_frame_mgr::with_shared_frame_mgr};
@@ -168,12 +162,15 @@ impl UserSpace {
     }
 
     /// Return: entry_point, auxv
-    pub fn parse_and_map_elf_file(&mut self, elf_file: Arc<dyn VfsNode>) -> (VirtAddr, AuxVector) {
+    pub fn parse_and_map_elf_file(&mut self, elf_file: VfsFileRef) -> (VirtAddr, AuxVector) {
         const HEADER_LEN: usize = 1024;
         let mut header_data = [0u8; HEADER_LEN];
-        elf_file
-            .sync_read_at(0, header_data.as_mut())
-            .expect("failed to read elf header");
+
+        // TODO-PERF: async here
+        {
+            let file_for_async = elf_file.clone();
+            block_on(async move { file_for_async.read_at(0, header_data.as_mut()).await })
+        }.expect("failed to read elf header");
 
         let elf = xmas_elf::ElfFile::new(&header_data.as_slice()).expect("failed to parse elf");
         let elf_header = elf.header;
@@ -232,8 +229,8 @@ impl UserSpace {
                     self.page_table.root_paddr() == PhysAddr::from(get_curr_page_table_addr())
                 );
                 let area_slice = unsafe { area_begin.as_mut_slice(area_size) };
-                elf_file
-                    .sync_read_at(offset as u64, area_slice)
+                // TODO-PERF: async here
+                block_on(elf_file.read_at(offset, area_slice))
                     .expect("failed to copy elf data");
 
                 // Change permission to user
