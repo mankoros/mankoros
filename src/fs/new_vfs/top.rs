@@ -4,7 +4,7 @@ use crate::{tools::errors::ASysResult, memory::address::PhysAddr4K};
 
 pub type VfsFileRef = Arc<dyn VfsFile>;
 
-pub trait FsFileSystem {
+pub trait VfsFS {
     fn root(&self) -> VfsFileRef;
 }
 
@@ -80,6 +80,45 @@ macro_rules! impl_vfs_default_non_file {
         }
         fn get_page(&self, _offset: usize, _kind: crate::fs::new_vfs::top::MmapKind) -> crate::tools::errors::ASysResult<crate::memory::address::PhysAddr4K> {
             unimplemented!(concat!(stringify!(ty), "::get_page"))
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_vfs_forward_dir {
+    ($($e:tt)+) => {
+        fn list(&self) -> crate::tools::errors::ASysResult<alloc::vec::Vec<(alloc::string::String, crate::fs::new_vfs::top::VfsFileRef)>> {
+            self.$($e)+.list()
+        }
+        fn lookup<'a>(&'a self, name: &'a str) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
+            self.$($e)+.lookup(name)
+        }
+        fn create<'a>(&'a self, name: &'a str, kind: crate::fs::new_vfs::VfsFileKind) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
+            self.$($e)+.create(name, kind)
+        }
+        fn remove<'a>(&'a self, name: &'a str) -> crate::tools::errors::ASysResult {
+            self.$($e)+.remove(name)
+        }
+        fn detach<'a>(&'a self, name: &'a str) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
+            self.$($e)+.detach(name)
+        }
+        fn attach<'a>(&'a self, name: &'a str, node: crate::fs::new_vfs::top::VfsFileRef) -> crate::tools::errors::ASysResult {
+            self.$($e)+.attach(name, node)
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_vfs_forward_file {
+    ($($e:tt)+) => {
+        fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> crate::tools::errors::ASysResult<usize> {
+            self.$($e)+.read_at(offset, buf)
+        }
+        fn write_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> crate::tools::errors::ASysResult<usize> {
+            self.$($e)+.write_at(offset, buf)
+        }
+        fn get_page(&self, offset: usize, kind: crate::fs::new_vfs::top::MmapKind) -> crate::tools::errors::ASysResult<crate::memory::address::PhysAddr4K> {
+            self.$($e)+.get_page(offset, kind)
         }
     };
 }
