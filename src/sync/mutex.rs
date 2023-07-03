@@ -10,6 +10,8 @@ use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use riscv::register::sstatus;
 
+use crate::arch;
+
 /// A mutual exclusion primitive useful for protecting shared data
 ///
 ///
@@ -49,26 +51,31 @@ impl<T, S: MutexSupport> Mutex<T, S> {
 
 impl<T: ?Sized, S: MutexSupport> Mutex<T, S> {
     fn obtain_lock(&self, place: &str) {
+        // Check if the mutex is owned by the current hart
+        let hart_id = arch::get_hart_id();
+
         // Swap true in if old is false
         // on success load in-order, store relaxed
         // on failure relaxed
         while self.locked.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
             != Ok(false)
         {
+            let old_hart_id = unsafe { self.hart_id.get().read() };
+            if hart_id == old_hart_id {
+                panic!("Mutex {} is already locked by hart {}", place, old_hart_id);
+            }
             let mut try_count = 0;
             // Wait until the lock looks unlocked before retrying
             while self.locked.load(Ordering::Relaxed) {
                 // Release the CPU
                 unsafe { &*self.support.as_ptr() }.cpu_relax();
                 try_count += 1;
-                if try_count == 0x100000 {
+                if try_count == 0x1000000 {
                     // Dead lock detected!
-                    panic!("dead lock detected! place: {}", place);
+                    panic!("Mutex {} dead lock detected by hard {}!", place, hart_id);
                 }
             }
         }
-        // TODO: implement a riscv hart_id read
-        let hart_id = 0;
         unsafe { self.hart_id.get().write(hart_id) };
     }
 

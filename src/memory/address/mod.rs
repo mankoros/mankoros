@@ -27,7 +27,7 @@
 //! 转换到任意长度的 slice 的方法 (unsafe `as_slice`/`as_slice_mut`), 以及转换到以页为长度的 slice 的方法,
 //! 可以按需取用.
 
-use log::{trace, warn};
+use log::{debug, trace, warn};
 
 use crate::consts;
 
@@ -36,8 +36,6 @@ pub use phys::*;
 
 mod virt;
 pub use virt::*;
-
-use crate::consts::platform;
 
 /// Kernel Phy to Virt function
 // Whenever kernel wants to access to a physical address
@@ -52,7 +50,16 @@ pub fn kernel_phys_to_virt(addr: usize) -> usize {
     }
     trace!("Kernel physical address 0x{:x} to virtual addr", addr);
 
-    addr - consts::PHYMEM_START + consts::address_space::K_SEG_PHY_MEM_BEG
+    let offset = addr.checked_sub(unsafe { consts::device::PHYMEM_START });
+    if offset.is_none() {
+        panic!("Physical address 0x{:x} is out of range", addr);
+    }
+    let offset = offset.unwrap();
+    let virt_addr = offset.checked_add(consts::address_space::K_SEG_PHY_MEM_BEG);
+    if virt_addr.is_none() {
+        panic!("Physical address 0x{:x} is out of range", addr);
+    }
+    virt_addr.unwrap()
 }
 
 /// Kernel Virt text to Phy address
@@ -62,7 +69,7 @@ pub fn kernel_virt_text_to_phys(addr: usize) -> usize {
         warn!("Virtual address 0x{:x} is not in kernel text segment", addr);
         return addr;
     }
-    addr - consts::address_space::K_SEG_DATA_BEG + consts::PHYMEM_START
+    addr - consts::address_space::K_SEG_DATA_BEG + unsafe { consts::device::PLATFORM_BOOT_PC }
 }
 
 // Kernel Virt to Phy function
@@ -75,7 +82,7 @@ pub fn kernel_virt_to_phys(addr: usize) -> usize {
     }
     trace!("Kernel virtual address 0x{:x} to physical addr", addr);
 
-    addr - consts::address_space::K_SEG_PHY_MEM_BEG + consts::PHYMEM_START
+    addr - consts::address_space::K_SEG_PHY_MEM_BEG + unsafe { consts::device::PHYMEM_START }
 }
 // Kernel Phyical device addr to Virt function
 //
@@ -91,7 +98,7 @@ pub fn kernel_phys_dev_to_virt(addr: usize) -> usize {
         addr
     );
 
-    addr - platform::DEVICE_START + consts::address_space::K_SEG_HARDWARE_BEG
+    addr - consts::device::DEVICE_START + consts::address_space::K_SEG_HARDWARE_BEG
 }
 
 // 为了减少代码量，我们使用宏来为各种地址的包装实现一些 trait

@@ -7,17 +7,18 @@
 use crate::{
     arch, boot,
     consts::{
-        self, address_space::K_SEG_PHY_MEM_BEG, HUGE_PAGE_SIZE, MAX_PHYSICAL_MEMORY, PHYMEM_START,
+        self, address_space::K_SEG_PHY_MEM_BEG, device::MAX_PHYSICAL_MEMORY, device::PHYMEM_START,
+        HUGE_PAGE_SIZE,
     },
     memory::{self, address::VirtPageNum},
     memory::{
-        address::{PhysAddr, VirtAddr, VirtAddr4K, PhysAddr4K},
+        address::{PhysAddr, PhysAddr4K, VirtAddr, VirtAddr4K},
         frame,
     },
 };
 
 use alloc::{vec, vec::Vec};
-use log::{trace};
+use log::trace;
 
 use super::pte::{self, PTEFlags, PageTableEntry};
 
@@ -28,11 +29,11 @@ fn p4_index(vaddr: VirtAddr) -> usize {
     (vaddr.bits() >> (12 + 27)) & (ENTRY_COUNT - 1)
 }
 
-fn p3_index(vaddr: VirtAddr) -> usize {
+pub fn p3_index(vaddr: VirtAddr) -> usize {
     (vaddr.bits() >> (12 + 18)) & (ENTRY_COUNT - 1)
 }
 
-fn p2_index(vaddr: VirtAddr) -> usize {
+pub fn p2_index(vaddr: VirtAddr) -> usize {
     (vaddr.bits() >> (12 + 9)) & (ENTRY_COUNT - 1)
 }
 
@@ -46,19 +47,21 @@ pub fn map_kernel_phys_seg() {
     let boot_pagetable = boot::boot_pagetable();
 
     // Map kernel physical memory
-    for i in (0..MAX_PHYSICAL_MEMORY).step_by(HUGE_PAGE_SIZE) {
-        let paddr: usize = i + PHYMEM_START;
+    for i in (0..unsafe { MAX_PHYSICAL_MEMORY }).step_by(HUGE_PAGE_SIZE) {
+        let paddr: usize = i + unsafe { PHYMEM_START };
         let vaddr = VirtAddr::from(i + K_SEG_PHY_MEM_BEG);
         trace!("p3 index: {}", p3_index(vaddr));
-        boot_pagetable[p3_index(vaddr)] = (paddr >> 2) | 0xcf;
+        boot_pagetable[p3_index(vaddr)] = PageTableEntry::from((paddr >> 2) | 0xcf);
     }
 }
 
 /// Unmap the lower segment used for booting
 pub fn unmap_boot_seg() {
     let boot_pagetable = boot::boot_pagetable();
-    boot_pagetable[0] = 0;
-    boot_pagetable[2] = 0;
+    for i in 0..ENTRY_COUNT / 2 {
+        // Lower half is user space
+        boot_pagetable[i] = PageTableEntry::EMPTY;
+    }
 }
 
 /// Switch to global kernel boot pagetable
@@ -135,7 +138,13 @@ impl PageTable {
 
     // map_region map a memory region from vaddr to paddr
     // PTE::V is guaranteed to be set, so no need to set PTE::V
-    pub fn map_region(&mut self, vaddr: VirtAddr4K, paddr: PhysAddr4K, size: usize, flags: PTEFlags) {
+    pub fn map_region(
+        &mut self,
+        vaddr: VirtAddr4K,
+        paddr: PhysAddr4K,
+        size: usize,
+        flags: PTEFlags,
+    ) {
         trace!(
             "map_region({:#x}): [{:#x}, {:#x}) -> [{:#x}, {:#x}) ({:#?})",
             self.root_paddr(),
@@ -179,12 +188,18 @@ impl PageTable {
     pub fn get_pte_copied_from_vpn(&mut self, vpn: VirtPageNum) -> Option<PageTableEntry> {
         self.get_entry_mut_opt(vpn.addr().into()).as_deref().copied()
     }
+    pub fn get_pte_mut_from_vpn(&mut self, vpn: VirtPageNum) -> Option<&mut PageTableEntry> {
+        self.get_entry_mut_opt(vpn.addr().into())
+    }
 
     pub fn get_paddr_from_vaddr(&self, vaddr: VirtAddr) -> PhysAddr {
         self.get_entry_mut(vaddr).paddr().into() + vaddr.page_offset()
     }
 
-    pub fn copy_table_and_mark_self_cow(&mut self, do_with_frame: impl Fn(PhysAddr4K) -> ()) -> Self {
+    pub fn copy_table_and_mark_self_cow(
+        &mut self,
+        do_with_frame: impl Fn(PhysAddr4K) -> (),
+    ) -> Self {
         let old = self;
         let mut new = Self::new();
 
@@ -205,6 +220,11 @@ impl PageTable {
             let np2_iter = new.next_table_mut_or_create(np1).iter_mut();
 
             for (op2, np2) in Iterator::zip(op2_iter, np2_iter) {
+                if op2.is_leaf() {
+                    // Huge Page
+                    *np2 = *op2;
+                    continue;
+                }
                 let op3t = old.next_table_mut_opt(&op2);
                 if op3t.is_none() {
                     continue;
@@ -218,6 +238,7 @@ impl PageTable {
                         if op3.is_user() {
                             // Only user page need CoW
                             do_with_frame(op3.paddr());
+                            op3.clear_writable();
                             op3.set_shared(); // Allow sharing already shared page
                         }
                         *np3 = *op3;

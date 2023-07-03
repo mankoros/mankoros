@@ -16,10 +16,14 @@
 #![feature(const_convert)]
 #![feature(get_mut_unchecked)] // VFS workaround
 #![feature(negative_impls)]
+#![feature(pointer_byte_offsets)]
+#![feature(box_into_inner)]
 extern crate alloc;
 
+use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::mem;
+use core::fmt::Write;
+use core::num::NonZeroU32;
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use lazy_static::lazy_static;
@@ -27,7 +31,7 @@ use lazy_static::lazy_static;
 mod arch;
 mod boot;
 mod consts;
-mod driver;
+mod drivers;
 mod fs;
 mod logging;
 mod memory;
@@ -37,6 +41,7 @@ mod utils;
 #[macro_use]
 mod xdebug;
 mod axerrno;
+mod device_tree;
 mod executor;
 mod lazy_init;
 mod process;
@@ -45,21 +50,21 @@ mod timer;
 mod tools;
 mod trap;
 
-use driver::uart::Uart;
+use drivers::EarlyConsole;
 use log::{error, info, warn};
 use memory::frame;
 use memory::heap;
-use memory::pagetable::pte::PTEFlags;
 use sync::SpinNoIrqLock;
 
-use consts::address_space;
-use consts::memlayout;
-
-use crate::consts::platform;
+use crate::arch::get_hart_id;
+use crate::boot::boot_pagetable_paddr;
+use crate::consts::address_space::K_SEG_PHY_MEM_BEG;
 use crate::fs::vfs::filesystem::VfsNode;
 use crate::fs::vfs::node::VfsDirEntry;
-use crate::memory::address::{kernel_virt_text_to_phys, PhysAddr, VirtAddr, PhysAddr4K, VirtAddr4K};
-use crate::memory::{kernel_phys_dev_to_virt, pagetable};
+use crate::memory::address::{
+    kernel_virt_text_to_phys, PhysAddr, PhysAddr4K, VirtAddr, VirtAddr4K,
+};
+use crate::memory::{kernel_phys_dev_to_virt, kernel_phys_to_virt, pagetable};
 
 // use trap::ticks;
 
@@ -69,39 +74,51 @@ pub static DEVICE_REMAPPED: AtomicBool = AtomicBool::new(false);
 
 pub static BOOT_HART_CNT: AtomicUsize = AtomicUsize::new(0);
 
-// Init uart, called uart0
-lazy_static! {
-    pub static ref EARLY_UART: SpinNoIrqLock<Uart> = {
-        let mut port = unsafe { Uart::new(memlayout::UART0_BASE) };
-        port.init();
-        SpinNoIrqLock::new(port)
-    };
-    pub static ref UART0: SpinNoIrqLock<Uart> = {
-        let mut port =
-            unsafe { Uart::new(memlayout::UART0_BASE + address_space::K_SEG_HARDWARE_BEG) };
-        port.init();
-        SpinNoIrqLock::new(port)
-    };
-}
+// Early console
+pub static mut EARLY_UART: EarlyConsole = EarlyConsole {};
+
+pub static mut UART0: SpinNoIrqLock<Option<Box<dyn Write>>> = SpinNoIrqLock::new(None);
 
 /// Boot hart rust entry point
 ///
 ///
 #[no_mangle]
-pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) -> ! {
+pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     // Clear BSS before anything else
     boot::clear_bss();
+    unsafe { consts::device::PLATFORM_BOOT_PC = boot_pc };
+
     // Print boot message
     boot::print_boot_msg();
     // Print current boot hart
+    println!("Early SBI console initialized");
     println!("Hart {} init booting up", boot_hart_id);
+    // Parse device tree
+    let device_tree = device_tree::early_parse_device_tree();
 
     // Initial logging support
     println!("Logging initializing...");
     logging::init();
     info!("Logging initialised");
-    // Print boot memory layour
-    memlayout::print_memlayout();
+
+    let device_tree_size =
+        humansize::SizeFormatter::new(device_tree.total_size(), humansize::BINARY);
+    info!("Device tree size: {}", device_tree_size);
+
+    info!("UART start address: {:#x}", unsafe {
+        consts::device::UART0_BASE
+    });
+    for memory_region in device_tree.memory().regions() {
+        let memory_size =
+            humansize::SizeFormatter::new(memory_region.size.unwrap_or(0), humansize::BINARY);
+        info!(
+            "Memory start: {:#x}, size: {}",
+            memory_region.starting_address as usize, memory_size
+        );
+    }
+
+    // Print boot memory layout
+    consts::memlayout::print_memlayout();
 
     // Initial memory system
     frame::init();
@@ -124,28 +141,17 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     unsafe {
         riscv::asm::ebreak();
     }
-    let mut kernal_page_table = memory::pagetable::pagetable::PageTable::new_with_paddr(
-        PhysAddr4K::from(boot::boot_pagetable_paddr()),
-    );
+
     // Map physical memory
     pagetable::pagetable::map_kernel_phys_seg();
-    info!("Physical memory mapped at {:#x}", consts::PHYMEM_START);
-    // Map devices
-
-    kernal_page_table.map_page(
-        VirtAddr4K::from(memlayout::UART0_BASE + address_space::K_SEG_HARDWARE_BEG),
-        PhysAddr4K::from(memlayout::UART0_BASE),
-        PTEFlags::R | PTEFlags::W,
+    info!(
+        "Physical memory mapped {:#x} -> {:#x}",
+        K_SEG_PHY_MEM_BEG,
+        unsafe { consts::device::PHYMEM_START }
     );
 
-    for reg in platform::VIRTIO_MMIO_REGIONS {
-        kernal_page_table.map_region(
-            VirtAddr4K::from(kernel_phys_dev_to_virt(reg.0)),
-            PhysAddr4K::from(reg.0),
-            reg.1,
-            PTEFlags::R | PTEFlags::W,
-        );
-    }
+    // Next stage device initialization
+    device_tree::device_init();
 
     info!("Console switching...");
     DEVICE_REMAPPED.store(true, Ordering::SeqCst);
@@ -156,7 +162,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     info!("Starting other cores at 0x{:x}", alt_rust_main_phys);
     for hart_id in 0..hart_cnt {
         if hart_id != boot_hart_id {
-            sbi_rt::hart_start(hart_id, alt_rust_main_phys, _device_tree_addr)
+            sbi_rt::hart_start(hart_id, alt_rust_main_phys, boot_pagetable_paddr())
                 .expect("Starting hart failed");
         }
     }
@@ -171,12 +177,12 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
     }
     info!("Boot memory unmapped");
 
-    // Avoid drop
-    mem::forget(kernal_page_table);
-
     // Probe devices
-    let hd0 = driver::probe_virtio_blk().expect("Block device not found");
-    fs::init_filesystems(hd0);
+    let mut manager = drivers::DeviceManager::new();
+    manager.probe();
+    manager.map_devices();
+
+    fs::init_filesystems(manager.disks()[0].clone());
 
     let root_dir = fs::root::get_root_dir();
 
@@ -206,7 +212,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
 
     cfg_if::cfg_if! {
         if #[cfg(debug_assertions)] {
-            let cases = ["sleep"];
+            let cases = ["fork"];
         } else {
             let cases = [
                 "getpid",
@@ -263,9 +269,8 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, _device_tree_addr: usize) 
 ///
 ///
 #[no_mangle]
-pub extern "C" fn alt_rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
-    pagetable::pagetable::enable_boot_pagetable();
-    info!("Hart {} started at stack: 0x{:x}", hart_id, arch::sp());
+pub extern "C" fn alt_rust_main(hart_id: usize) -> ! {
+    info!("Hart {} started at stack: 0x{:x}", hart_id, arch::fp());
     BOOT_HART_CNT.fetch_add(1, Ordering::SeqCst);
 
     // Initialize interrupt controller
@@ -274,29 +279,47 @@ pub extern "C" fn alt_rust_main(hart_id: usize, _device_tree_addr: usize) -> ! {
     unreachable!();
 }
 
-static PANIC_COUNT: AtomicUsize = AtomicUsize::new(0);
+pub static PANIC_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 /// This function is called on panic.
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    if let Some(location) = info.location() {
-        error!(
-            "Panic at {}:{}, msg: {}",
-            location.file(),
-            location.line(),
-            info.message().unwrap()
-        );
-    } else {
-        if let Some(msg) = info.message() {
-            error!("Panicked: {}", msg);
-        } else {
-            error!("Unknown panic: {:?}", info);
-        }
-    }
-
+    let logging_initialized = unsafe { logging::INITIALIZED.load(Ordering::SeqCst) };
+    DEVICE_REMAPPED.store(false, Ordering::SeqCst);
     if PANIC_COUNT.fetch_add(1, core::sync::atomic::Ordering::SeqCst) >= 1 {
         error!("Panicked while processing panic. Very Wrong!");
         loop {}
+    }
+    if let Some(location) = info.location() {
+        if logging_initialized {
+            error!(
+                "Panic at {}:{}, msg: {}",
+                location.file(),
+                location.line(),
+                info.message().unwrap()
+            );
+        } else {
+            println!(
+                "Panic at {}:{}, msg: {}",
+                location.file(),
+                location.line(),
+                info.message().unwrap()
+            );
+        }
+    } else {
+        if let Some(msg) = info.message() {
+            if logging_initialized {
+                error!("Panicked: {}", msg);
+            } else {
+                println!("Panicked: {}", msg);
+            }
+        } else {
+            if logging_initialized {
+                error!("Unknown panic: {:?}", info);
+            } else {
+                println!("Unknown panic: {:?}", info);
+            }
+        }
     }
 
     xdebug::backtrace();

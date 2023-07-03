@@ -44,6 +44,12 @@ impl PTEFlags {
     pub fn valid(self) -> bool {
         self.contains(Self::V)
     }
+    pub fn rwx() -> Self {
+        Self::R | Self::W | Self::X | Self::A | Self::D
+    }
+    pub fn rw() -> Self {
+        Self::R | Self::W | Self::A | Self::D
+    }
 }
 
 /// PTE data structure
@@ -222,6 +228,12 @@ impl PageTableEntry {
         debug_assert!(self.is_valid() && self.is_directory());
         frame::dealloc_frame(self.paddr());
         *self = Self::EMPTY;
+    }
+}
+
+impl From<usize> for PageTableEntry {
+    fn from(bits: usize) -> Self {
+        PageTableEntry { bits }
     }
 }
 

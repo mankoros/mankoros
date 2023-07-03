@@ -26,7 +26,7 @@ QEMU_DEVICES	:= -drive file=fs.img,format=raw,id=hd0 -device virtio-blk-device,d
 
 # QEMU cmdline
 QEMU_CMD		:= qemu-system-riscv64 		\
-        				-machine virt 		\
+        				-machine virt		\
             			-nographic 			\
             			-bios default 		\
 						-m $(MEM_SIZE)		\
@@ -89,6 +89,18 @@ qemu-dtb:
 	@$(QEMU_CMD)	\
 		-machine dumpdtb=qemu.dtb
 	@dtc -o qemu.dts -O dts -I dtb qemu.dtb
+
+# Make a u-boot bootable uImage
+uImage: build
+	mkimage -A riscv -O linux -C none -T kernel -a 0x40200000 -e 0x40200000 -n MankorOS -d $(BIN_FILE) uImage
+	cp uImage /srv/tftp/
+
+# Make a u-boot gzip compressed image
+# Load to normal address, leave a space for unzipped
+zImage: build
+	gzip -f $(BIN_FILE)
+	mkimage -A riscv -O linux -C gzip -T kernel -a 0x40400000 -e 0x40400000 -n MankorOS -d $(BIN_FILE).gz zImage
+	cp zImage /srv/tftp/
 
 clean:
 	@cargo clean

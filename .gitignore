@@ -18,10 +18,13 @@ tmp
 # Release output
 kernel-qemu
 sbi-qemu
+uImage
+*.bin.gz
+zImage
 
 # Testing filesystem image
 fs.img
 
-# QEMU device tree
-qemu.dts
-qemu.dtb
+# Any device tree
+*.dtb
+*.dts
