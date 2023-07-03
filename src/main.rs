@@ -177,6 +177,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     // Probe devices
     let mut manager = drivers::DeviceManager::new();
     manager.probe();
+    manager.map_devices();
 
     fs::init_filesystems(manager.disks()[0].clone());
 

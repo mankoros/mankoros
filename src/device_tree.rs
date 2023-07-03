@@ -97,14 +97,6 @@ pub fn device_init() {
         PTEFlags::R | PTEFlags::W | PTEFlags::A | PTEFlags::D,
     );
 
-    for reg in platform::VIRTIO_MMIO_REGIONS {
-        kernel_page_table.map_region(
-            kernel_phys_dev_to_virt(reg.0).into(),
-            reg.0.into(),
-            reg.1,
-            PTEFlags::R | PTEFlags::W | PTEFlags::A | PTEFlags::D,
-        );
-    }
     // Avoid drop
     core::mem::forget(kernel_page_table);
 

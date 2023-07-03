@@ -4,7 +4,10 @@
 use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 use log::warn;
 
-use crate::memory::kernel_phys_dev_to_virt;
+use crate::{
+    boot,
+    memory::{self, kernel_phys_dev_to_virt, pagetable::pte::PTEFlags},
+};
 
 use super::{BlockDevice, Device};
 
@@ -59,6 +62,24 @@ impl DeviceManager {
         } else {
             warn!("Unknown interrupt: {}", irq);
         }
+    }
+
+    pub fn map_devices(&self) {
+        let mut kernel_page_table = memory::pagetable::pagetable::PageTable::new_with_paddr(
+            (boot::boot_pagetable_paddr()).into(),
+        );
+
+        for dev in self.devices.iter() {
+            kernel_page_table.map_region(
+                kernel_phys_dev_to_virt(dev.mmio_base()).into(),
+                dev.mmio_base().into(),
+                dev.mmio_size(),
+                PTEFlags::rw(),
+            )
+        }
+
+        // Avoid drop
+        core::mem::forget(kernel_page_table);
     }
 }
 

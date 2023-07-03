@@ -44,6 +44,12 @@ impl PTEFlags {
     pub fn valid(self) -> bool {
         self.contains(Self::V)
     }
+    pub fn rwx() -> Self {
+        Self::R | Self::W | Self::X | Self::A | Self::D
+    }
+    pub fn rw() -> Self {
+        Self::R | Self::W | Self::A | Self::D
+    }
 }
 
 /// PTE data structure

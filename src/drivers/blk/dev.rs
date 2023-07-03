@@ -58,7 +58,7 @@ impl<H: Hal + 'static, T: Transport + 'static> Device for VirtIoBlkDev<H, T> {
     }
 
     fn init(&mut self) {
-        todo!()
+        // Not init needed
     }
 
     fn device_type(&self) -> DeviceType {
@@ -66,11 +66,11 @@ impl<H: Hal + 'static, T: Transport + 'static> Device for VirtIoBlkDev<H, T> {
     }
 
     fn interrupt_number(&self) -> Option<usize> {
-        None
+        None // No IRQ supported
     }
 
     fn interrupt_handler(&self) {
-        todo!()
+        panic!();
     }
 
     fn as_blk(self: Arc<Self>) -> Option<Arc<dyn BlockDevice>> {
