@@ -1,7 +1,7 @@
+use super::{impl_arithmetic_with_usize, impl_fmt, impl_usize_convert};
 use crate::consts;
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
-use super::{impl_arithmetic_with_usize, impl_usize_convert, impl_fmt};
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct VirtAddr4K(usize);
@@ -11,7 +11,7 @@ impl VirtAddr4K {
         self.0
     }
     pub const fn from(bits: usize) -> Self {
-        debug_assert!(bits & consts::PAGE_MASK == 0);
+        debug_assert!((bits & consts::PAGE_MASK) == 0);
         VirtAddr4K(bits)
     }
 

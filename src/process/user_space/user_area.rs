@@ -31,7 +31,7 @@ pub type VirtAddrRange = Range<VirtAddr>;
 #[inline(always)]
 fn iter_vpn(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum) -> ()) {
     let start_vpn = range.start.assert_4k().page_num();
-    let end_vpn = range.end.assert_4k().page_num();
+    let end_vpn = range.end.round_up().page_num(); // End vaddr may not be 4k aligned
     let mut vpn = start_vpn;
     while vpn < end_vpn {
         f(vpn);
