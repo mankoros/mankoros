@@ -1,14 +1,10 @@
 use alloc::boxed::Box;
 use fdt::Fdt;
-use log::{debug, info};
+use log::debug;
 
 use crate::{
     boot,
-    consts::{
-        self,
-        address_space::{self, K_SEG_DTB},
-        platform,
-    },
+    consts::{self, address_space::K_SEG_DTB},
     drivers,
     memory::{self, kernel_phys_dev_to_virt, pagetable::pte::PTEFlags},
     println, timer,

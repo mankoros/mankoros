@@ -11,8 +11,6 @@ pub use phy::*;
 mod virt;
 pub use virt::*;
 
-use crate::consts::platform;
-
 /// Kernel Phy to Virt function
 // Whenever kernel wants to access to a physical address
 // it should use this function to translate physical address
@@ -65,5 +63,5 @@ pub fn kernel_phys_dev_to_virt(addr: usize) -> usize {
         addr
     );
 
-    addr - platform::DEVICE_START + consts::address_space::K_SEG_HARDWARE_BEG
+    addr - consts::device::DEVICE_START + consts::address_space::K_SEG_HARDWARE_BEG
 }
