@@ -6,7 +6,10 @@ use alloc::{string::String, sync::Arc, vec::Vec};
 use crate::{
     arch::get_curr_page_table_addr,
     fs::vfs::filesystem::VfsNode,
-    memory::{address::{VirtAddr, PhysAddr}, pagetable::pagetable::PageTable},
+    memory::{
+        address::{PhysAddr, VirtAddr},
+        pagetable::pagetable::PageTable,
+    },
     process::{aux_vector::AuxElement, user_space::user_area::PageFaultAccessType},
 };
 
@@ -18,7 +21,7 @@ use log::debug;
 pub const THREAD_STACK_SIZE: usize = 4 * 1024;
 
 // TODO-PERF: 拆锁
-/// 一个线程的地址空间的相关信息, 在 AliveProcessInfo 里受到进程大锁保护, 不需要加锁
+/// 一个线程的地址空间的相关信息，在 AliveProcessInfo 里受到进程大锁保护，不需要加锁
 pub struct UserSpace {
     // 根页表
     pub page_table: PageTable,
@@ -37,8 +40,8 @@ pub fn init_stack(
     //      and the stack pointer is always kept 16-byte aligned.
 
     /*
-    参考: https://www.cnblogs.com/likaiming/p/11193697.html
-    初始化之后的栈应该长这样子:
+    参考：https://www.cnblogs.com/likaiming/p/11193697.html
+    初始化之后的栈应该长这样子：
     content                         size(bytes) + comment
     -----------------------------------------------------------------------------
 
@@ -67,7 +70,7 @@ pub fn init_stack(
     [argument ASCIIZ strings]       >= 0
     [environment ASCIIZ str]        >= 0
     --------------------------------------------------------------------------------
-    在构建栈的时候, 我们从底向上塞各个东西
+    在构建栈的时候，我们从底向上塞各个东西
     */
 
     let mut sp = sp_init.bits();
@@ -91,7 +94,7 @@ pub fn init_stack(
     let env_ptrs: Vec<usize> = envp.iter().rev().map(|s| push_str(&mut sp, s)).collect();
     let arg_ptrs: Vec<usize> = args.iter().rev().map(|s| push_str(&mut sp, s)).collect();
 
-    // 随机对齐 (我们取 0 长度的随机对齐), 平台标识符, 随机数与对齐
+    // 随机对齐 (我们取 0 长度的随机对齐), 平台标识符，随机数与对齐
     fn align16(sp: &mut usize) {
         *sp = (*sp - 1) & !0xf;
     }
@@ -112,7 +115,7 @@ pub fn init_stack(
             core::ptr::write(*sp as *mut AuxElement, *elm);
         }
     }
-    // 注意推栈是 "倒着" 推的, 所以先放 null, 再逆着放别的
+    // 注意推栈是 "倒着" 推的，所以先放 null, 再逆着放别的
     push_aux_elm(&mut sp, &AuxElement::NULL);
     for aux in auxv.into_iter().rev() {
         push_aux_elm(&mut sp, &aux);
@@ -176,7 +179,7 @@ impl UserSpace {
         let magic = elf_header.pt1.magic;
         assert_eq!(magic, [0x7f, 0x45, 0x4c, 0x46], "invalid elf!");
 
-        // 将 elf 的各个段载入新的页中, 同时找到最开头的段, 将其地址作为 elf 的起始地址
+        // 将 elf 的各个段载入新的页中，同时找到最开头的段，将其地址作为 elf 的起始地址
         let mut elf_begin_opt = Option::None;
 
         for ph in elf.program_iter() {
@@ -193,9 +196,9 @@ impl UserSpace {
             let area_size = ph.mem_size() as usize;
 
             if ph.file_size() == ph.mem_size() {
-                // 如果该段在文件中的大小与其被载入内存后应有的大小相同,
+                // 如果该段在文件中的大小与其被载入内存后应有的大小相同，
                 // 我们可以直接采用类似 mmap private 的方式来加载它
-                // 此时, 该段的内容将会被懒加载
+                // 此时，该段的内容将会被懒加载
                 self.areas_mut()
                     .insert_mmap_private_at(
                         area_begin,
@@ -206,13 +209,15 @@ impl UserSpace {
                     )
                     .expect("failed to map elf file in a mmap-private-like way");
             } else {
-                // 否则, 我们就采用类似 mmap anonymous 的方式来创建一个空白的匿名区域
+                // 否则，我们就采用类似 mmap anonymous 的方式来创建一个空白的匿名区域
                 // 然后将文件中的内容复制到其中 (可能只占分配出来的空白区域的一部分)
                 self.areas_mut()
                     .insert_mmap_anonymous_at(area_begin, area_size, area_perm)
                     .expect("failed to map elf file in a mmap-anonymous-like way");
                 // copy data
-                debug_assert!(self.page_table.root_paddr() == PhysAddr::from(get_curr_page_table_addr()));
+                debug_assert!(
+                    self.page_table.root_paddr() == PhysAddr::from(get_curr_page_table_addr())
+                );
                 let area_slice = unsafe { area_begin.as_mut_slice(area_size) };
                 elf_file
                     .sync_read_at(offset as u64, area_slice)
@@ -247,14 +252,14 @@ impl UserSpace {
         self.areas.page_fault(&mut self.page_table, vaddr.page_num_down(), access_type)
     }
 
-    pub fn force_map_range(&mut self, range: VirtAddrRange) {
-        self.areas.force_map_range(&mut self.page_table, range);
+    pub fn force_map_range(&mut self, range: VirtAddrRange, perm: UserAreaPerm) {
+        self.areas.force_map_range(&mut self.page_table, range, perm);
     }
 
     /// 将 vaddr 所在的区域的所有页强制分配
     pub fn force_map_area(&mut self, vaddr: VirtAddr) {
-        let (range, _) = self.areas.get(vaddr).unwrap();
-        self.force_map_range(range);
+        let (range, area) = self.areas.get(vaddr).unwrap();
+        self.force_map_range(range, area.perm());
     }
 
     pub fn clone_cow(&mut self) -> Self {

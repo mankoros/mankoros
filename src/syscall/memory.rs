@@ -109,7 +109,7 @@ impl<'a> Syscall<'a> {
         );
 
         info!(
-            "Syscall mmap: mmap start={:x} len={:} prot=[{:#?}] flags=[{:#?}] fd={} offset={:x}",
+            "Syscall mmap: mmap start={:x} len={:} prot=[{:?}] flags=[{:?}] fd={} offset={:x}",
             start, len, prot, flags, fd, offset
         );
 

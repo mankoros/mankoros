@@ -1,7 +1,8 @@
 use crate::{memory::address::PhysPageNum, sync::SpinNoIrqLock};
-use alloc::{collections::BTreeMap};
+use alloc::collections::BTreeMap;
 use core::{
-    sync::atomic::{AtomicUsize, Ordering}, cell::SyncUnsafeCell,
+    cell::SyncUnsafeCell,
+    sync::atomic::{AtomicUsize, Ordering},
 };
 use log::debug;
 
@@ -25,17 +26,19 @@ impl SharedFrameManager {
     }
 
     pub fn add_ref(&mut self, page: PhysPageNum) {
-        let info = self.map.entry(page).and_modify(|info| {
-            info.increase();
-        }).or_insert_with(|| {
-            SharedFrameInfo::new()
-        });
+        let info = self
+            .map
+            .entry(page)
+            .and_modify(|info| {
+                info.increase();
+            })
+            .or_insert_with(|| SharedFrameInfo::new());
         debug!("add_ref: {:x}, ({:x})", page, info.get());
     }
 
     pub fn remove_ref(&mut self, page: PhysPageNum) {
-        let info = self.map.get_mut(&page)
-            .expect("remove_ref: page not found");
+        debug!("remove_ref: {:x}", page);
+        let info = self.map.get_mut(&page).expect("remove_ref: page not found");
         debug!("remove_ref: {:x}, ({:x})", page, info.get() - 1);
 
         if info.decrease() {

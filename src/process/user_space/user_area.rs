@@ -64,6 +64,19 @@ impl Into<PTEFlags> for UserAreaPerm {
     }
 }
 
+impl Into<PageFaultAccessType> for UserAreaPerm {
+    fn into(self) -> PageFaultAccessType {
+        if self.intersects(Self::WRITE) {
+            return PageFaultAccessType::RW;
+        }
+        if self.intersects(Self::EXECUTE) 
+        {
+            return PageFaultAccessType::RX;
+        }
+        PageFaultAccessType::RO
+    }
+}
+
 impl From<xmas_elf::program::Flags> for UserAreaPerm {
     fn from(flags: xmas_elf::program::Flags) -> Self {
         let mut area_flags = UserAreaPerm::empty();
@@ -215,6 +228,7 @@ impl UserArea {
         if let Some(pte) = pte && pte.is_valid() {
             // must be CoW
             let pte_flags = pte.flags();
+            debug!("flags: {:?}", pte_flags);
             debug_assert!(pte_flags.contains(PTEFlags::SHARED));
             debug_assert!(!pte_flags.contains(PTEFlags::W));
             debug_assert!(self.perm().contains(UserAreaPerm::WRITE));
@@ -430,15 +444,15 @@ impl UserAreaManager {
         area.page_fault(page_table, range.start, access_vpn, access_type)
     }
 
-    pub fn force_map_range(&mut self, page_table: &mut PageTable, range: VirtAddrRange) {
-        debug!("force map range: {:?}", range);
+    pub fn force_map_range(&mut self, page_table: &mut PageTable, range: VirtAddrRange, perm: UserAreaPerm) {
+        debug!("force map range: {:?}, perm: {:?}", range, perm);
 
         let vpn_begin = range.start.assert_4k().page_num();
         let vpn_end = range.end.assert_4k().page_num();
 
         let mut vpn = vpn_begin;
         while vpn < vpn_end {
-            self.page_fault(page_table, vpn, PageFaultAccessType::RO).unwrap();
+            self.page_fault(page_table, vpn, perm.into()).unwrap();
             vpn += 1;
         }
     }
@@ -465,12 +479,15 @@ impl UserAreaManager {
                 if pte.is_none() {
                     return;
                 }
+                // Remove the page from the page table.
+                page_table.unmap_page(vpn.addr());
 
                 let ppn = pte.unwrap().ppn();
                 // 如果是共享的，则只减少引用计数，否则释放
                 if mgr.is_shared(ppn) {
                     mgr.remove_ref(ppn);
-                } else {
+                } 
+                if mgr.is_unique(ppn) {
                     dealloc_frame(ppn.addr());
                 }
             })

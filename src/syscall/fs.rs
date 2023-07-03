@@ -35,9 +35,9 @@ pub struct Kstat {
     pub st_mode: u32,
     /// 硬链接数
     pub st_nlink: u32,
-    /// 用户id
+    /// 用户 id
     pub st_uid: u32,
-    /// 用户组id
+    /// 用户组 id
     pub st_gid: u32,
     /// 设备号
     pub st_rdev: u64,
@@ -49,17 +49,17 @@ pub struct Kstat {
     _pad1: u32,
     /// 块个数
     pub st_blocks: u64,
-    /// 最后一次访问时间(秒)
+    /// 最后一次访问时间 (秒)
     pub st_atime_sec: isize,
-    /// 最后一次访问时间(纳秒)
+    /// 最后一次访问时间 (纳秒)
     pub st_atime_nsec: isize,
-    /// 最后一次修改时间(秒)
+    /// 最后一次修改时间 (秒)
     pub st_mtime_sec: isize,
-    /// 最后一次修改时间(纳秒)
+    /// 最后一次修改时间 (纳秒)
     pub st_mtime_nsec: isize,
-    /// 最后一次改变状态时间(秒)
+    /// 最后一次改变状态时间 (秒)
     pub st_ctime_sec: isize,
-    /// 最后一次改变状态时间(纳秒)
+    /// 最后一次改变状态时间 (纳秒)
     pub st_ctime_nsec: isize,
 }
 
@@ -80,7 +80,7 @@ bitflags::bitflags! {
         const NOCTTY = 1 << 8;
         /// 同上，在不同的库中可能会用到这个或者上一个
         const EXCL = 1 << 9;
-        /// 非阻塞读写?(虽然不知道为什么但 date.lua 也要)
+        /// 非阻塞读写？(虽然不知道为什么但 date.lua 也要)
         const NON_BLOCK = 1 << 11;
         /// 要求把 CR-LF 都换成 LF
         const TEXT = 1 << 14;
@@ -412,7 +412,7 @@ impl<'a> Syscall<'a> {
 
         let vfs_entry_iter = VfsDirEntryIter::new(file);
         for vfs_entry in vfs_entry_iter {
-            // TODO-BUG: 检查写入后的长度是否满足 u64 的对齐要求, 不满足补 0
+            // TODO-BUG: 检查写入后的长度是否满足 u64 的对齐要求，不满足补 0
             // TODO: d_name 是 &str, 末尾可能会有很多 \0, 想办法去掉它们
             let this_entry_len = core::mem::size_of::<DirentFront>() + vfs_entry.d_name().len() + 1;
             if wroten_len + this_entry_len > len {
@@ -428,6 +428,8 @@ impl<'a> Syscall<'a> {
 
             let dirent_beg = unsafe { buf.add(wroten_len) } as *mut DirentFront;
             let d_name_beg = unsafe { buf.add(wroten_len + core::mem::size_of::<DirentFront>()) };
+
+            debug!("dirent: {:x}", dirent_beg as usize);
 
             let user_check = UserCheck::new_with_sum(&self.lproc);
             user_check
@@ -493,8 +495,8 @@ impl<'a> Syscall<'a> {
             return Err(AxError::IsADirectory);
         }
 
-        // TODO: 延迟删除: 这个操作会直接让底层 FS 删除文件, 但是如果有其他进程正在使用这个文件, 应该延迟删除
-        // 已知 fat32 fs 要求被删除的文件夹是空的, 不然会返回错误, 可能该行为需要被明确到 VFS 层
+        // TODO: 延迟删除：这个操作会直接让底层 FS 删除文件，但是如果有其他进程正在使用这个文件，应该延迟删除
+        // 已知 fat32 fs 要求被删除的文件夹是空的，不然会返回错误，可能该行为需要被明确到 VFS 层
         dir.remove(&file_name).map(|_| 0)
     }
 
@@ -563,7 +565,7 @@ impl<'a> Syscall<'a> {
     }
 }
 
-// 下面是用来实现 getdents 的基建, 可能需要修改 VFS 的接口
+// 下面是用来实现 getdents 的基建，可能需要修改 VFS 的接口
 struct VfsDirEntryIter {
     dir: Arc<dyn VfsNode>,
     vfs_ent_cnt: usize,

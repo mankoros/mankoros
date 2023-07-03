@@ -10,7 +10,7 @@ use crate::{
         self, address_space::K_SEG_PHY_MEM_BEG, device::MAX_PHYSICAL_MEMORY, device::PHYMEM_START,
         HUGE_PAGE_SIZE,
     },
-    memory::{self, address::VirtPageNum},
+    memory::{self, address::VirtPageNum, kernel_phys_to_virt},
     memory::{
         address::{PhysAddr, PhysAddr4K, VirtAddr, VirtAddr4K},
         frame,
@@ -19,7 +19,7 @@ use crate::{
 };
 
 use alloc::{vec, vec::Vec};
-use log::trace;
+use log::{debug, trace, warn};
 
 use super::pte::{self, PTEFlags, PageTableEntry};
 
@@ -356,17 +356,25 @@ impl PageTable {
 
 impl Drop for PageTable {
     fn drop(&mut self) {
+        // First
         // shared kernel segment pagetable is not in intrm_tables
         // so no extra things should be done
         for frame in &self.intrm_tables {
+            // Debug sanity check
             with_shared_frame_mgr(|mgr| {
                 if mgr.is_shared(frame.page_num()) {
-                    mgr.remove_ref(frame.page_num())
-                }
-                if mgr.is_unique(frame.page_num()) {
-                    frame::dealloc_frame(*frame);
+                    panic!("Pagetable page should not be shared");
                 }
             });
+            let page = self.table_of(*frame);
+            for pte in page.iter() {
+                if pte.is_valid() && pte.is_leaf() && pte.is_user() {
+                    warn!("Pagetable page {:#x} still valid user page", frame);
+                    panic!("Pagetable page should not be valid");
+                }
+            }
+
+            frame::dealloc_frame(*frame);
         }
     }
 }

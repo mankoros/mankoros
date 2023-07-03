@@ -37,9 +37,9 @@ impl<'a> UserCheck<'a> {
 
     pub fn checked_write<T>(&self, ptr: *mut T, val: T) -> Result<(), ()> {
         let vaddr = VirtAddr::from(ptr as usize);
-        let pte = self
-            .lproc
-            .with_mut_memory(|m| m.page_table.get_pte_copied_from_vpn(vaddr.bits().into()));
+        let pte = self.lproc.with_mut_memory(|m| {
+            m.page_table.get_pte_copied_from_vpn(vaddr.round_down().page_num())
+        });
         if self.has_perm(vaddr, UserAreaPerm::WRITE) {
             if pte.is_none() || !pte.unwrap().writable() {
                 // Try Copy-on-write
