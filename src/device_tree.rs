@@ -89,6 +89,13 @@ pub fn device_init() {
         unsafe { consts::device::UART0_BASE.into() },
         PTEFlags::R | PTEFlags::W | PTEFlags::A | PTEFlags::D,
     );
+    // PLIC
+    kernel_page_table.map_region(
+        (kernel_phys_dev_to_virt(0xc00_0000)).into(),
+        0xc00_0000.into(),
+        0x600000,
+        PTEFlags::R | PTEFlags::W | PTEFlags::A | PTEFlags::D,
+    );
 
     for reg in platform::VIRTIO_MMIO_REGIONS {
         kernel_page_table.map_region(

@@ -22,6 +22,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::Write;
+use core::num::NonZeroU32;
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use lazy_static::lazy_static;
@@ -54,12 +55,13 @@ use memory::frame;
 use memory::heap;
 use sync::SpinNoIrqLock;
 
+use crate::arch::get_hart_id;
 use crate::boot::boot_pagetable_paddr;
 use crate::consts::address_space::K_SEG_PHY_MEM_BEG;
 use crate::fs::vfs::filesystem::VfsNode;
 use crate::fs::vfs::node::VfsDirEntry;
 use crate::memory::address::kernel_virt_text_to_phys;
-use crate::memory::pagetable;
+use crate::memory::{kernel_phys_dev_to_virt, kernel_phys_to_virt, pagetable};
 
 // use trap::ticks;
 
@@ -244,6 +246,27 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
             ];
         }
     }
+
+    // Enable serial interrupts in PLIC
+    let plic = unsafe { kernel_phys_dev_to_virt(0xc000000) as *mut plic::Plic };
+    struct uartPLIC;
+    impl plic::InterruptSource for uartPLIC {
+        fn id(self) -> core::num::NonZeroU32 {
+            NonZeroU32::try_from(0x0a).unwrap()
+        }
+    }
+    impl plic::HartContext for uartPLIC {
+        fn index(self) -> usize {
+            1 // TODO: impl a dev manager to manage harts and generate PLIC context map
+        }
+    }
+    unsafe { (*plic).set_threshold(uartPLIC, 0) };
+    unsafe { (*plic).enable(uartPLIC, uartPLIC) };
+    unsafe { (*plic).set_priority(uartPLIC, 6) };
+
+    // Enable external interrupts
+    unsafe { riscv::register::sie::set_sext() };
+    loop {}
 
     for case_name in cases.into_iter() {
         warn!(
