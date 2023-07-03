@@ -247,27 +247,6 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
         }
     }
 
-    // Enable serial interrupts in PLIC
-    let plic = unsafe { kernel_phys_dev_to_virt(0xc000000) as *mut plic::Plic };
-    struct uartPLIC;
-    impl plic::InterruptSource for uartPLIC {
-        fn id(self) -> core::num::NonZeroU32 {
-            NonZeroU32::try_from(0x0a).unwrap()
-        }
-    }
-    impl plic::HartContext for uartPLIC {
-        fn index(self) -> usize {
-            1 // TODO: impl a dev manager to manage harts and generate PLIC context map
-        }
-    }
-    unsafe { (*plic).set_threshold(uartPLIC, 0) };
-    unsafe { (*plic).enable(uartPLIC, uartPLIC) };
-    unsafe { (*plic).set_priority(uartPLIC, 6) };
-
-    // Enable external interrupts
-    unsafe { riscv::register::sie::set_sext() };
-    loop {}
-
     for case_name in cases.into_iter() {
         warn!(
             "============== Running test case: {} ================",
