@@ -27,7 +27,7 @@ pub const BLOCK_SIZE: usize = 512;
 pub struct Disk {
     block_id: Cell<u64>,
     offset: Cell<usize>,
-    dev: Arc<Box<dyn BlockDevice>>,
+    dev: Arc<dyn BlockDevice>,
 }
 
 unsafe impl Send for Disk {}
@@ -46,7 +46,7 @@ impl Debug for Disk {
 
 impl Disk {
     /// Create a new disk.
-    pub fn new(dev: Arc<Box<dyn BlockDevice>>) -> Self {
+    pub fn new(dev: Arc<dyn BlockDevice>) -> Self {
         assert_eq!(BLOCK_SIZE, dev.block_size());
         Self {
             block_id: Cell::new(0),

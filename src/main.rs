@@ -18,8 +18,6 @@
 #![feature(pointer_byte_offsets)]
 #![feature(box_into_inner)]
 extern crate alloc;
-#[macro_use]
-extern crate downcast_rs;
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;

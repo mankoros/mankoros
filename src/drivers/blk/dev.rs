@@ -1,18 +1,13 @@
 use core::cell::UnsafeCell;
 use core::fmt::Debug;
 
-use alloc::boxed::Box;
-use log::info;
+use alloc::sync::Arc;
 use log::warn;
 use virtio_drivers::transport;
-use virtio_drivers::transport::mmio::MmioTransport;
 
 use crate::drivers::{BlockDevice, DevError, DevResult, Device, DeviceType};
 use crate::{
-    consts::{
-        address_space::{K_SEG_DATA_BEG, K_SEG_DATA_END, K_SEG_PHY_MEM_BEG, K_SEG_PHY_MEM_END},
-        platform,
-    },
+    consts::address_space::{K_SEG_DATA_BEG, K_SEG_DATA_END, K_SEG_PHY_MEM_BEG, K_SEG_PHY_MEM_END},
     memory::{
         frame, kernel_phys_dev_to_virt, kernel_phys_to_virt, kernel_virt_text_to_phys,
         kernel_virt_to_phys,
@@ -83,6 +78,10 @@ impl<H: Hal + 'static, T: Transport + 'static> Device for VirtIoBlkDev<H, T> {
 
     fn interrupt_handler(&self) {
         todo!()
+    }
+
+    fn as_blk(self: Arc<Self>) -> Option<Arc<dyn BlockDevice>> {
+        Some(self.clone())
     }
 }
 

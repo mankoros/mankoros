@@ -4,14 +4,12 @@ mod serial;
 
 use core::fmt::Debug;
 
+use alloc::sync::Arc;
 pub use manager::DeviceManager;
 pub use serial::EarlyConsole;
 pub use serial::SifiveUart;
 pub use serial::Uart;
 
-extern crate downcast_rs;
-
-use downcast_rs::DowncastSync;
 pub use transport::mmio::MmioTransport;
 use virtio_drivers::transport;
 
@@ -51,7 +49,7 @@ pub enum DevError {
 pub type DevResult<T = ()> = Result<T, DevError>;
 
 #[const_trait]
-pub trait Device: Send + Sync + DowncastSync {
+pub trait Device: Send + Sync {
     fn name(&self) -> &str;
 
     /// Register base address
@@ -68,8 +66,10 @@ pub trait Device: Send + Sync + DowncastSync {
     fn interrupt_handler(&self);
 
     fn init(&mut self);
+
+    // Trait convertion
+    fn as_blk(self: Arc<Self>) -> Option<Arc<dyn BlockDevice>>;
 }
-impl_downcast!(sync Device);
 
 pub trait BlockDevice: Device + Debug {
     fn num_blocks(&self) -> u64;
