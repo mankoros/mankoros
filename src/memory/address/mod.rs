@@ -1,7 +1,7 @@
 //! Address type infrastructure
 //!
 
-use log::{trace, warn};
+use log::{debug, trace, warn};
 
 use crate::consts;
 
@@ -24,7 +24,16 @@ pub fn kernel_phys_to_virt(addr: usize) -> usize {
     }
     trace!("Kernel physical address 0x{:x} to virtual addr", addr);
 
-    addr - unsafe { consts::device::PHYMEM_START } + consts::address_space::K_SEG_PHY_MEM_BEG
+    let offset = addr.checked_sub(unsafe { consts::device::PHYMEM_START });
+    if offset.is_none() {
+        panic!("Physical address 0x{:x} is out of range", addr);
+    }
+    let offset = offset.unwrap();
+    let virt_addr = offset.checked_add(consts::address_space::K_SEG_PHY_MEM_BEG);
+    if virt_addr.is_none() {
+        panic!("Physical address 0x{:x} is out of range", addr);
+    }
+    virt_addr.unwrap()
 }
 
 /// Kernel Virt text to Phy address

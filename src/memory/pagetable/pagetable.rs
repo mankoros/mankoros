@@ -182,6 +182,9 @@ impl PageTable {
     pub fn get_pte_copied_from_vpn(&mut self, vpn: VirtPageNum) -> Option<PageTableEntry> {
         self.get_entry_mut_opt(vpn.into()).as_deref().copied()
     }
+    pub fn get_pte_mut_from_vpn(&mut self, vpn: VirtPageNum) -> Option<&mut PageTableEntry> {
+        self.get_entry_mut_opt(vpn.into())
+    }
 
     pub fn get_paddr_from_vaddr(&self, vaddr: VirtAddr) -> PhysAddr {
         self.get_entry_mut(vaddr).paddr() + vaddr.page_offset()
@@ -226,6 +229,7 @@ impl PageTable {
                         if op3.is_user() {
                             // Only user page need CoW
                             do_with_frame(op3.paddr());
+                            op3.clear_writable();
                             op3.set_shared(); // Allow sharing already shared page
                         }
                         *np3 = *op3;
