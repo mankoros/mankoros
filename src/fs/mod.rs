@@ -1,9 +1,9 @@
-use alloc::{string::ToString, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, string::ToString, sync::Arc, vec::Vec};
 use log::info;
 use mbr_nostd::PartitionTable;
 
 use crate::{
-    driver::{self, BaseDriverOps},
+    drivers::{self, BlockDevice, Device},
     here,
     sync::SpinNoIrqLock,
 };
@@ -18,14 +18,12 @@ pub mod root;
 pub mod stdio;
 pub mod vfs;
 
-type BlockDevice = driver::VirtIoBlockDev;
-
-pub fn init_filesystems(blk_dev: BlockDevice) {
+pub fn init_filesystems(blk_dev: Arc<Box<dyn BlockDevice>>) {
     info!("Filesystem built-in self testing (BIST)...");
     vfs::path::path_test();
 
     info!("Initialize filesystems...");
-    info!("  use block device: {:?}", blk_dev.device_name());
+    info!("  use block device: {:?}", blk_dev.name());
 
     let mut disk = self::disk::Disk::new(blk_dev);
     let mbr = disk.mbr();

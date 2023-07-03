@@ -57,7 +57,7 @@ impl Vfs for VfsWrapper {
     }
 }
 
-pub trait VfsNode: Send + Sync + 'static {
+pub trait VfsNode: Send + Sync {
     /// open operation
     fn open(&self) -> VfsResult {
         Ok(())

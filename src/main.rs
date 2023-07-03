@@ -16,7 +16,10 @@
 #![feature(const_convert)]
 #![feature(get_mut_unchecked)] // VFS workaround
 #![feature(pointer_byte_offsets)]
+#![feature(box_into_inner)]
 extern crate alloc;
+#[macro_use]
+extern crate downcast_rs;
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -28,7 +31,7 @@ use lazy_static::lazy_static;
 mod arch;
 mod boot;
 mod consts;
-mod driver;
+mod drivers;
 mod fs;
 mod logging;
 mod memory;
@@ -47,7 +50,7 @@ mod timer;
 mod tools;
 mod trap;
 
-use driver::EarlyConsole;
+use drivers::EarlyConsole;
 use log::{error, info, warn};
 use memory::frame;
 use memory::heap;
@@ -172,8 +175,10 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     info!("Boot memory unmapped");
 
     // Probe devices
-    let hd0 = driver::probe_virtio_blk().expect("Block device not found");
-    fs::init_filesystems(hd0);
+    let mut manager = drivers::DeviceManager::new();
+    manager.probe();
+
+    fs::init_filesystems(manager.disks()[0].clone());
 
     let root_dir = fs::root::get_root_dir();
 

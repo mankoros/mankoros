@@ -9,7 +9,7 @@ use crate::{
         address_space::{self, K_SEG_DTB},
         platform,
     },
-    driver,
+    drivers,
     memory::{self, kernel_phys_dev_to_virt, pagetable::pte::PTEFlags},
     println, timer,
 };
@@ -132,14 +132,14 @@ fn init_serial_console(stdout: &fdt::node::FdtNode) {
                 reg_shift = reg_shift_raw.as_usize().expect("Parse reg-shift to usize failed");
             }
             let mut uart =
-                unsafe { driver::Uart::new(vaddr, freq_raw, 115200, reg_io_width, reg_shift) };
+                unsafe { drivers::Uart::new(vaddr, freq_raw, 115200, reg_io_width, reg_shift) };
             debug!("UART: {:?}", uart);
             uart.init();
             unsafe { *crate::UART0.lock(here!()) = Some(Box::new(uart)) }
         }
         "sifive,uart0" => {
             // sifive_u QEMU (FU540)
-            let mut uart = driver::SifiveUart::new(
+            let mut uart = drivers::SifiveUart::new(
                 vaddr,
                 500 * 1000 * 1000, // 500 MHz hard coded for now
             );

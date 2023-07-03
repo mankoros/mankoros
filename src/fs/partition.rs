@@ -3,7 +3,7 @@ use alloc::sync::Arc;
 use crate::{here, sync::SpinNoIrqLock};
 
 use super::disk::Disk;
-use crate::driver::DevResult;
+use crate::drivers::DevResult;
 use log::info;
 
 #[derive(Debug, Clone)]

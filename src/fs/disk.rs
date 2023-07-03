@@ -1,6 +1,8 @@
 use core::cell::Cell;
+use core::fmt::Debug;
 
 use alloc::boxed::Box;
+use alloc::sync::Arc;
 
 use super::vfs::filesystem::VfsNode;
 use super::vfs::node::VfsNodeAttr;
@@ -14,33 +16,42 @@ use super::vfs::VfsResult;
 /// Copyright (C) 2023 by MankorOS
 ///
 /// Adapted from ArceOS
-use super::BlockDevice;
 use crate::axerrno::AxError;
-use crate::driver::BlockDriverOps;
-use crate::driver::DevResult;
+use crate::drivers::BlockDevice;
+use crate::drivers::DevResult;
 use crate::impl_vfs_non_dir_default;
 
 pub const BLOCK_SIZE: usize = 512;
 
 /// A disk holds a block device, and can be used to read and write data to that block device.
-#[derive(Debug)]
 pub struct Disk {
     block_id: Cell<u64>,
     offset: Cell<usize>,
-    dev: BlockDevice,
+    dev: Arc<Box<dyn BlockDevice>>,
 }
 
 unsafe impl Send for Disk {}
 unsafe impl Sync for Disk {}
 
+impl Debug for Disk {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Disk")
+            .field("block_id", &self.block_id.get())
+            .field("offset", &self.offset.get())
+            .field("dev", &self.dev.name())
+            .finish()
+            .fmt(f)
+    }
+}
+
 impl Disk {
     /// Create a new disk.
-    pub fn new(dev: BlockDevice) -> Self {
+    pub fn new(dev: Arc<Box<dyn BlockDevice>>) -> Self {
         assert_eq!(BLOCK_SIZE, dev.block_size());
         Self {
             block_id: Cell::new(0),
             offset: Cell::new(0),
-            dev,
+            dev: dev,
         }
     }
 
@@ -161,11 +172,11 @@ impl VfsNode for Disk {
         // TODO: implement read
         Ok(1)
     }
-    fn read_at<'a>(&'a self, offset: u64, buf: &'a mut [u8]) -> AVfsResult<usize> {
+    fn read_at<'b>(&'b self, offset: u64, buf: &'b mut [u8]) -> AVfsResult<usize> {
         Box::pin(async move { self.sync_read_at(offset, buf) })
     }
 
-    fn write_at<'a>(&'a self, offset: u64, buf: &'a [u8]) -> AVfsResult<usize> {
+    fn write_at<'b>(&'b self, offset: u64, buf: &'b [u8]) -> AVfsResult<usize> {
         Box::pin(async move { self.sync_write_at(offset, buf) })
     }
     /// 文件属性
