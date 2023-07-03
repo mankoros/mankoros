@@ -2,7 +2,7 @@
 
 use core::ptr::NonNull;
 
-use log::info;
+use log::{info, warn};
 use virtio_drivers::transport::{self, mmio::MmioTransport, Transport};
 
 use crate::drivers::blk::dev::as_dev_type;
@@ -11,8 +11,8 @@ use crate::{consts::platform, memory::kernel_phys_dev_to_virt};
 
 pub fn probe() -> Option<VirtIoBlockDev> {
     probe_devices_common(DeviceType::Block, |t| {
-        todo!(); // TODO: fix it
         VirtIoBlockDev::try_new(t, platform::VIRTIO_MMIO_REGIONS[0].0, 4096, 0).ok()
+        warn!("TODO: impl irq parsing")
     })
 }
 

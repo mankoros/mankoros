@@ -2,6 +2,8 @@ mod blk;
 mod manager;
 mod serial;
 
+use core::fmt::Debug;
+
 pub use manager::DeviceManager;
 pub use serial::EarlyConsole;
 pub use serial::SifiveUart;
@@ -69,7 +71,7 @@ pub trait Device: Send + Sync + DowncastSync {
 }
 impl_downcast!(sync Device);
 
-pub trait BlockDevice: Device {
+pub trait BlockDevice: Device + Debug {
     fn num_blocks(&self) -> u64;
     fn block_size(&self) -> usize;
 
