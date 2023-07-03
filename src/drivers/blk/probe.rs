@@ -11,8 +11,8 @@ use crate::{consts::platform, memory::kernel_phys_dev_to_virt};
 
 pub fn probe() -> Option<VirtIoBlockDev> {
     probe_devices_common(DeviceType::Block, |t| {
+        warn!("TODO: impl irq parsing");
         VirtIoBlockDev::try_new(t, platform::VIRTIO_MMIO_REGIONS[0].0, 4096, 0).ok()
-        warn!("TODO: impl irq parsing")
     })
 }
 
