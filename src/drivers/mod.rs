@@ -60,7 +60,7 @@ pub trait Device: Send + Sync {
     fn device_type(&self) -> DeviceType;
 
     /// Interrupt number
-    fn interrupt_number(&self) -> usize;
+    fn interrupt_number(&self) -> Option<usize>;
 
     /// Interrupt handler
     fn interrupt_handler(&self);

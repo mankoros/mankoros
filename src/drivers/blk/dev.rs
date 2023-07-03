@@ -22,7 +22,6 @@ pub struct VirtIoBlkDev<H: Hal, T: Transport> {
     inner: UnsafeCell<InnerDev<H, T>>,
     base_address: usize,
     size: usize,
-    interrupt_number: usize,
     pos: u64,
 }
 
@@ -36,18 +35,12 @@ impl<H: Hal, T: Transport> Debug for VirtIoBlkDev<H, T> {
 }
 
 impl<H: Hal, T: Transport> VirtIoBlkDev<H, T> {
-    pub fn try_new(
-        transport: T,
-        base_address: usize,
-        size: usize,
-        interrupt_number: usize,
-    ) -> DevResult<Self> {
+    pub fn try_new(transport: T, base_address: usize, size: usize) -> DevResult<Self> {
         Ok(Self {
             inner: UnsafeCell::new(InnerDev::new(transport).map_err(as_dev_err)?),
             pos: 0,
             base_address,
             size,
-            interrupt_number,
         })
     }
 }
@@ -72,8 +65,8 @@ impl<H: Hal + 'static, T: Transport + 'static> Device for VirtIoBlkDev<H, T> {
         DeviceType::Block
     }
 
-    fn interrupt_number(&self) -> usize {
-        self.interrupt_number
+    fn interrupt_number(&self) -> Option<usize> {
+        None
     }
 
     fn interrupt_handler(&self) {
