@@ -9,7 +9,7 @@ use bitflags::bitflags;
 use core::fmt;
 
 use crate::consts;
-use crate::memory::address::{PhysAddr, PhysPageNum, PhysAddr4K};
+use crate::memory::address::{PhysAddr, PhysAddr4K, PhysPageNum};
 use crate::memory::frame;
 
 // Define the PTEFlags bitflags structure
@@ -64,8 +64,7 @@ impl PageTableEntry {
     // Create a new PageTableEntry with the given physical address and permissions
     pub fn new(paddr: PhysAddr4K, perm: PTEFlags) -> Self {
         PageTableEntry {
-            bits: ((paddr.bits() >> 2) & consts::PTE_PPN_MASK_SV39)
-                | perm.bits() as usize,
+            bits: ((paddr.bits() >> 2) & consts::PTE_PPN_MASK_SV39) | perm.bits() as usize,
         }
     }
     // Define an empty PageTableEntry
@@ -165,6 +164,14 @@ impl PageTableEntry {
     // Clear the writable flag for the PageTableEntry
     pub fn clear_writable(&mut self) {
         self.bits &= !(PTEFlags::W.bits() as usize);
+    }
+
+    pub fn set_user(&mut self) {
+        self.bits |= PTEFlags::U.bits() as usize;
+    }
+
+    pub fn clear_user(&mut self) {
+        self.bits &= !(PTEFlags::U.bits() as usize);
     }
 
     // Set the shared flag for the PageTableEntry

@@ -1,9 +1,12 @@
 use crate::{
     memory::address::VirtAddr,
-    process::{lproc::LightProcess, user_space::user_area::UserAreaPerm},
+    process::{
+        lproc::LightProcess,
+        user_space::user_area::{PageFaultAccessType, UserAreaPerm},
+    },
 };
 use alloc::{string::String, vec::Vec};
-use log::trace;
+use log::{debug, trace};
 
 pub struct UserCheck<'a> {
     lproc: &'a LightProcess,
@@ -13,7 +16,7 @@ unsafe impl Send for UserCheck<'_> {}
 unsafe impl Sync for UserCheck<'_> {}
 
 impl<'a> UserCheck<'a> {
-    /// 创建一个用户态指针检查器, 同时设置 SUM 模式, 直到检查器被 drop 时关闭
+    /// 创建一个用户态指针检查器，同时设置 SUM 模式，直到检查器被 drop 时关闭
     pub fn new_with_sum(lproc: &'a LightProcess) -> Self {
         unsafe { riscv::register::sstatus::set_sum() };
         Self { lproc }
@@ -34,21 +37,29 @@ impl<'a> UserCheck<'a> {
 
     pub fn checked_write<T>(&self, ptr: *mut T, val: T) -> Result<(), ()> {
         let vaddr = VirtAddr::from(ptr as usize);
+        let pte = self
+            .lproc
+            .with_mut_memory(|m| m.page_table.get_pte_copied_from_vpn(vaddr.bits().into()));
         if self.has_perm(vaddr, UserAreaPerm::WRITE) {
+            if pte.is_none() || !pte.unwrap().writable() {
+                // Try Copy-on-write
+                self.lproc
+                    .with_mut_memory(|m| m.handle_pagefault(vaddr, PageFaultAccessType::RW))
+                    .expect("Copy-on-write failed");
+            }
             unsafe {
                 ptr.write(val);
             }
-            Ok(())
-        } else {
-            Err(())
+            return Ok(());
         }
+        Err(())
     }
 
     pub fn checked_read_cstr(&self, ptr: *const u8) -> Result<String, ()> {
         let mut s = String::new();
         let mut p = ptr;
         loop {
-            // TODO-PERF: 复用找到的段的范围, 减少大量的找段的时间
+            // TODO-PERF: 复用找到的段的范围，减少大量的找段的时间
             let c = self.checked_read(p)?;
             if c == 0 {
                 break;
@@ -76,7 +87,7 @@ impl<'a> UserCheck<'a> {
         let mut v = Vec::new();
         let mut p = ptr;
         loop {
-            // TODO-PERF: 复用找到的段的范围, 减少大量的找段的时间
+            // TODO-PERF: 复用找到的段的范围，减少大量的找段的时间
             let ptr_s = self.checked_read(p)?;
             if ptr_s.is_null() {
                 break;

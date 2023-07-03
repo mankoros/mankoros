@@ -23,7 +23,6 @@ extern crate alloc;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::Write;
-use core::num::NonZeroU32;
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use lazy_static::lazy_static;
@@ -56,15 +55,12 @@ use memory::frame;
 use memory::heap;
 use sync::SpinNoIrqLock;
 
-use crate::arch::get_hart_id;
 use crate::boot::boot_pagetable_paddr;
 use crate::consts::address_space::K_SEG_PHY_MEM_BEG;
 use crate::fs::vfs::filesystem::VfsNode;
 use crate::fs::vfs::node::VfsDirEntry;
-use crate::memory::address::{
-    kernel_virt_text_to_phys, PhysAddr, PhysAddr4K, VirtAddr, VirtAddr4K,
-};
-use crate::memory::{kernel_phys_dev_to_virt, kernel_phys_to_virt, pagetable};
+use crate::memory::address::kernel_virt_text_to_phys;
+use crate::memory::pagetable;
 
 // use trap::ticks;
 

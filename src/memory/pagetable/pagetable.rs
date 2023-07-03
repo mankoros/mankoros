@@ -15,6 +15,7 @@ use crate::{
         address::{PhysAddr, PhysAddr4K, VirtAddr, VirtAddr4K},
         frame,
     },
+    process::with_shared_frame_mgr,
 };
 
 use alloc::{vec, vec::Vec};
@@ -111,13 +112,20 @@ impl PageTable {
         self.root_paddr
     }
 
-    // map_page maps a physical page to a virtual address
-    // PTE::V is guaranteed to be set, so no need to set PTE::V
+    /// map_page maps a physical page to a virtual address
+    /// PTE::V is guaranteed to be set, so no need to set PTE::V
     pub fn map_page(&mut self, vaddr: VirtAddr4K, paddr: PhysAddr4K, flags: PTEFlags) {
         let new_pte = pte::PageTableEntry::new(paddr, PTEFlags::V | flags);
         // Get entry by vaddr
         let entry = self.get_entry_mut_or_create(vaddr.into());
         debug_assert!(!entry.is_valid(), "Remapping a valid page table entry");
+        *entry = new_pte;
+    }
+    /// remap_page allows remapping valid page
+    pub fn remap_page(&mut self, vaddr: VirtAddr4K, paddr: PhysAddr4K, flags: PTEFlags) {
+        let new_pte = pte::PageTableEntry::new(paddr, PTEFlags::V | flags);
+        // Get entry by vaddr
+        let entry = self.get_entry_mut_or_create(vaddr.into());
         *entry = new_pte;
     }
     pub fn unmap_page(&mut self, vaddr: VirtAddr4K) -> PhysAddr4K {
@@ -351,7 +359,14 @@ impl Drop for PageTable {
         // shared kernel segment pagetable is not in intrm_tables
         // so no extra things should be done
         for frame in &self.intrm_tables {
-            frame::dealloc_frame((*frame));
+            with_shared_frame_mgr(|mgr| {
+                if mgr.is_shared(frame.page_num()) {
+                    mgr.remove_ref(frame.page_num())
+                }
+                if mgr.is_unique(frame.page_num()) {
+                    frame::dealloc_frame(*frame);
+                }
+            });
         }
     }
 }

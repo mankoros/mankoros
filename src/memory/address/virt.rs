@@ -117,7 +117,7 @@ impl VirtAddr {
 }
 
 impl_arithmetic_with_usize!(VirtAddr);
-impl_fmt!(VirtAddr, "PA");
+impl_fmt!(VirtAddr, "VA");
 impl_usize_convert!(VirtAddr);
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
@@ -130,5 +130,5 @@ impl VirtPageNum {
 }
 
 impl_arithmetic_with_usize!(VirtPageNum);
-impl_fmt!(VirtPageNum, "PPN");
+impl_fmt!(VirtPageNum, "VPN");
 impl_usize_convert!(VirtPageNum);

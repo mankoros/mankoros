@@ -8,6 +8,7 @@ pub mod pid;
 mod shared_frame_mgr;
 pub mod user_space;
 pub mod userloop;
+pub use shared_frame_mgr::with_shared_frame_mgr;
 
 pub fn spawn_proc_from_file(file: Arc<dyn VfsNode>) {
     let lproc = LightProcess::new();
@@ -23,7 +24,7 @@ pub fn spawn_proc_from_file(file: Arc<dyn VfsNode>) {
 }
 
 pub fn spawn_proc(lproc: Arc<LightProcess>) {
-    let future = OutermostFuture::new(lproc.clone(),userloop::userloop(lproc));
+    let future = OutermostFuture::new(lproc.clone(), userloop::userloop(lproc));
     let (r, t) = executor::spawn(future);
     r.schedule();
     t.detach();

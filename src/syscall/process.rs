@@ -47,7 +47,7 @@ impl<'a> Syscall<'a> {
         let (pid, wstatus, options) = (args[0] as isize, args[1], args[2]);
 
         info!(
-            "syscall: wait: pid: {}, wstatus: {:?}, options: {}",
+            "syscall: wait: pid: {}, &wstatus: {:x}, options: {}",
             pid, wstatus, options
         );
 
@@ -238,7 +238,7 @@ impl<'a> Syscall<'a> {
 
     pub fn sys_exit(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        debug!("syscall: exit");
+        info!("Syscall: exit");
         self.do_exit = true;
         self.lproc.set_exit_code(args[0] as i32);
         Ok(0)

@@ -249,7 +249,7 @@ impl UserArea {
         }
 
         // remap the frame
-        page_table.map_page(access_vpn.addr(), frame, self.perm().into());
+        page_table.remap_page(access_vpn.addr(), frame, self.perm().into());
         Ok(())
     }
 

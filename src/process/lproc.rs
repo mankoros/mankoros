@@ -38,7 +38,7 @@ pub enum ProcessStatus {
     ZOMBIE,
 }
 
-// 少打两个字?
+// 少打两个字？
 type Shared<T> = Arc<SpinNoIrqLock<T>>;
 fn new_shared<T>(t: T) -> Shared<T> {
     Arc::new(SpinNoIrqLock::new(t))
@@ -49,9 +49,9 @@ pub struct LightProcess {
     parent: Shared<Option<Weak<LightProcess>>>,
     context: SyncUnsafeCell<Box<UKContext, Global>>,
 
-    // 因为每个儿子自己跑来加 parent 的 children, 所以可能并发, 要加锁
+    // 因为每个儿子自己跑来加 parent 的 children, 所以可能并发，要加锁
     children: Arc<SpinNoIrqLock<Vec<Arc<LightProcess>>>>,
-    // 因为同一个 Thread Group 里的进程可能会互相修改状态, 所以要加锁
+    // 因为同一个 Thread Group 里的进程可能会互相修改状态，所以要加锁
     status: SpinNoIrqLock<SyncUnsafeCell<ProcessStatus>>,
     timer: SpinNoIrqLock<TimeStat>,
     exit_code: AtomicI32,
@@ -236,7 +236,7 @@ impl LightProcess {
         });
 
         debug!("Stack alloc done.");
-        // 将参数, auxv 和环境变量放到栈上
+        // 将参数，auxv 和环境变量放到栈上
         let (sp, argc, argv, envp) = within_sum(|| init_stack(stack_begin, args, envp, auxv));
 
         // 为线程初始化上下文
@@ -287,16 +287,16 @@ impl LightProcess {
             memory = self.memory.clone();
         } else {
             // TODO-PERF: 这里应该可以优化
-            // 比如引入一个新的状态, 表示这个进程的内存是应该 CoW 的, 但是不真正去 CoW 本来的内存
-            // 只是给它一个全是 Invaild 的页表, 然后如果它没有进行任何写入操作, 直接进入 syscall exec 的话,
-            // 就可以直接来一个新的地址空间, 不用连累旧的进程的地址空间也来一次 CoW.
-            // 反之如果在那种状态 page fault 了, 那么我们就要进行 "昂贵" 的 CoW 操作了
-            let _raw_memory = self.with_mut_memory(|m| m.clone_cow());
+            // 比如引入一个新的状态，表示这个进程的内存是应该 CoW 的，但是不真正去 CoW 本来的内存
+            // 只是给它一个全是 Invaild 的页表，然后如果它没有进行任何写入操作，直接进入 syscall exec 的话，
+            // 就可以直接来一个新的地址空间，不用连累旧的进程的地址空间也来一次 CoW.
+            // 反之如果在那种状态 page fault 了，那么我们就要进行 "昂贵" 的 CoW 操作了
+            // let _raw_memory = self.with_mut_memory(|m| m.clone_cow());
             memory = new_shared(self.with_mut_memory(|m| m.clone_cow()));
         }
 
         let stack_begin;
-        // 如果用户指定了栈, 那么就用用户指定的栈, 否则在新的地址空间里分配一个
+        // 如果用户指定了栈，那么就用用户指定的栈，否则在新的地址空间里分配一个
         if let Some(sp) = user_stack_begin {
             stack_begin = sp;
         } else {
