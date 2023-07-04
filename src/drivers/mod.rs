@@ -1,4 +1,5 @@
 mod blk;
+mod cpu;
 mod manager;
 mod serial;
 

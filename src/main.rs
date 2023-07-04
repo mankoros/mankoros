@@ -23,6 +23,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::Write;
+use core::hint;
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use lazy_static::lazy_static;
@@ -123,15 +124,10 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     frame::test_first_frame();
     heap::init();
 
-    // Get hart info
-    let hart_cnt = boot::get_hart_status();
-    info!("Total harts: {}", hart_cnt);
-
     // Initialize interrupt controller
     trap::trap::init();
 
     // Initialize timer
-    // trap::timer::init();
     timer::init();
 
     // Test ebreak
@@ -167,7 +163,10 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     // Start other cores
     let alt_rust_main_phys = kernel_virt_text_to_phys(boot::alt_entry as usize);
     info!("Starting other cores at 0x{:x}", alt_rust_main_phys);
-    for hart_id in 0..hart_cnt {
+    let harts = drivers::get_device_manager().bootable_cpus();
+    let hart_freq = drivers::get_device_manager().cpu_freqs();
+    let hart_cnt = harts.len();
+    for hart_id in harts {
         if hart_id != boot_hart_id {
             sbi_rt::hart_start(hart_id, alt_rust_main_phys, boot_pagetable_paddr())
                 .expect("Starting hart failed");
@@ -177,6 +176,13 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
 
     // Wait for all the harts to finish booting
     while BOOT_HART_CNT.load(Ordering::SeqCst) != hart_cnt {}
+
+    info!("Total harts booted: {}", hart_cnt);
+    info!(
+        "Hart frequency: {:?} MHz",
+        hart_freq.iter().map(|f| f / 1000000).collect::<Vec<_>>()
+    );
+
     // Remove low memory mappings
     pagetable::pagetable::unmap_boot_seg();
     unsafe {

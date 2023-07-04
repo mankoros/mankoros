@@ -185,7 +185,8 @@ fn probe_serial_console(stdout: &fdt::node::FdtNode) -> Serial {
     let base_paddr = reg.starting_address as usize;
     let size = reg.size.unwrap();
     let base_vaddr = kernel_phys_dev_to_virt(base_paddr);
-    let irq_number = stdout.interrupts().unwrap().next().unwrap();
+    let irq_number = stdout.property("interrupts").unwrap().as_usize().unwrap();
+    info!("IRQ number: {}", irq_number);
 
     match stdout.compatible().unwrap().first() {
         "ns16550a" | "snps,dw-apb-uart" => {
@@ -207,14 +208,14 @@ fn probe_serial_console(stdout: &fdt::node::FdtNode) -> Serial {
             if let Some(reg_shift_raw) = stdout.property("reg-shift") {
                 reg_shift = reg_shift_raw.as_usize().expect("Parse reg-shift to usize failed");
             }
-            let mut uart = unsafe {
+            let uart = unsafe {
                 uart8250::Uart::new(base_vaddr, freq_raw, 115200, reg_io_width, reg_shift)
             };
             return Serial::new(base_paddr, size, irq_number, Box::new(uart));
         }
         "sifive,uart0" => {
             // sifive_u QEMU (FU540)
-            let mut uart = sifive::SifiveUart::new(
+            let uart = sifive::SifiveUart::new(
                 base_vaddr,
                 500 * 1000 * 1000, // 500 MHz hard coded for now
             );

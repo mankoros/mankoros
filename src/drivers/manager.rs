@@ -5,19 +5,14 @@ use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 use log::warn;
 
 use crate::{
-    boot, here,
-    memory::{
-        self,
-        address::{VirtAddr, VirtAddr4K},
-        kernel_phys_dev_to_virt,
-        pagetable::pte::PTEFlags,
-    },
-    sync::SpinNoIrqLock,
+    boot,
+    memory::{self, address::VirtAddr, kernel_phys_dev_to_virt, pagetable::pte::PTEFlags},
 };
 
-use super::{BlockDevice, CharDevice, Device};
+use super::{cpu, BlockDevice, CharDevice, Device};
 
 pub struct DeviceManager {
+    cpus: Vec<cpu::CPU>,
     devices: Vec<Arc<dyn Device>>,
     interrupt_map: BTreeMap<usize, Arc<dyn Device>>,
 }
@@ -27,6 +22,7 @@ impl DeviceManager {
         Self {
             devices: Vec::new(),
             interrupt_map: BTreeMap::new(),
+            cpus: Vec::new(),
         }
     }
 
@@ -48,6 +44,9 @@ impl DeviceManager {
     }
 
     pub fn probe(&mut self) {
+        // Probe CPU
+        self.cpus = cpu::probe();
+        // Probe Devices
         if let Some(dev) = super::blk::probe() {
             self.devices.push(Arc::new(dev));
         }
@@ -119,6 +118,15 @@ impl DeviceManager {
             dev.init();
         }
     }
+
+    // Return the hart id of usable CPU
+    pub fn bootable_cpus(&self) -> Vec<usize> {
+        self.cpus.iter().filter(|c| c.usable).map(|c| c.id).collect()
+    }
+
+    pub fn cpu_freqs(&self) -> Vec<usize> {
+        self.cpus.iter().map(|c| c.clock_freq).collect()
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -138,6 +146,6 @@ impl plic::InterruptSource for PLICWrapper {
 impl plic::HartContext for PLICWrapper {
     fn index(self) -> usize {
         // hart 0 s mode
-        1 // TODO: impl a dev manager to manage harts and generate PLIC context map
+        2 // TODO: impl a dev manager to manage harts and generate PLIC context map
     }
 }
