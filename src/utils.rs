@@ -1,5 +1,7 @@
-use core::fmt;
+use core::fmt::{self, Write};
 use core::sync::atomic::Ordering;
+
+use alloc::sync::Arc;
 
 use crate::{here, DEVICE_REMAPPED};
 
@@ -31,6 +33,23 @@ pub fn _print(args: fmt::Arguments) {
         }
         crate::EARLY_UART.write_fmt(args).unwrap();
     };
+}
+
+pub struct SerialWrapper {
+    inner: Arc<dyn super::drivers::CharDevice>,
+}
+
+impl SerialWrapper {
+    pub fn new(inner: Arc<dyn super::drivers::CharDevice>) -> Self {
+        Self { inner }
+    }
+}
+
+impl Write for SerialWrapper {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        self.inner.write(s.as_bytes()).unwrap();
+        Ok(())
+    }
 }
 
 /// 获取一个裸指针指向的字符串长度

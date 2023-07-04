@@ -61,6 +61,7 @@ use crate::fs::vfs::filesystem::VfsNode;
 use crate::fs::vfs::node::VfsDirEntry;
 use crate::memory::address::kernel_virt_text_to_phys;
 use crate::memory::pagetable;
+use crate::utils::SerialWrapper;
 
 // use trap::ticks;
 
@@ -148,6 +149,15 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
 
     // Next stage device initialization
     device_tree::device_init();
+    // Probe devices
+    let mut manager = drivers::DeviceManager::new();
+    manager.probe();
+    manager.map_devices();
+    manager.devices_init();
+
+    let serial0 = manager.serials()[0].clone();
+    let serial = SerialWrapper::new(serial0);
+    unsafe { *UART0.lock(here!()) = Some(Box::new(serial)) };
 
     info!("Console switching...");
     DEVICE_REMAPPED.store(true, Ordering::SeqCst);
@@ -172,11 +182,6 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
         riscv::asm::sfence_vma_all();
     }
     info!("Boot memory unmapped");
-
-    // Probe devices
-    let mut manager = drivers::DeviceManager::new();
-    manager.probe();
-    manager.map_devices();
 
     fs::init_filesystems(manager.disks()[0].clone());
 
@@ -206,9 +211,11 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
         process::spawn_proc_from_file(test_case);
     };
 
+    loop {}
+
     cfg_if::cfg_if! {
         if #[cfg(debug_assertions)] {
-            let cases = ["mmap"];
+            let cases = ["fork"];
         } else {
             let cases = [
                 "getpid",

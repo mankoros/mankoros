@@ -3,7 +3,7 @@
 
 use core::fmt::Write;
 
-use super::wait_for;
+use super::{wait_for, UartDriver};
 
 /// Sifive uart
 pub struct SifiveUart {
@@ -67,6 +67,18 @@ impl SifiveUart {
             wait_for!((reg.read_volatile() & RXFIFO_EMPTY) == 0);
             reg.add(RXFIFO).read_volatile() as u8
         }
+    }
+}
+
+impl UartDriver for SifiveUart {
+    fn init(&mut self) {
+        self.init()
+    }
+    fn putchar(&mut self, byte: u8) {
+        self.putc(byte)
+    }
+    fn getchar(&mut self) -> Option<u8> {
+        Some(self.getc())
     }
 }
 

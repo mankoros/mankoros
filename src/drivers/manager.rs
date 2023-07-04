@@ -5,11 +5,17 @@ use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 use log::warn;
 
 use crate::{
-    boot,
-    memory::{self, kernel_phys_dev_to_virt, pagetable::pte::PTEFlags},
+    boot, here,
+    memory::{
+        self,
+        address::{VirtAddr, VirtAddr4K},
+        kernel_phys_dev_to_virt,
+        pagetable::pte::PTEFlags,
+    },
+    sync::SpinNoIrqLock,
 };
 
-use super::{BlockDevice, Device};
+use super::{BlockDevice, CharDevice, Device};
 
 pub struct DeviceManager {
     devices: Vec<Arc<dyn Device>>,
@@ -32,11 +38,36 @@ impl DeviceManager {
             .map(|d| d.unwrap())
             .collect::<Vec<_>>()
     }
+    pub fn serials(&self) -> Vec<Arc<dyn CharDevice>> {
+        self.devices
+            .iter()
+            .map(|d| d.clone().as_char())
+            .filter(|d| d.is_some())
+            .map(|d| d.unwrap())
+            .collect::<Vec<_>>()
+    }
 
     pub fn probe(&mut self) {
         if let Some(dev) = super::blk::probe() {
             self.devices.push(Arc::new(dev));
         }
+        if let Some(dev) = super::serial::probe() {
+            self.devices.push(Arc::new(dev));
+        }
+
+        // Map PLIC first
+        // TODO: use a plic driver instead
+        let mut kernel_page_table = memory::pagetable::pagetable::PageTable::new_with_paddr(
+            (boot::boot_pagetable_paddr()).into(),
+        );
+        kernel_page_table.map_region(
+            (kernel_phys_dev_to_virt(0xc00_0000)).into(),
+            0xc00_0000.into(),
+            0x600000,
+            PTEFlags::R | PTEFlags::W | PTEFlags::A | PTEFlags::D,
+        );
+        // Avoid drop
+        core::mem::forget(kernel_page_table);
 
         // Register interrupt
         let plic = unsafe { kernel_phys_dev_to_virt(0xc000000) as *mut plic::Plic };
@@ -70,16 +101,23 @@ impl DeviceManager {
         );
 
         for dev in self.devices.iter() {
+            let size = VirtAddr::from(dev.mmio_size());
             kernel_page_table.map_region(
                 kernel_phys_dev_to_virt(dev.mmio_base()).into(),
                 dev.mmio_base().into(),
-                dev.mmio_size(),
+                size.round_up().bits(),
                 PTEFlags::rw(),
             )
         }
 
         // Avoid drop
         core::mem::forget(kernel_page_table);
+    }
+
+    pub fn devices_init(&mut self) {
+        for dev in self.devices.iter() {
+            dev.init();
+        }
     }
 }
 

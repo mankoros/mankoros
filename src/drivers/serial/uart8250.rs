@@ -1,7 +1,7 @@
 //! Copyright (c) 2023 Easton Man
 //! Adapted from https://docs.rs/uart_16550/latest/src/uart_16550/mmio.rs.html
 
-use super::wait_for;
+use super::{wait_for, UartDriver};
 use bitflags::bitflags;
 use core::fmt::Write; // for formatted output
 
@@ -225,6 +225,18 @@ impl Uart {
             wait_for!(self.line_sts_u8().contains(LineStsFlags::INPUT_FULL));
             ptr.add(0).read_volatile()
         }
+    }
+}
+
+impl UartDriver for Uart {
+    fn init(&mut self) {
+        self.init()
+    }
+    fn putchar(&mut self, byte: u8) {
+        self.send(byte)
+    }
+    fn getchar(&mut self) -> Option<u8> {
+        Some(self.receive())
     }
 }
 
