@@ -2,6 +2,7 @@ mod sifive;
 mod uart8250;
 
 use alloc::boxed::Box;
+use log::info;
 
 use core::{
     cell::UnsafeCell,
@@ -94,7 +95,13 @@ impl Device for Serial {
     }
 
     fn interrupt_handler(&self) {
-        todo!()
+        let byte = unsafe { &mut *self.inner.get() }.as_mut().getchar();
+        if let Some(b) = byte {
+            info!(
+                "Serial interrupt handler got byte: {}",
+                core::str::from_utf8(&[b]).unwrap()
+            );
+        }
     }
 
     fn init(&self) {

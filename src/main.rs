@@ -150,7 +150,8 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     // Next stage device initialization
     device_tree::device_init();
     // Probe devices
-    let mut manager = drivers::DeviceManager::new();
+    drivers::init_device_manager();
+    let manager = drivers::get_device_manager_mut();
     manager.probe();
     manager.map_devices();
     manager.devices_init();

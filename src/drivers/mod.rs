@@ -17,6 +17,21 @@ use virtio_drivers::transport;
 pub type VirtIoBlockDev =
     blk::VirtIoBlkDev<blk::VirtIoHalImpl, virtio_drivers::transport::mmio::MmioTransport>;
 
+static mut DEVICE_MANAGER: Option<DeviceManager> = None;
+
+pub fn get_device_manager() -> &'static DeviceManager {
+    unsafe { DEVICE_MANAGER.as_ref().unwrap() }
+}
+pub fn get_device_manager_mut() -> &'static mut DeviceManager {
+    unsafe { DEVICE_MANAGER.as_mut().unwrap() }
+}
+
+pub fn init_device_manager() {
+    unsafe {
+        DEVICE_MANAGER = Some(DeviceManager::new());
+    }
+}
+
 /// General Device Operations
 /// Adapted from ArceOS
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
