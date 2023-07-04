@@ -1,6 +1,7 @@
 mod blk;
 mod cpu;
 mod manager;
+mod plic;
 mod serial;
 
 use core::fmt::Debug;

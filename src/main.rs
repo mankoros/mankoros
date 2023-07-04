@@ -151,6 +151,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     manager.probe();
     manager.map_devices();
     manager.devices_init();
+    manager.enable_external_interrupts();
 
     let serial0 = manager.serials()[0].clone();
     let serial = SerialWrapper::new(serial0);

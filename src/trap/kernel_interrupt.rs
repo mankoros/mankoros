@@ -21,7 +21,7 @@ pub fn kernel_default_interrupt() {
         scause::Interrupt::SupervisorTimer => timer::timer_handler(),
         scause::Interrupt::UserExternal => todo!(),
         scause::Interrupt::SupervisorExternal => {
-            drivers::get_device_manager_mut().interrupt_handler(0x0a);
+            drivers::get_device_manager_mut().interrupt_handler();
         }
         _ => {
             // Anything else is unexpected
