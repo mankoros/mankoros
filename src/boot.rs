@@ -212,6 +212,11 @@ unsafe extern "C" fn setup_vm(_hartid: usize, boot_pc: usize, dtb_addr: usize) {
         unsafe { core::slice::from_raw_parts_mut(root_paddr as *mut PageTableEntry, ENTRY_COUNT) };
     let second_offset = _BOOT_SECOND_PAGE_TABLE_SV39.as_ptr() as usize - kernel_start as usize;
     let second_paddr = boot_pc + second_offset;
+    // Fill second page table with zero
+    // TODO: remove hard coded
+    let second_pgtbl =
+        unsafe { core::slice::from_raw_parts_mut(second_paddr as *mut u8, 512 * 4096) };
+    second_pgtbl.fill(0);
 
     // Fill root page table
     for (idx, pte) in boot_pgtbl.iter_mut().enumerate() {

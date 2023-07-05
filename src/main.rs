@@ -23,7 +23,6 @@ extern crate alloc;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::Write;
-use core::hint;
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use lazy_static::lazy_static;

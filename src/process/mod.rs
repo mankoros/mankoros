@@ -16,8 +16,8 @@ pub use shared_frame_mgr::with_shared_frame_mgr;
 pub fn spawn_proc_from_file(file: Arc<dyn VfsNode>) {
     let lproc = LightProcess::new();
 
+    lproc.clone().do_exec(file, Vec::new(), Vec::new());
     let future = OutermostFuture::new(lproc.clone(), async {
-        lproc.clone().do_exec(file, Vec::new(), Vec::new());
         userloop::userloop(lproc).await;
     });
 
@@ -32,12 +32,16 @@ pub fn spawn_init() {
     let root_dir = fs::root::get_root_dir();
     let busybox = root_dir.clone().lookup("/busybox").expect("Read busybox failed");
 
-    let args = ["sh"].to_vec().into_iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let args = ["busybox"]
+        .to_vec()
+        .into_iter()
+        .map(|s: &str| s.to_string())
+        .collect::<Vec<_>>();
 
     let lproc = LightProcess::new();
+    lproc.clone().do_exec(busybox, args, Vec::new());
 
     let future = OutermostFuture::new(lproc.clone(), async {
-        lproc.clone().do_exec(busybox, args, Vec::new());
         userloop::userloop(lproc).await;
     });
 

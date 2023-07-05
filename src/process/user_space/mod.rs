@@ -4,7 +4,7 @@ pub mod user_area;
 use alloc::{string::String, sync::Arc, vec::Vec};
 
 use crate::{
-    arch::get_curr_page_table_addr,
+    arch::{get_curr_page_table_addr, within_sum},
     consts::{PAGE_SIZE, PTE_FLAGS_BITS},
     fs::vfs::filesystem::VfsNode,
     memory::{
@@ -18,7 +18,7 @@ use crate::{
 use super::{aux_vector::AuxVector, shared_frame_mgr::with_shared_frame_mgr};
 
 use self::user_area::{PageFaultErr, UserAreaManager, UserAreaPerm, VirtAddrRange};
-use log::debug;
+use log::{debug, info};
 
 pub const THREAD_STACK_SIZE: usize = 4 * 1024;
 
@@ -85,7 +85,12 @@ pub fn init_stack(
         unsafe {
             // core::ptr::copy_nonoverlapping(s.as_ptr(), *sp as *mut u8, len);
             for (i, c) in s.bytes().enumerate() {
-                debug!("push_str: {:x} ({:x}) <- {:?}", *sp + i, i, c);
+                debug!(
+                    "push_str: {:x} ({:x}) <- {:?}",
+                    *sp + i,
+                    i,
+                    core::str::from_utf8_unchecked(&[c])
+                );
                 *((*sp as *mut u8).add(i)) = c;
             }
             *(*sp as *mut u8).add(len) = 0u8;
@@ -126,6 +131,7 @@ pub fn init_stack(
     // 存放 envp 与 argv 指针
     fn push_usize(sp: &mut usize, ptr: usize) {
         *sp -= core::mem::size_of::<usize>();
+        debug!("addr: 0x{:x}, content: {:x}", *sp, ptr);
         unsafe {
             core::ptr::write(*sp as *mut usize, ptr);
         }
@@ -196,6 +202,7 @@ impl UserSpace {
             let area_begin = VirtAddr::from(ph.virtual_addr() as usize);
             let area_perm = ph.flags().into();
             let area_size = ph.mem_size() as usize;
+            let file_size = ph.file_size() as usize;
 
             if ph.file_size() == ph.mem_size() {
                 // 如果该段在文件中的大小与其被载入内存后应有的大小相同，
@@ -217,36 +224,33 @@ impl UserSpace {
                     .insert_mmap_anonymous_at(area_begin, area_size, area_perm)
                     .expect("failed to map elf file in a mmap-anonymous-like way");
                 // Allocate memory
-                for vaddr in (ph.virtual_addr() as usize..(ph.virtual_addr() as usize + area_size))
-                    .step_by(PAGE_SIZE)
-                {
+                let begin: usize = area_begin.round_down().bits();
+                let end = VirtAddr::from(area_begin + area_size).round_up().bits();
+                for vaddr in (begin..end).step_by(PAGE_SIZE) {
                     let paddr = alloc_frame().expect("Out of memory");
                     self.page_table.map_page(
-                        VirtAddr::from(vaddr).round_down(),
+                        VirtAddr::from(vaddr).assert_4k(),
                         paddr,
-                        PTEFlags::rw(),
+                        PTEFlags::rw() | PTEFlags::U,
                     );
                 }
                 // Copy data
                 debug_assert!(
                     self.page_table.root_paddr() == PhysAddr::from(get_curr_page_table_addr())
                 );
-                let area_slice = unsafe { area_begin.as_mut_slice(area_size) };
-                elf_file
-                    .sync_read_at(offset as u64, area_slice)
-                    .expect("failed to copy elf data");
-
-                // Change permission to user
-                // TODO: use SUM ?
-                for vaddr in (ph.virtual_addr() as usize..(ph.virtual_addr() as usize + area_size))
-                    .step_by(PAGE_SIZE)
-                {
-                    let pte = self
-                        .page_table
-                        .get_pte_mut_from_vpn(VirtAddr::from(vaddr).round_down().page_num())
-                        .unwrap();
-                    pte.set_user();
-                }
+                let area_slice = unsafe { area_begin.as_mut_slice(file_size) };
+                let read_size = within_sum(|| {
+                    elf_file
+                        .sync_read_at(offset as u64, area_slice)
+                        .expect("failed to copy elf data")
+                });
+                assert_eq!(read_size, file_size);
+                // Set the rest to zero
+                let bss_slice =
+                    unsafe { (area_begin + file_size).as_mut_slice(area_size - file_size) };
+                within_sum(|| {
+                    bss_slice.fill(0);
+                });
             }
 
             // 更新 elf 的起始地址
