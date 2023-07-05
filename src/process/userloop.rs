@@ -128,6 +128,10 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                     // TODO: timer, currently do nothing
                     // timer::tick();
                     if !is_exit {
+                        debug!(
+                            "Timer interrupt, User SEPC: 0x{:x}, STVAL: 0x{:x}",
+                            context.user_sepc, stval
+                        );
                         yield_now().await;
                     }
                 }

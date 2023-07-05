@@ -73,6 +73,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_SCHED_YIELD => self.sys_sched_yield().await,
             SYSCALL_GETTIMEOFDAY => self.sys_gettimeofday(),
             SYSCALL_NANOSLEEP => self.sys_nanosleep().await,
+            SYSCALL_GETUID => self.sys_getuid(),
             _ => panic!("Unknown syscall_id: {}", syscall_no),
         };
 
