@@ -44,6 +44,24 @@ fn new_shared<T>(t: T) -> Shared<T> {
     Arc::new(SpinNoIrqLock::new(t))
 }
 
+pub struct PrivateInfo {
+    // https://man7.org/linux/man-pages/man2/set_tid_address.2.html
+    // Optional address when entering a new thread or exiting a thread.
+    // When set, when spawning a new thread, the kernel sets the thread's tid to this address.
+    pub set_child_tid: Option<usize>,
+    // When set, when the thread exits, the kernel sets the thread's tid to this address, and wake up a futex waiting on this address.
+    pub clear_child_tid: Option<usize>,
+}
+
+impl PrivateInfo {
+    fn new() -> Self {
+        Self {
+            set_child_tid: None,
+            clear_child_tid: None,
+        }
+    }
+}
+
 pub struct LightProcess {
     id: PidHandler,
     parent: Shared<Option<Weak<LightProcess>>>,
@@ -55,6 +73,9 @@ pub struct LightProcess {
     status: SpinNoIrqLock<SyncUnsafeCell<ProcessStatus>>,
     timer: SpinNoIrqLock<TimeStat>,
     exit_code: AtomicI32,
+
+    // Per thread information
+    private_info: SpinNoIrqLock<PrivateInfo>,
 
     // 下面的数据可能被多个 LightProcess 共享
     group: Shared<ThreadGroup>,
@@ -184,6 +205,14 @@ impl LightProcess {
         f(&mut self.fdtable.lock(here!()))
     }
 
+    pub fn with_private_info<T>(&self, f: impl FnOnce(&PrivateInfo) -> T) -> T {
+        f(&self.private_info.lock(here!()))
+    }
+
+    pub fn with_mut_private_info<T>(&self, f: impl FnOnce(&mut PrivateInfo) -> T) -> T {
+        f(&mut self.private_info.lock(here!()))
+    }
+
     pub fn is_exit(&self) -> bool {
         self.status() == ProcessStatus::ZOMBIE
     }
@@ -203,6 +232,7 @@ impl LightProcess {
             fsinfo: new_shared(FsInfo::new()),
             fdtable: new_shared(FdTable::new_with_std()),
             signal: SpinNoIrqLock::new(signal::SignalSet::empty()),
+            private_info: SpinNoIrqLock::new(PrivateInfo::new()),
         })
     }
 
@@ -322,7 +352,7 @@ impl LightProcess {
 
         // TODO: signal handler
 
-        let new = Self {
+        let mut new = Self {
             id,
             parent,
             context,
@@ -335,7 +365,9 @@ impl LightProcess {
             fsinfo,
             fdtable,
             signal: SpinNoIrqLock::new(signal::SignalSet::empty()),
+            private_info: SpinNoIrqLock::new(PrivateInfo::new()), // TODO: verify if new or need to check FLAG
         };
+
         let new = Arc::new(new);
 
         if flags.contains(CloneFlags::THREAD) {

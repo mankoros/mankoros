@@ -62,6 +62,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_EXIT => self.sys_exit(),
             SYSCALL_GETPPID => self.sys_getppid(),
             SYSCALL_GETPID => self.sys_getpid(),
+            SYSCALL_SET_TID_ADDRESS => self.sys_set_tid_address(),
             // Memory related
             SYSCALL_BRK => self.sys_brk(),
             SYSCALL_MUNMAP => self.sys_munmap(),
