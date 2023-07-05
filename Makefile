@@ -26,9 +26,9 @@ QEMU_DEVICES	:= -drive file=fs.img,format=raw,id=hd0 -device virtio-blk-device,d
 
 # QEMU cmdline
 QEMU_CMD		:= qemu-system-riscv64 		\
-        				-machine virt		\
-            			-nographic 			\
-            			-bios default 		\
+						-machine virt		\
+						-nographic 			\
+						-bios default 		\
 						-m $(MEM_SIZE)		\
 						-smp $(CPUS) 		\
 						$(QEMU_DEVICES)		\

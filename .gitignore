@@ -23,7 +23,7 @@ uImage
 zImage
 
 # Testing filesystem image
-fs.img
+*.img
 
 # Any device tree
 *.dtb
