@@ -22,7 +22,8 @@ ifeq ($(MODE), release)
 CARGO_BUILD_ARGS += --release
 endif
 
-QEMU_DEVICES	:= -drive file=fs.img,format=raw,id=hd0 -device virtio-blk-device,drive=hd0
+SDCARD_IMG		:= final.img
+QEMU_DEVICES	:= -drive file=$(SDCARD_IMG),format=raw,id=hd0 -device virtio-blk-device,drive=hd0
 
 # QEMU cmdline
 QEMU_CMD		:= qemu-system-riscv64 		\

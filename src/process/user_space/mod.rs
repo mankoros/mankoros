@@ -5,10 +5,12 @@ use alloc::{string::String, sync::Arc, vec::Vec};
 
 use crate::{
     arch::get_curr_page_table_addr,
+    consts::{PAGE_SIZE, PTE_FLAGS_BITS},
     fs::vfs::filesystem::VfsNode,
     memory::{
         address::{PhysAddr, VirtAddr},
-        pagetable::pagetable::PageTable,
+        frame::alloc_frame,
+        pagetable::{pagetable::PageTable, pte::PTEFlags},
     },
     process::{aux_vector::AuxElement, user_space::user_area::PageFaultAccessType},
 };
@@ -214,7 +216,18 @@ impl UserSpace {
                 self.areas_mut()
                     .insert_mmap_anonymous_at(area_begin, area_size, area_perm)
                     .expect("failed to map elf file in a mmap-anonymous-like way");
-                // copy data
+                // Allocate memory
+                for vaddr in (ph.virtual_addr() as usize..(ph.virtual_addr() as usize + area_size))
+                    .step_by(PAGE_SIZE)
+                {
+                    let paddr = alloc_frame().expect("Out of memory");
+                    self.page_table.map_page(
+                        VirtAddr::from(vaddr).round_down(),
+                        paddr,
+                        PTEFlags::rw(),
+                    );
+                }
+                // Copy data
                 debug_assert!(
                     self.page_table.root_paddr() == PhysAddr::from(get_curr_page_table_addr())
                 );
@@ -222,6 +235,18 @@ impl UserSpace {
                 elf_file
                     .sync_read_at(offset as u64, area_slice)
                     .expect("failed to copy elf data");
+
+                // Change permission to user
+                // TODO: use SUM ?
+                for vaddr in (ph.virtual_addr() as usize..(ph.virtual_addr() as usize + area_size))
+                    .step_by(PAGE_SIZE)
+                {
+                    let pte = self
+                        .page_table
+                        .get_pte_mut_from_vpn(VirtAddr::from(vaddr).round_down().page_num())
+                        .unwrap();
+                    pte.set_user();
+                }
             }
 
             // 更新 elf 的起始地址
