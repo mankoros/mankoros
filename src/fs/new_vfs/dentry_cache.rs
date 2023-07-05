@@ -72,12 +72,30 @@ impl<F: ConcreteFile> DEntryCache<F> {
                 Self::Unactive(_) => {
                     self.active().await?;
                 }
-                Self::Internal(_, vfs_file) => {
-                    *self = Self::External(vfs_file.clone(), self.get_dentry_ref().clone(), externel_file.clone());
+                Self::Internal(dentry_ref, vfs_file) => {
+                    *self = Self::External(externel_file, dentry_ref.clone(), vfs_file.clone());
                     break Ok(())
                 }
                 Self::External(_, _, _) => {
                     break Err(SysError::EBUSY)
+                }
+            }
+        }
+    }
+
+    pub async fn unshadow(&mut self) -> SysResult<(bool, VfsFileRef)> {
+        loop {
+            match self {
+                Self::Unactive(_) => {
+                    self.active().await?;
+                }
+                Self::Internal(_, vfs_file) => {
+                    break Ok((true, vfs_file.clone()))
+                }
+                Self::External(new, dentry_ref, original) => {
+                    let new = new.clone();
+                    *self = Self::Internal(dentry_ref.clone(), original.clone());
+                    break Ok((false, new.clone()))
                 }
             }
         }
@@ -240,12 +258,16 @@ impl<F: ConcreteFile> VfsFile for DEntryCacheDir<F> {
     fn detach<'a>(&'a self, name: &'a str) -> ASysResult<VfsFileRef> {
         dyn_future(async {
             let mut entries_map = self.entries.lock(here!());
-            // 1. 如果缓存中有, 删除之
+            // 1. 如果缓存中有, 删除或反挂载之
             if let Some((_, dentry_cache)) = entries_map.remove_entry(name) {
                 let dentry_cache = unsafe { dentry_cache.get_mut() };
-                let vfs_file = dentry_cache.active().await?;
-                let dentry_ref = dentry_cache.get_dentry_ref().clone();
-                self.dir.lock().await.detach(dentry_ref).await?;
+                
+                let (is_internal, vfs_file) = dentry_cache.unshadow().await?;
+                log::debug!("AAAAAAAAAAA: is_internal: {}, name: {}", is_internal, name.to_string());
+                if is_internal {
+                    let dentry_ref = dentry_cache.get_dentry_ref().clone();
+                    self.dir.lock().await.detach(dentry_ref).await?;
+                }
                 return Ok(vfs_file);
             }
 
@@ -270,6 +292,7 @@ impl<F: ConcreteFile> VfsFile for DEntryCacheDir<F> {
 
     fn attach<'a>(&'a self, name: &'a str, file: VfsFileRef) -> ASysResult {
         dyn_future(async {
+            log::debug!("BBBBBBBBBBB: name: {}", name.to_string());
             let mut entries_map = self.entries.lock(here!());
             // 1. 如果缓存中有, 则检查名字是否是代表一个目录并替换之
             if let Some(dentry_cache) = entries_map.get(name) {

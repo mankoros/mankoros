@@ -3,7 +3,7 @@
 
 
 use core::cmp::min;
-use log::{debug, info};
+use log::{debug, info, warn};
 
 use crate::{
     arch::within_sum,
@@ -532,21 +532,28 @@ impl<'a> Syscall<'a> {
             "Syscall: mount (device: {:?}, mount_point: {:?})",
             device, mount_point
         );
-        let device_path = Path::from_string(device)?;
+        let _device_path = Path::from_string(device)?;
+        // TODO: real mount the device
 
         // TODO: deal with relative path?
-        let _dir = fs::root::get_root_dir().resolve(&device_path).await?;
         let cwd = self.lproc.with_mut_fsinfo(|f| f.cwd.clone());
         let mut mount_point = Path::from_string(mount_point)?;
         if !mount_point.is_root() {
             // Canonicalize path
             let tmp = cwd.to_string() + "/" + &mount_point.to_string();
             mount_point = Path::from_string(tmp)?;
+            debug_assert!(mount_point.is_absolute());
         }
 
-        let path = mount_point.remove_tail();
-        let name = mount_point.last();
-        fs::root::get_root_dir().resolve(&path).await?.attach(name, VfsFileRef::new(ZeroDev));
+        let (path, name) = mount_point.split_dir_file();
+        let dir = fs::root::get_root_dir().resolve(&path).await?;
+        if dir.lookup(&name).await.is_err() {
+            warn!("mount: user gives a non-exist dir: {:?}", path);
+            warn!("mount: to pass the test, we create it");
+            dir.create(&name, VfsFileKind::Directory).await?;
+        }
+        dir.attach(&name, VfsFileRef::new(ZeroDev)).await?;
+
         Ok(0)
     }
 

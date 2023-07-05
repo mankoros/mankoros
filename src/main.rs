@@ -244,12 +244,8 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
             "============== Running test case: {} ================",
             case_name
         );
-        let test_case = {
-            let root_dir_for_async = root_dir.clone();
-            block_on(async move {    
-                root_dir_for_async.lookup(case_name).await.expect("Read test case failed")
-            })
-        };
+        let test_case = block_on(root_dir.lookup(case_name))
+            .expect("Read test case failed");
         process::spawn_proc_from_file(test_case);
         executor::run_until_idle();
     }
