@@ -55,7 +55,6 @@ impl<'a> UserCheck<'a> {
         } else {
             Err(SysError::EFAULT)
         }
-        Err(())
     }
 
     pub fn checked_read_cstr(&self, ptr: *const u8) -> SysResult<String> {

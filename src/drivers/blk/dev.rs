@@ -9,7 +9,7 @@ use crate::drivers::{BlockDevice, DevError, DevResult, Device, DeviceType};
 use crate::{
     consts::address_space::{K_SEG_DATA_BEG, K_SEG_DATA_END, K_SEG_PHY_MEM_BEG, K_SEG_PHY_MEM_END},
     memory::{
-        frame, kernel_phys_dev_to_virt, kernel_phys_to_virt, kernel_virt_text_to_phys,
+        frame, kernel_phys_to_virt, kernel_virt_text_to_phys,
         kernel_virt_to_phys,
     },
 };

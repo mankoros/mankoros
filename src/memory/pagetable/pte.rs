@@ -9,7 +9,7 @@ use bitflags::bitflags;
 use core::fmt;
 
 use crate::consts;
-use crate::memory::address::{PhysAddr, PhysAddr4K, PhysPageNum};
+use crate::memory::address::{PhysAddr4K, PhysPageNum};
 use crate::memory::frame;
 
 // Define the PTEFlags bitflags structure

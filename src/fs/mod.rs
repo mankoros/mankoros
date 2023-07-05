@@ -1,9 +1,9 @@
-use alloc::{boxed::Box, string::ToString, sync::Arc, vec::Vec};
+use alloc::{sync::Arc, vec::Vec};
 use log::info;
 use mbr_nostd::PartitionTable;
 
 use crate::{
-    drivers::{self, BlockDevice, Device},
+    drivers::{BlockDevice},
     here,
     sync::SpinNoIrqLock, fs::{memfs::{tmpdir::TmpDir, zero::{ZeroDev}}, new_vfs::top::{VfsFileRef}},
 };

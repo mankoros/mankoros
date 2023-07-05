@@ -12,8 +12,7 @@ use alloc::sync::Arc;
 /// Adapted from ArceOS
 use super::BlockDevice;
 
-use crate::driver::BlockDriverOps;
-use crate::driver::DevResult;
+use crate::drivers::DevResult;
 
 
 use crate::tools::errors::SysResult;

@@ -27,7 +27,7 @@
 //! 转换到任意长度的 slice 的方法 (unsafe `as_slice`/`as_slice_mut`), 以及转换到以页为长度的 slice 的方法，
 //! 可以按需取用。
 
-use log::{debug, trace, warn};
+use log::{trace, warn};
 
 use crate::consts;
 

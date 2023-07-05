@@ -10,7 +10,7 @@ use crate::{
         self, address_space::K_SEG_PHY_MEM_BEG, device::MAX_PHYSICAL_MEMORY, device::PHYMEM_START,
         HUGE_PAGE_SIZE,
     },
-    memory::{self, address::VirtPageNum, kernel_phys_to_virt},
+    memory::{self, address::VirtPageNum},
     memory::{
         address::{PhysAddr, PhysAddr4K, VirtAddr, VirtAddr4K},
         frame,
@@ -19,7 +19,7 @@ use crate::{
 };
 
 use alloc::{vec, vec::Vec};
-use log::{debug, trace, warn};
+use log::{trace, warn};
 
 use super::pte::{self, PTEFlags, PageTableEntry};
 

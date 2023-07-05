@@ -23,9 +23,9 @@ extern crate alloc;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::Write;
-use core::hint;
 
-use core::mem;
+
+
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use lazy_static::lazy_static;
@@ -61,9 +61,8 @@ use crate::boot::boot_pagetable_paddr;
 use crate::consts::address_space::K_SEG_PHY_MEM_BEG;
 use crate::utils::SerialWrapper;
 
-use crate::consts::platform;
-use crate::memory::address::{kernel_virt_text_to_phys, PhysAddr4K, VirtAddr4K};
-use crate::memory::{kernel_phys_dev_to_virt, pagetable};
+use crate::memory::address::{kernel_virt_text_to_phys};
+use crate::memory::{pagetable};
 use crate::executor::block_on;
 
 

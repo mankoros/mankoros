@@ -18,7 +18,6 @@ macro_rules! println {
 
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
-    use core::fmt::Write;
     let remapped = DEVICE_REMAPPED.load(Ordering::SeqCst);
     unsafe {
         if remapped {

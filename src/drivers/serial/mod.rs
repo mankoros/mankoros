@@ -118,7 +118,7 @@ impl Device for Serial {
 }
 
 impl CharDevice for Serial {
-    fn read(&self, buf: &mut [u8]) -> super::ADevResult {
+    fn read(&self, _buf: &mut [u8]) -> super::ADevResult {
         todo!()
     }
 
