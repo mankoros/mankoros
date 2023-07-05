@@ -57,7 +57,7 @@ impl<H: Hal + 'static, T: Transport + 'static> Device for VirtIoBlkDev<H, T> {
         self.size
     }
 
-    fn init(&mut self) {
+    fn init(&self) {
         // Not init needed
     }
 
@@ -75,6 +75,10 @@ impl<H: Hal + 'static, T: Transport + 'static> Device for VirtIoBlkDev<H, T> {
 
     fn as_blk(self: Arc<Self>) -> Option<Arc<dyn BlockDevice>> {
         Some(self.clone())
+    }
+
+    fn as_char(self: Arc<Self>) -> Option<Arc<dyn crate::drivers::CharDevice>> {
+        None
     }
 }
 

@@ -5,13 +5,15 @@ use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 use log::warn;
 
 use crate::{
-    boot,
-    memory::{self, kernel_phys_dev_to_virt, pagetable::pte::PTEFlags},
+    arch, boot,
+    memory::{self, address::VirtAddr, kernel_phys_dev_to_virt, pagetable::pte::PTEFlags},
 };
 
-use super::{BlockDevice, Device};
+use super::{cpu, plic, BlockDevice, CharDevice, Device};
 
 pub struct DeviceManager {
+    cpus: Vec<cpu::CPU>,
+    plic: plic::PLIC,
     devices: Vec<Arc<dyn Device>>,
     interrupt_map: BTreeMap<usize, Arc<dyn Device>>,
 }
@@ -21,6 +23,8 @@ impl DeviceManager {
         Self {
             devices: Vec::new(),
             interrupt_map: BTreeMap::new(),
+            cpus: Vec::new(),
+            plic: plic::PLIC::new(0, 0),
         }
     }
 
@@ -32,36 +36,51 @@ impl DeviceManager {
             .map(|d| d.unwrap())
             .collect::<Vec<_>>()
     }
+    pub fn serials(&self) -> Vec<Arc<dyn CharDevice>> {
+        self.devices
+            .iter()
+            .map(|d| d.clone().as_char())
+            .filter(|d| d.is_some())
+            .map(|d| d.unwrap())
+            .collect::<Vec<_>>()
+    }
 
     pub fn probe(&mut self) {
+        // Probe CPU
+        self.cpus = cpu::probe();
+
+        // Probe PLIC
+        self.plic = plic::probe();
+
+        // Probe Devices
         if let Some(dev) = super::blk::probe() {
             self.devices.push(Arc::new(dev));
         }
+        if let Some(dev) = super::serial::probe() {
+            self.devices.push(Arc::new(dev));
+        }
 
-        // Register interrupt
-        let plic = unsafe { kernel_phys_dev_to_virt(0xc000000) as *mut plic::Plic };
+        // Add to interrupt map if have interrupts
         for dev in self.devices.iter() {
             if let Some(irq) = dev.interrupt_number() {
                 self.interrupt_map.insert(irq, dev.clone());
-
-                // Setup PLIC
-                let plicwrapper = PLICWrapper::new(irq);
-
-                unsafe { (*plic).set_threshold(plicwrapper, 0) };
-                unsafe { (*plic).enable(plicwrapper, plicwrapper) };
-                unsafe { (*plic).set_priority(plicwrapper, 6) };
             }
         }
-        // Enable external interrupts
-        unsafe { riscv::register::sie::set_sext() };
     }
 
-    pub fn interrupt_handler(&mut self, irq: usize) {
-        if let Some(dev) = self.interrupt_map.get(&irq) {
-            dev.interrupt_handler();
-        } else {
-            warn!("Unknown interrupt: {}", irq);
+    pub fn interrupt_handler(&mut self) {
+        // First clain interrupt from PLIC
+        if let Some(irq_number) = self.plic.claim_irq(self.irq_context()) {
+            if let Some(dev) = self.interrupt_map.get(&irq_number) {
+                dev.interrupt_handler();
+                // Complete interrupt when done
+                self.plic.complete_irq(irq_number, self.irq_context());
+                return;
+            }
+            warn!("Unknown interrupt: {}", irq_number);
+            return;
         }
+        warn!("No interrupt available");
     }
 
     pub fn map_devices(&self) {
@@ -69,37 +88,59 @@ impl DeviceManager {
             (boot::boot_pagetable_paddr()).into(),
         );
 
+        // Map probed devices
         for dev in self.devices.iter() {
+            let size = VirtAddr::from(dev.mmio_size());
             kernel_page_table.map_region(
                 kernel_phys_dev_to_virt(dev.mmio_base()).into(),
                 dev.mmio_base().into(),
-                dev.mmio_size(),
+                size.round_up().bits(),
                 PTEFlags::rw(),
-            )
+            );
         }
+
+        // Map PLIC
+        kernel_page_table.map_region(
+            kernel_phys_dev_to_virt(self.plic.base_address).into(),
+            self.plic.base_address.into(),
+            self.plic.size,
+            PTEFlags::rw(),
+        );
 
         // Avoid drop
         core::mem::forget(kernel_page_table);
     }
-}
 
-#[derive(Debug, Clone, Copy)]
-struct PLICWrapper {
-    irq: usize,
-}
-impl PLICWrapper {
-    fn new(irq: usize) -> Self {
-        Self { irq }
+    pub fn devices_init(&mut self) {
+        for dev in self.devices.iter() {
+            dev.init();
+        }
     }
-}
-impl plic::InterruptSource for PLICWrapper {
-    fn id(self) -> core::num::NonZeroU32 {
-        core::num::NonZeroU32::try_from(self.irq as u32).unwrap()
+
+    pub fn enable_external_interrupts(&mut self) {
+        for dev in self.devices.iter() {
+            if let Some(irq) = dev.interrupt_number() {
+                self.plic.enable_irq(irq, self.irq_context());
+            }
+        }
+        unsafe { riscv::register::sie::set_sext() };
     }
-}
-impl plic::HartContext for PLICWrapper {
-    fn index(self) -> usize {
-        // hart 0 s mode
-        1 // TODO: impl a dev manager to manage harts and generate PLIC context map
+
+    // Return the hart id of usable CPU
+    pub fn bootable_cpus(&self) -> Vec<usize> {
+        self.cpus.iter().filter(|c| c.usable).map(|c| c.id).collect()
+    }
+
+    pub fn cpu_freqs(&self) -> Vec<usize> {
+        self.cpus.iter().map(|c| c.clock_freq).collect()
+    }
+
+    fn min_hart_id(&self) -> usize {
+        self.bootable_cpus().iter().min().unwrap().clone()
+    }
+
+    // Calculate the interrupt context from current hart id
+    fn irq_context(&self) -> usize {
+        2 * arch::get_hart_id() - self.min_hart_id() + 1
     }
 }

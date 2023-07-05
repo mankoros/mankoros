@@ -1,7 +1,7 @@
 use riscv::register::scause;
 
 // use super::timer;
-use crate::timer;
+use crate::{drivers, timer};
 
 #[no_mangle]
 pub fn kernel_default_interrupt() {
@@ -20,7 +20,9 @@ pub fn kernel_default_interrupt() {
         scause::Interrupt::UserTimer => todo!(),
         scause::Interrupt::SupervisorTimer => timer::timer_handler(),
         scause::Interrupt::UserExternal => todo!(),
-        scause::Interrupt::SupervisorExternal => todo!(),
+        scause::Interrupt::SupervisorExternal => {
+            drivers::get_device_manager_mut().interrupt_handler();
+        }
         _ => {
             // Anything else is unexpected
             todo!()

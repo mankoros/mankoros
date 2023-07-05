@@ -1,20 +1,38 @@
 mod blk;
+mod cpu;
 mod manager;
+mod plic;
 mod serial;
 
 use core::fmt::Debug;
+use core::future::Future;
+use core::pin::Pin;
 
+use alloc::boxed::Box;
 use alloc::sync::Arc;
 pub use manager::DeviceManager;
 pub use serial::EarlyConsole;
-pub use serial::SifiveUart;
-pub use serial::Uart;
 
 pub use transport::mmio::MmioTransport;
 use virtio_drivers::transport;
 
 pub type VirtIoBlockDev =
     blk::VirtIoBlkDev<blk::VirtIoHalImpl, virtio_drivers::transport::mmio::MmioTransport>;
+
+static mut DEVICE_MANAGER: Option<DeviceManager> = None;
+
+pub fn get_device_manager() -> &'static DeviceManager {
+    unsafe { DEVICE_MANAGER.as_ref().unwrap() }
+}
+pub fn get_device_manager_mut() -> &'static mut DeviceManager {
+    unsafe { DEVICE_MANAGER.as_mut().unwrap() }
+}
+
+pub fn init_device_manager() {
+    unsafe {
+        DEVICE_MANAGER = Some(DeviceManager::new());
+    }
+}
 
 /// General Device Operations
 /// Adapted from ArceOS
@@ -47,6 +65,8 @@ pub enum DevError {
 }
 
 pub type DevResult<T = ()> = Result<T, DevError>;
+type Async<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+pub type ADevResult<'a> = Async<'a, DevResult>;
 
 #[const_trait]
 pub trait Device: Send + Sync {
@@ -65,10 +85,11 @@ pub trait Device: Send + Sync {
     /// Interrupt handler
     fn interrupt_handler(&self);
 
-    fn init(&mut self);
+    fn init(&self);
 
     // Trait convertion
     fn as_blk(self: Arc<Self>) -> Option<Arc<dyn BlockDevice>>;
+    fn as_char(self: Arc<Self>) -> Option<Arc<dyn CharDevice>>;
 }
 
 pub trait BlockDevice: Device + Debug {
@@ -78,4 +99,9 @@ pub trait BlockDevice: Device + Debug {
     fn read_block(&self, block_id: u64, buf: &mut [u8]) -> DevResult;
     fn write_block(&self, block_id: u64, buf: &[u8]) -> DevResult;
     fn flush(&self) -> DevResult;
+}
+
+pub trait CharDevice: Device + Debug {
+    fn read(&self, buf: &mut [u8]) -> ADevResult;
+    fn write(&self, buf: &[u8]) -> DevResult;
 }

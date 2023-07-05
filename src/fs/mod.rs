@@ -31,7 +31,7 @@ pub fn init_filesystems(blk_dev: Arc<dyn BlockDevice>) {
     let mut partitions = Vec::new();
     for entry in mbr.partition_table_entries() {
         if entry.partition_type != mbr_nostd::PartitionType::Unused {
-            info!("Partition table entry: {:#x?}", entry);
+            info!("Partition table entry: {:x?}", entry);
             partitions.push(partition::Partition::new(
                 entry.logical_block_address as u64 * disk::BLOCK_SIZE as u64,
                 entry.sector_count as u64 * disk::BLOCK_SIZE as u64,

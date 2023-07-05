@@ -23,6 +23,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::Write;
+use core::hint;
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use lazy_static::lazy_static;
@@ -61,6 +62,7 @@ use crate::fs::vfs::filesystem::VfsNode;
 use crate::fs::vfs::node::VfsDirEntry;
 use crate::memory::address::kernel_virt_text_to_phys;
 use crate::memory::pagetable;
+use crate::utils::SerialWrapper;
 
 // use trap::ticks;
 
@@ -122,15 +124,10 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     frame::test_first_frame();
     heap::init();
 
-    // Get hart info
-    let hart_cnt = boot::get_hart_status();
-    info!("Total harts: {}", hart_cnt);
-
     // Initialize interrupt controller
     trap::trap::init();
 
     // Initialize timer
-    // trap::timer::init();
     timer::init();
 
     // Test ebreak
@@ -148,6 +145,17 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
 
     // Next stage device initialization
     device_tree::device_init();
+    // Probe devices
+    drivers::init_device_manager();
+    let manager = drivers::get_device_manager_mut();
+    manager.probe();
+    manager.map_devices();
+    manager.devices_init();
+    manager.enable_external_interrupts();
+
+    let serial0 = manager.serials()[0].clone();
+    let serial = SerialWrapper::new(serial0);
+    unsafe { *UART0.lock(here!()) = Some(Box::new(serial)) };
 
     info!("Console switching...");
     DEVICE_REMAPPED.store(true, Ordering::SeqCst);
@@ -156,7 +164,10 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     // Start other cores
     let alt_rust_main_phys = kernel_virt_text_to_phys(boot::alt_entry as usize);
     info!("Starting other cores at 0x{:x}", alt_rust_main_phys);
-    for hart_id in 0..hart_cnt {
+    let harts = drivers::get_device_manager().bootable_cpus();
+    let hart_freq = drivers::get_device_manager().cpu_freqs();
+    let hart_cnt = harts.len();
+    for hart_id in harts {
         if hart_id != boot_hart_id {
             sbi_rt::hart_start(hart_id, alt_rust_main_phys, boot_pagetable_paddr())
                 .expect("Starting hart failed");
@@ -166,17 +177,19 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
 
     // Wait for all the harts to finish booting
     while BOOT_HART_CNT.load(Ordering::SeqCst) != hart_cnt {}
+
+    info!("Total harts booted: {}", hart_cnt);
+    info!(
+        "Hart frequency: {:?} MHz",
+        hart_freq.iter().map(|f| f / 1000000).collect::<Vec<_>>()
+    );
+
     // Remove low memory mappings
     pagetable::pagetable::unmap_boot_seg();
     unsafe {
         riscv::asm::sfence_vma_all();
     }
     info!("Boot memory unmapped");
-
-    // Probe devices
-    let mut manager = drivers::DeviceManager::new();
-    manager.probe();
-    manager.map_devices();
 
     fs::init_filesystems(manager.disks()[0].clone());
 
@@ -205,6 +218,8 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
         let test_case = root_dir.clone().lookup(path).expect("Read test case failed");
         process::spawn_proc_from_file(test_case);
     };
+
+    loop {}
 
     cfg_if::cfg_if! {
         if #[cfg(debug_assertions)] {
