@@ -39,7 +39,7 @@ pub fn run_until_idle() {
 }
 
 /// 一直疯狂地调用 Future::poll (类似自旋锁一样一直 poll 它), 直到 Future 返回 Poll::Ready
-pub fn block_on<F: Future + 'static>(future: F) -> F::Output {
+pub fn block_on<F: Future>(future: F) -> F::Output {
     // 构建一个被调用了也什么都不干的 Waker 和对应的 Context
     fn new_noop_raw_waker() -> RawWaker {
         RawWaker::new(

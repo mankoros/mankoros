@@ -31,11 +31,25 @@ use crate::tools::errors::{SysResult, SysError};
 pub type VirtAddrRange = Range<VirtAddr>;
 
 #[inline(always)]
+///! 用于迭代虚拟地址范围内的所有页, 如果首尾不是页对齐的就 panic
 fn iter_vpn(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum) -> ()) {
     let start_vpn = range.start.assert_4k().page_num();
     let end_vpn = range.end.round_up().page_num(); // End vaddr may not be 4k aligned
     let mut vpn = start_vpn;
     while vpn < end_vpn {
+        f(vpn);
+        vpn += 1;
+    }
+}
+
+#[inline(always)]
+///! 用于迭代虚拟地址范围内的所有页, 如果首尾不是页对齐的, 会自动向前或向后扩展到页对齐.
+///! 不知道有没有用, 先留着吧
+fn iter_vpn_extend(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum) -> ()) {
+    let start_vpn = range.start.round_down().page_num();
+    let end_vpn = range.end.round_up().page_num();
+    let mut vpn = start_vpn;
+    while vpn <= end_vpn {
         f(vpn);
         vpn += 1;
     }
@@ -260,11 +274,9 @@ impl UserArea {
                 UserAreaType::MmapPrivate { file, offset } => {
                     let access_vaddr = access_vpn.addr();
                     let real_offset = offset + (access_vaddr.into() - range_begin);
-                    let borrow_file = file.clone();
                     // TODO-PERF: block on read_at
-                    frame = block_on(async move {
-                        borrow_file.get_page(real_offset, MmapKind::Private).await
-                    }).expect("read file failed");
+                    frame = block_on(file.get_page(real_offset, MmapKind::Private))
+                        .expect("read file failed");
                     // Read length may be less than PAGE_SIZE, due to file mmap
                 }
             }

@@ -167,10 +167,8 @@ impl UserSpace {
         let mut header_data = [0u8; HEADER_LEN];
 
         // TODO-PERF: async here
-        {
-            let file_for_async = elf_file.clone();
-            block_on(async move { file_for_async.read_at(0, header_data.as_mut()).await })
-        }.expect("failed to read elf header");
+        block_on(elf_file.read_at(0, header_data.as_mut_slice()))
+            .expect("failed to read elf header");
 
         let elf = xmas_elf::ElfFile::new(&header_data.as_slice()).expect("failed to parse elf");
         let elf_header = elf.header;
