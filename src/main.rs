@@ -219,8 +219,6 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
         process::spawn_proc_from_file(test_case);
     };
 
-    loop {}
-
     cfg_if::cfg_if! {
         if #[cfg(debug_assertions)] {
             let cases = ["busybox"];
