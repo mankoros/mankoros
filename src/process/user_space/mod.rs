@@ -5,11 +5,12 @@ use alloc::{string::String, sync::Arc, vec::Vec};
 
 use crate::{
     arch::{get_curr_page_table_addr, within_sum},
-    consts::{PAGE_SIZE, PTE_FLAGS_BITS},
+    consts::{PAGE_MASK, PAGE_SIZE, PTE_FLAGS_BITS},
     fs::vfs::filesystem::VfsNode,
     memory::{
         address::{PhysAddr, VirtAddr},
         frame::alloc_frame,
+        kernel_phys_to_virt,
         pagetable::{pagetable::PageTable, pte::PTEFlags},
     },
     process::{aux_vector::AuxElement, user_space::user_area::PageFaultAccessType},
@@ -20,7 +21,7 @@ use super::{aux_vector::AuxVector, shared_frame_mgr::with_shared_frame_mgr};
 use self::user_area::{PageFaultErr, UserAreaManager, UserAreaPerm, VirtAddrRange};
 use log::{debug, info};
 
-pub const THREAD_STACK_SIZE: usize = 4 * 1024;
+pub const THREAD_STACK_SIZE: usize = 16 * 1024;
 
 // TODO-PERF: 拆锁
 /// 一个线程的地址空间的相关信息，在 AliveProcessInfo 里受到进程大锁保护，不需要加锁
@@ -224,8 +225,16 @@ impl UserSpace {
                     .insert_mmap_anonymous_at(area_begin, area_size, area_perm)
                     .expect("failed to map elf file in a mmap-anonymous-like way");
                 // Allocate memory
+                debug_assert!(
+                    self.page_table.root_paddr() == PhysAddr::from(get_curr_page_table_addr())
+                );
                 let begin: usize = area_begin.round_down().bits();
+                let begin_offset = area_begin.bits() - begin;
+                let begin_residual = PAGE_SIZE - begin_offset;
+                let file_end = area_begin + file_size;
                 let end = VirtAddr::from(area_begin + area_size).round_up().bits();
+                let end_residual = (area_begin.bits() + file_size) & PAGE_MASK;
+                let mut read_size = 0;
                 for vaddr in (begin..end).step_by(PAGE_SIZE) {
                     let paddr = alloc_frame().expect("Out of memory");
                     self.page_table.map_page(
@@ -233,18 +242,47 @@ impl UserSpace {
                         paddr,
                         PTEFlags::rw() | PTEFlags::U,
                     );
+                    // Copy data
+                    if vaddr < area_begin.bits() {
+                        read_size += within_sum(|| {
+                            // First page
+                            let slice = unsafe {
+                                core::slice::from_raw_parts_mut(
+                                    kernel_phys_to_virt(paddr.bits() + begin_offset) as _,
+                                    begin_residual,
+                                )
+                            };
+                            elf_file
+                                .sync_read_at(offset as u64, slice)
+                                .expect("failed to copy elf data")
+                        });
+                    } else if vaddr < file_end.bits() {
+                        if vaddr < file_end.round_down().bits() {
+                            // Normal read page
+                            let slice = unsafe { paddr.as_mut_page_slice() };
+                            read_size += within_sum(|| {
+                                elf_file
+                                    .sync_read_at((offset + read_size) as u64, slice)
+                                    .expect("failed to copy elf data")
+                            });
+                        } else {
+                            // Last residual
+                            let slice = unsafe {
+                                core::slice::from_raw_parts_mut(
+                                    kernel_phys_to_virt(paddr.bits()) as _,
+                                    end_residual,
+                                )
+                            };
+                            read_size += within_sum(|| {
+                                elf_file
+                                    .sync_read_at((offset + read_size) as u64, slice)
+                                    .expect("failed to copy elf data")
+                            });
+                        }
+                    }
                 }
-                // Copy data
-                debug_assert!(
-                    self.page_table.root_paddr() == PhysAddr::from(get_curr_page_table_addr())
-                );
-                let area_slice = unsafe { area_begin.as_mut_slice(file_size) };
-                let read_size = within_sum(|| {
-                    elf_file
-                        .sync_read_at(offset as u64, area_slice)
-                        .expect("failed to copy elf data")
-                });
                 assert_eq!(read_size, file_size);
+
                 // Set the rest to zero
                 let bss_slice =
                     unsafe { (area_begin + file_size).as_mut_slice(area_size - file_size) };
