@@ -221,7 +221,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
 
     cfg_if::cfg_if! {
         if #[cfg(debug_assertions)] {
-            let cases = ["busybox"];
+            let cases = [];
         } else {
             let cases = [
                 "getpid",
@@ -268,6 +268,9 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
         run_test_case(case_name);
         executor::run_until_idle();
     }
+
+    process::spawn_init();
+    executor::run_until_idle();
 
     // Shutdown
     sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
