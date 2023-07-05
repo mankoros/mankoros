@@ -2,15 +2,21 @@ use alloc::{string::String, vec::Vec};
 use bitflags::bitflags;
 
 use crate::{
+    arch::within_sum,
     executor::util_futures::yield_now,
+    fs::new_vfs::{path::Path, VfsFileKind},
     memory::address::VirtAddr,
     process::{self, lproc::ProcessStatus, user_space::user_area::UserAreaPerm},
     signal,
-    tools::{user_check::UserCheck, errors::{SysError, SysResult}}, fs::new_vfs::path::Path,
+    tools::{
+        errors::{SysError, SysResult},
+        user_check::UserCheck,
+    },
 };
 
 use super::super::fs;
 use super::{Syscall, SyscallResult};
+use core::cmp::min;
 use log::{debug, info, warn};
 
 bitflags! {
@@ -40,6 +46,42 @@ bitflags! {
 }
 
 impl<'a> Syscall<'a> {
+    pub async fn sys_chdir(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let path = args[0];
+
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+        let path = user_check.checked_read_cstr(path as *const u8)?;
+        let path = Path::from_string(path)?;
+
+        // check whether the path is a directory
+        let root_fs = fs::root::get_root_dir();
+        let file = root_fs.resolve(&path).await?;
+        if file.attr().await?.kind != VfsFileKind::Directory {
+            return Err(SysError::ENOTDIR);
+        }
+
+        // change the cwd
+        self.lproc.with_mut_fsinfo(|f| f.cwd = path);
+
+        Ok(0)
+    }
+
+    pub fn sys_getcwd(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let buf = args[0] as *mut u8;
+        let len = args[1];
+
+        info!("Syscall: getcwd");
+        let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone()).to_string();
+        let length = min(cwd.len(), len);
+        within_sum(|| unsafe {
+            core::ptr::copy_nonoverlapping(cwd.as_ptr(), buf, length);
+            *buf.add(length) = 0;
+        });
+        Ok(buf as usize)
+    }
+
     pub async fn sys_wait(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
         let (pid, wstatus, options) = (args[0] as isize, args[1], args[2]);
@@ -170,11 +212,7 @@ impl<'a> Syscall<'a> {
 
     pub async fn sys_execve(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (path, argv, envp) = (
-            args[0],
-            args[1],
-            args[2],
-        );
+        let (path, argv, envp) = (args[0], args[1], args[2]);
 
         let user_check = UserCheck::new_with_sum(&self.lproc);
 

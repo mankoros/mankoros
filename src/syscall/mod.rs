@@ -1,20 +1,18 @@
-
-
 use crate::process::lproc::LightProcess;
 
-
-use crate::{trap::context::UKContext};
+use crate::trap::context::UKContext;
 
 use log::debug;
 
 mod fs;
+mod io;
 mod memory;
 mod misc;
 mod process;
 
+use crate::tools::errors::SysResult;
 use alloc::sync::Arc;
 pub use process::CloneFlags;
-use crate::tools::errors::SysResult;
 
 pub struct Syscall<'a> {
     cx: &'a mut UKContext,
@@ -39,34 +37,41 @@ impl<'a> Syscall<'a> {
         let syscall_no = self.cx.syscall_no();
         let _args = self.cx.syscall_args();
         let result: SyscallResult = match syscall_no {
-            // File related
-            SYSCALL_GETCWD => self.sys_getcwd(),
+            // IO related
+            SYSCALL_OPENAT => self.sys_openat().await,
             SYSCALL_PIPE2 => self.sys_pipe(),
             SYSCALL_DUP => self.sys_dup(),
             SYSCALL_DUP3 => self.sys_dup3(),
-            SYSCALL_OPENAT => self.sys_openat().await,
-            SYSCALL_CHDIR => self.sys_chdir().await,
             SYSCALL_CLOSE => self.sys_close(),
-            SYSCALL_GETDENTS => self.sys_getdents().await,
             SYSCALL_READ => self.sys_read().await,
             SYSCALL_WRITE => self.sys_write().await,
+            SYSCALL_PPOLL => self.sys_ppoll().await,
+            SYSCALL_WRITEV => self.sys_writev().await,
+
+            // FS related
+            SYSCALL_FSTAT => self.sys_fstat().await,
+            SYSCALL_GETDENTS => self.sys_getdents().await,
             SYSCALL_LINKAT => todo!(),
             SYSCALL_UNLINKAT => self.sys_unlinkat().await,
             SYSCALL_MKDIRAT => self.sys_mkdir().await,
             SYSCALL_UMOUNT => self.sys_umount().await,
             SYSCALL_MOUNT => self.sys_mount().await,
-            SYSCALL_FSTAT => self.sys_fstat().await,
+
             // Process related
+            SYSCALL_GETCWD => self.sys_getcwd(),
+            SYSCALL_CHDIR => self.sys_chdir().await,
             SYSCALL_CLONE => self.sys_clone(),
             SYSCALL_EXECVE => self.sys_execve().await,
             SYSCALL_WAIT => self.sys_wait().await,
             SYSCALL_EXIT => self.sys_exit(),
             SYSCALL_GETPPID => self.sys_getppid(),
             SYSCALL_GETPID => self.sys_getpid(),
+
             // Memory related
             SYSCALL_BRK => self.sys_brk(),
             SYSCALL_MUNMAP => self.sys_munmap(),
             SYSCALL_MMAP => self.sys_mmap(),
+
             // Misc
             SYSCALL_TIMES => self.sys_times(),
             SYSCALL_UNAME => self.sys_uname(),
