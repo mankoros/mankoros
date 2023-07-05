@@ -63,6 +63,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_EXIT => self.sys_exit(),
             SYSCALL_GETPPID => self.sys_getppid(),
             SYSCALL_GETPID => self.sys_getpid(),
+            SYSCALL_SET_TID_ADDRESS => self.sys_set_tid_address(),
             // Memory related
             SYSCALL_BRK => self.sys_brk(),
             SYSCALL_MUNMAP => self.sys_munmap(),
@@ -73,6 +74,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_SCHED_YIELD => self.sys_sched_yield().await,
             SYSCALL_GETTIMEOFDAY => self.sys_gettimeofday(),
             SYSCALL_NANOSLEEP => self.sys_nanosleep().await,
+            SYSCALL_GETUID => self.sys_getuid(),
             _ => panic!("Unknown syscall_id: {}", syscall_no),
         };
 

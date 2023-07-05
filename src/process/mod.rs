@@ -1,6 +1,9 @@
 use self::{lproc::LightProcess, userloop::OutermostFuture};
-use crate::{executor, fs::new_vfs::top::VfsFileRef};
-use alloc::{sync::Arc, vec::Vec};
+use crate::{
+    executor::{self, block_on},
+    fs::{self, new_vfs::top::VfsFileRef},
+};
+use alloc::{string::ToString, sync::Arc, vec::Vec};
 
 pub mod aux_vector;
 pub mod lproc;
@@ -13,14 +16,25 @@ pub use shared_frame_mgr::with_shared_frame_mgr;
 pub fn spawn_proc_from_file(file: VfsFileRef) {
     let lproc = LightProcess::new();
 
-    let future = OutermostFuture::new(lproc.clone(), async {
-        lproc.clone().do_exec(file, Vec::new(), Vec::new());
-        userloop::userloop(lproc).await;
-    });
+    lproc.clone().do_exec(file, Vec::new(), Vec::new());
+    spawn_proc(lproc);
+}
 
-    let (r, t) = executor::spawn(future);
-    r.schedule();
-    t.detach();
+pub fn spawn_init() {
+    // Currently, we use busybox sh as the init process.
+
+    let root_dir = fs::root::get_root_dir();
+    let busybox = block_on(root_dir.lookup("busybox")).expect("Read busybox failed");
+
+    let args = ["busybox"]
+        .to_vec()
+        .into_iter()
+        .map(|s: &str| s.to_string())
+        .collect::<Vec<_>>();
+
+    let lproc = LightProcess::new();
+    lproc.clone().do_exec(busybox, args, Vec::new());
+    spawn_proc(lproc);
 }
 
 pub fn spawn_proc(lproc: Arc<LightProcess>) {

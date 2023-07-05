@@ -4,17 +4,25 @@ pub mod user_area;
 use alloc::{string::String, vec::Vec};
 
 use crate::{
-    arch::get_curr_page_table_addr,
-    memory::{address::{VirtAddr, PhysAddr}, pagetable::{pagetable::PageTable, pte::PTEFlags}, frame::alloc_frame},
-    process::{aux_vector::AuxElement, user_space::user_area::PageFaultAccessType}, fs::new_vfs::top::VfsFileRef, executor::block_on, consts::PAGE_SIZE,
+    arch::{get_curr_page_table_addr, within_sum},
+    consts::{PAGE_MASK, PAGE_SIZE},
+    executor::block_on,
+    fs::new_vfs::top::VfsFileRef,
+    memory::{
+        address::{PhysAddr, VirtAddr},
+        frame::alloc_frame,
+        kernel_phys_to_virt,
+        pagetable::{pagetable::PageTable, pte::PTEFlags},
+    },
+    process::{aux_vector::AuxElement, user_space::user_area::PageFaultAccessType},
 };
 
 use super::{aux_vector::AuxVector, shared_frame_mgr::with_shared_frame_mgr};
 
 use self::user_area::{PageFaultErr, UserAreaManager, UserAreaPerm, VirtAddrRange};
-use log::debug;
+use log::{debug, info};
 
-pub const THREAD_STACK_SIZE: usize = 4 * 1024;
+pub const THREAD_STACK_SIZE: usize = 16 * 1024;
 
 // TODO-PERF: 拆锁
 /// 一个线程的地址空间的相关信息，在 AliveProcessInfo 里受到进程大锁保护，不需要加锁
@@ -79,7 +87,12 @@ pub fn init_stack(
         unsafe {
             // core::ptr::copy_nonoverlapping(s.as_ptr(), *sp as *mut u8, len);
             for (i, c) in s.bytes().enumerate() {
-                debug!("push_str: {:x} ({:x}) <- {:?}", *sp + i, i, c);
+                debug!(
+                    "push_str: {:x} ({:x}) <- {:?}",
+                    *sp + i,
+                    i,
+                    core::str::from_utf8_unchecked(&[c])
+                );
                 *((*sp as *mut u8).add(i)) = c;
             }
             *(*sp as *mut u8).add(len) = 0u8;
@@ -120,6 +133,7 @@ pub fn init_stack(
     // 存放 envp 与 argv 指针
     fn push_usize(sp: &mut usize, ptr: usize) {
         *sp -= core::mem::size_of::<usize>();
+        debug!("addr: 0x{:x}, content: {:x}", *sp, ptr);
         unsafe {
             core::ptr::write(*sp as *mut usize, ptr);
         }
@@ -191,6 +205,7 @@ impl UserSpace {
             let area_begin = VirtAddr::from(ph.virtual_addr() as usize);
             let area_perm = ph.flags().into();
             let area_size = ph.mem_size() as usize;
+            let file_size = ph.file_size() as usize;
 
             if ph.file_size() == ph.mem_size() {
                 // 如果该段在文件中的大小与其被载入内存后应有的大小相同，
@@ -212,36 +227,67 @@ impl UserSpace {
                     .insert_mmap_anonymous_at(area_begin, area_size, area_perm)
                     .expect("failed to map elf file in a mmap-anonymous-like way");
                 // Allocate memory
-                for vaddr in (ph.virtual_addr() as usize..(ph.virtual_addr() as usize + area_size))
-                    .step_by(PAGE_SIZE)
-                {
-                    let paddr = alloc_frame().expect("Out of memory");
-                    self.page_table.map_page(
-                        VirtAddr::from(vaddr).round_down(),
-                        paddr,
-                        PTEFlags::rw(),
-                    );
-                }
-                // Copy data
                 debug_assert!(
                     self.page_table.root_paddr() == PhysAddr::from(get_curr_page_table_addr())
                 );
-                let area_slice = unsafe { area_begin.as_mut_slice(area_size) };
-                // TODO-PERF: async here
-                block_on(elf_file.read_at(offset, area_slice))
-                    .expect("failed to copy elf data");
-
-                // Change permission to user
-                // TODO: use SUM ?
-                for vaddr in (ph.virtual_addr() as usize..(ph.virtual_addr() as usize + area_size))
-                    .step_by(PAGE_SIZE)
-                {
-                    let pte = self
-                        .page_table
-                        .get_pte_mut_from_vpn(VirtAddr::from(vaddr).round_down().page_num())
-                        .unwrap();
-                    pte.set_user();
+                let begin: usize = area_begin.round_down().bits();
+                let begin_offset = area_begin.bits() - begin;
+                let begin_residual = PAGE_SIZE - begin_offset;
+                let file_end = area_begin + file_size;
+                let end = VirtAddr::from(area_begin + area_size).round_up().bits();
+                let end_residual = (area_begin.bits() + file_size) & PAGE_MASK;
+                let mut read_size = 0;
+                for vaddr in (begin..end).step_by(PAGE_SIZE) {
+                    let paddr = alloc_frame().expect("Out of memory");
+                    self.page_table.map_page(
+                        VirtAddr::from(vaddr).assert_4k(),
+                        paddr,
+                        PTEFlags::rw() | PTEFlags::U,
+                    );
+                    // Copy data
+                    if vaddr < area_begin.bits() {
+                        read_size += within_sum(|| {
+                            // First page
+                            let slice = unsafe {
+                                core::slice::from_raw_parts_mut(
+                                    kernel_phys_to_virt(paddr.bits() + begin_offset) as _,
+                                    begin_residual,
+                                )
+                            };
+                            block_on(elf_file.read_at(offset, slice))
+                                .expect("failed to copy elf data")
+                        });
+                    } else if vaddr < file_end.bits() {
+                        if vaddr < file_end.round_down().bits() {
+                            // Normal read page
+                            let slice = unsafe { paddr.as_mut_page_slice() };
+                            read_size += within_sum(|| {
+                                block_on(elf_file.read_at(offset + read_size, slice))
+                                    .expect("failed to copy elf data")
+                            });
+                        } else {
+                            // Last residual
+                            let slice = unsafe {
+                                core::slice::from_raw_parts_mut(
+                                    kernel_phys_to_virt(paddr.bits()) as _,
+                                    end_residual,
+                                )
+                            };
+                            read_size += within_sum(|| {
+                                block_on(elf_file.read_at(offset + read_size, slice))
+                                    .expect("failed to copy elf data")
+                            });
+                        }
+                    }
                 }
+                assert_eq!(read_size, file_size);
+
+                // Set the rest to zero
+                let bss_slice =
+                    unsafe { (area_begin + file_size).as_mut_slice(area_size - file_size) };
+                within_sum(|| {
+                    bss_slice.fill(0);
+                });
             }
 
             // 更新 elf 的起始地址

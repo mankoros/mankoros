@@ -7,9 +7,10 @@ use riscv::register::{
 use crate::{
     arch,
     executor::{hart_local::set_curr_lproc, util_futures::yield_now},
+    memory::address::VirtAddr,
     process::user_space::user_area::PageFaultAccessType,
     syscall::Syscall,
-    trap::trap::run_user, memory::address::VirtAddr,
+    trap::trap::run_user,
 };
 
 use super::lproc::{LightProcess, ProcessStatus};
@@ -18,7 +19,7 @@ use core::{
     pin::Pin,
     task::{Context, Poll},
 };
-use log::debug;
+use log::{debug, info};
 
 struct AutoSIE {}
 static mut SIE_COUNT: i32 = 0;
@@ -103,9 +104,11 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                         _ => unreachable!(),
                     };
 
-                    let result =
-                        lproc.with_mut_memory(|m| m.handle_pagefault(VirtAddr::from(stval), access_type));
-                    if let Err(_) = result {
+                    let result = lproc.with_mut_memory(|m| {
+                        m.handle_pagefault(VirtAddr::from(stval), access_type)
+                    });
+                    if let Err(e) = result {
+                        info!("Pagefault failed: {:?}, process killed", e);
                         is_exit = true;
                     }
                     // do_exit = trap_handler::page_fault(&thread, e, stval, context.user_sepc).await;
@@ -125,6 +128,10 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                     // TODO: timer, currently do nothing
                     // timer::tick();
                     if !is_exit {
+                        debug!(
+                            "Timer interrupt, User SEPC: 0x{:x}, STVAL: 0x{:x}",
+                            context.user_sepc, stval
+                        );
                         yield_now().await;
                     }
                 }
@@ -136,6 +143,8 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
             break;
         }
     }
+
+    info!("Process {:?} exited", lproc.id());
 
     if lproc.id() == 1 {
         // Preliminary stage have no init process, so allow pid 1 to exit

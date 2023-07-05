@@ -63,6 +63,7 @@ pub fn unmap_boot_seg() {
         // Lower half is user space
         boot_pagetable[i] = PageTableEntry::EMPTY;
     }
+    unsafe { riscv::asm::sfence_vma_all() };
 }
 
 /// Switch to global kernel boot pagetable
@@ -373,7 +374,12 @@ impl Drop for PageTable {
                     panic!("Pagetable page should not be valid");
                 }
             }
-
+            cfg_if::cfg_if! {
+                if #[cfg(debug_assertions)] {
+                    // Clear dealloc page when in debug
+                    unsafe { frame.as_mut_page_slice().fill(0) };
+                }
+            }
             frame::dealloc_frame(*frame);
         }
     }

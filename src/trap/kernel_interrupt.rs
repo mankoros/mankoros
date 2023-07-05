@@ -14,9 +14,7 @@ pub fn kernel_default_interrupt() {
 
     match interrupt {
         scause::Interrupt::UserSoft => todo!(),
-        scause::Interrupt::SupervisorSoft => {
-            todo!()
-        }
+        scause::Interrupt::SupervisorSoft => todo!(),
         scause::Interrupt::UserTimer => todo!(),
         scause::Interrupt::SupervisorTimer => timer::timer_handler(),
         scause::Interrupt::UserExternal => todo!(),

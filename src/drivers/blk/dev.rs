@@ -185,7 +185,7 @@ unsafe impl virtio_drivers::Hal for VirtIoHalImpl {
             kernel_virt_text_to_phys(vaddr)
         } else {
             warn!(
-                "VirtIO shares a buffer not in kernel text or phymem, vaddr: 0x{:#x}",
+                "VirtIO shares a buffer not in kernel text or phymem, vaddr: {:#x}",
                 vaddr
             );
             vaddr

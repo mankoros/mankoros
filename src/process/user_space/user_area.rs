@@ -361,8 +361,8 @@ impl UserAreaManager {
             .expect("too many stack!");
 
         // 栈要 16 字节对齐
-        let sp_init = VirtAddr::from((range.end.bits() - PAGE_SIZE) & !0xf);
-        trace!("alloc stack: {:x?}, sp_init: {:x?}", range, sp_init);
+        let sp_init = VirtAddr::from((range.end.bits() - 1) & !0xf);
+        debug!("alloc stack: {:x?}, sp_init: {:x?}", range, sp_init);
 
         let area = UserArea::new_anonymous(
             UserAreaPerm::READ | UserAreaPerm::WRITE

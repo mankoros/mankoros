@@ -4,9 +4,12 @@
 //! Copyright 2022 (C) MaturinOS
 //! Copyright 2023 (C) MankorOS
 
+use super::new_vfs::{top::VfsFile, DeviceIDCollection, VfsFileAttr};
+use crate::{
+    impl_vfs_default_non_dir, print,
+    tools::errors::{dyn_future, ASysResult, SysError},
+};
 use log::warn;
-use super::new_vfs::{top::VfsFile, VfsFileAttr, DeviceIDCollection};
-use crate::{impl_vfs_default_non_dir, tools::errors::{dyn_future, SysError, ASysResult}};
 
 /// 标准输入流
 pub struct Stdin;
@@ -34,12 +37,16 @@ impl VfsFile for Stdin {
         })
     }
 
-    fn get_page(&self, _offset: usize, _kind: super::new_vfs::top::MmapKind) -> ASysResult<crate::memory::address::PhysAddr4K> {
+    fn get_page(
+        &self,
+        _offset: usize,
+        _kind: super::new_vfs::top::MmapKind,
+    ) -> ASysResult<crate::memory::address::PhysAddr4K> {
         unimplemented!("Stdin::get_page")
     }
 
     fn attr(&self) -> ASysResult<VfsFileAttr> {
-        dyn_future(async { 
+        dyn_future(async {
             Ok(VfsFileAttr {
                 kind: super::new_vfs::VfsFileKind::CharDevice,
                 device_id: DeviceIDCollection::DEV_FS_ID,
@@ -60,7 +67,13 @@ impl VfsFile for Stdout {
     fn write_at<'a>(&'a self, _offset: usize, buf: &'a [u8]) -> ASysResult<usize> {
         dyn_future(async move {
             if let Ok(data) = core::str::from_utf8(buf) {
-                warn!("User stdout: {}", data);
+                cfg_if::cfg_if! {
+                    if #[cfg(debug_assertions)] {
+                        warn!("User stdout: {}", data);
+                    } else {
+                        print!("{}", data);
+                    }
+                }
                 Ok(buf.len())
             } else {
                 for i in 0..buf.len() {
@@ -75,12 +88,16 @@ impl VfsFile for Stdout {
         dyn_future(async move { Err(SysError::EPERM) })
     }
 
-    fn get_page(&self, _offset: usize, _kind: super::new_vfs::top::MmapKind) -> ASysResult<crate::memory::address::PhysAddr4K> {
+    fn get_page(
+        &self,
+        _offset: usize,
+        _kind: super::new_vfs::top::MmapKind,
+    ) -> ASysResult<crate::memory::address::PhysAddr4K> {
         unimplemented!("Stdout::get_page")
     }
 
     fn attr(&self) -> ASysResult<VfsFileAttr> {
-        dyn_future(async { 
+        dyn_future(async {
             Ok(VfsFileAttr {
                 kind: super::new_vfs::VfsFileKind::CharDevice,
                 device_id: DeviceIDCollection::DEV_FS_ID,
@@ -116,12 +133,16 @@ impl VfsFile for Stderr {
         dyn_future(async move { Err(SysError::EPERM) })
     }
 
-    fn get_page(&self, _offset: usize, _kind: super::new_vfs::top::MmapKind) -> ASysResult<crate::memory::address::PhysAddr4K> {
+    fn get_page(
+        &self,
+        _offset: usize,
+        _kind: super::new_vfs::top::MmapKind,
+    ) -> ASysResult<crate::memory::address::PhysAddr4K> {
         unimplemented!("Stderr::get_page")
     }
 
     fn attr(&self) -> ASysResult<VfsFileAttr> {
-        dyn_future(async { 
+        dyn_future(async {
             Ok(VfsFileAttr {
                 kind: super::new_vfs::VfsFileKind::CharDevice,
                 device_id: DeviceIDCollection::DEV_FS_ID,

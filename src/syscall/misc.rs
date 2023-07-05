@@ -128,4 +128,10 @@ impl<'a> Syscall<'a> {
         yield_now().await;
         Ok(0)
     }
+
+    pub fn sys_getuid(&self) -> SyscallResult {
+        info!("Syscall: getuid");
+        // We don't implement user management, just return 0
+        Ok(0)
+    }
 }

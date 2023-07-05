@@ -24,8 +24,6 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::Write;
 
-
-
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use lazy_static::lazy_static;
@@ -61,10 +59,9 @@ use crate::boot::boot_pagetable_paddr;
 use crate::consts::address_space::K_SEG_PHY_MEM_BEG;
 use crate::utils::SerialWrapper;
 
-use crate::memory::address::{kernel_virt_text_to_phys};
-use crate::memory::{pagetable};
 use crate::executor::block_on;
-
+use crate::memory::address::kernel_virt_text_to_phys;
+use crate::memory::pagetable;
 
 // use trap::ticks;
 
@@ -195,10 +192,9 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
 
     fs::init_filesystems(manager.disks()[0].clone());
 
-
     cfg_if::cfg_if! {
         if #[cfg(debug_assertions)] {
-            let cases = ["busybox"];
+            let cases = [];
         } else {
             let cases = [
                 "getpid",
@@ -243,11 +239,13 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
             "============== Running test case: {} ================",
             case_name
         );
-        let test_case = block_on(root_dir.lookup(case_name))
-            .expect("Read test case failed");
+        let test_case = block_on(root_dir.lookup(case_name)).expect("Read test case failed");
         process::spawn_proc_from_file(test_case);
         executor::run_until_idle();
     }
+
+    process::spawn_init();
+    executor::run_until_idle();
 
     // Shutdown
     sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);

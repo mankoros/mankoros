@@ -239,4 +239,13 @@ impl<'a> Syscall<'a> {
         self.lproc.set_exit_code(args[0] as i32);
         Ok(0)
     }
+
+    pub fn sys_set_tid_address(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        info!("Syscall: set_tid_address");
+        self.lproc.with_mut_private_info(|i| i.clear_child_tid = Some(args[0]));
+
+        let tid: usize = self.lproc.id().into();
+        Ok(tid)
+    }
 }
