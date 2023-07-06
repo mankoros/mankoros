@@ -1,12 +1,12 @@
-use core::{pin::Pin, future::Future};
 use alloc::boxed::Box;
+use core::{future::Future, pin::Pin};
 
 pub type SysError = LinuxError;
 pub type SysResult<T = ()> = Result<T, SysError>;
 pub type Async<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 pub type ASysResult<'a, T = ()> = Async<'a, SysResult<T>>;
 
-/// create an `Async<T::Output>` from a future, usually an async block. 
+/// create an `Async<T::Output>` from a future, usually an async block.
 /// A typical usage is like this:
 /// ```
 /// fn stat(&self) -> ASysResult<NodeStat> {
@@ -18,7 +18,7 @@ pub type ASysResult<'a, T = ()> = Async<'a, SysResult<T>>;
 /// ```
 pub fn dyn_future<'a, T: Future + Send + 'a>(async_blk: T) -> Async<'a, T::Output> {
     Box::pin(async_blk)
-} 
+}
 
 /// Linux specific error codes defined in `errno.h`.
 #[repr(i32)]

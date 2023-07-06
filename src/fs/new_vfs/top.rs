@@ -1,6 +1,9 @@
-use alloc::{sync::Arc, string::String, vec::Vec};
-use super::{VfsFileAttr, VfsFileKind, path::Path};
-use crate::{tools::errors::{ASysResult, SysResult}, memory::address::PhysAddr4K};
+use super::{path::Path, VfsFileAttr, VfsFileKind};
+use crate::{
+    memory::address::PhysAddr4K,
+    tools::errors::{ASysResult, SysResult},
+};
+use alloc::{string::String, sync::Arc, vec::Vec};
 use core::ops::{Deref, DerefMut};
 
 pub trait VfsFS {
@@ -13,7 +16,15 @@ pub enum MmapKind {
     Private,
 }
 
-pub trait VfsFile : Send + Sync {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PollKind {
+    Read,
+    Write,
+}
+
+pub const OFFSET_TAIL: usize = 0;
+
+pub trait VfsFile: Send + Sync {
     // 文件操作
     /// 获取文件的各类属性,
     /// 例如文件类型, 文件大小, 文件创建时间等等
@@ -25,6 +36,15 @@ pub trait VfsFile : Send + Sync {
     /// 获得代表文件 [offset, offset + PAGE_SIZE) 范围内内容的物理页.
     /// offset 必须是 PAGE_SIZE 的倍数.
     fn get_page(&self, offset: usize, kind: MmapKind) -> ASysResult<PhysAddr4K>;
+
+    // 高级文件操作
+    /// 要求文件准备好 [offset, offset + len) 范围内的内容以供读取或写入.
+    /// 如果没准备好会返回 Pending, 准备好了就会 wake / 直接返回 Ready.
+    fn poll_ready(&self, offset: usize, len: usize, kind: PollKind) -> ASysResult<usize>;
+    /// 阻塞地读取文件内容, 逻辑上应该只在 poll_ready 返回 Ready 之后调用.
+    fn poll_read(&self, offset: usize, buf: &mut [u8]) -> usize;
+    /// 阻塞地写入文件内容, 逻辑上应该只在 poll_ready 返回 Ready 之后调用.
+    fn poll_write(&self, offset: usize, buf: &[u8]) -> usize;
 
     // 文件夹操作
     /// 列出文件夹中的所有文件的名字
@@ -70,29 +90,56 @@ impl VfsFileRef {
         for name in path.iter() {
             cur = cur.lookup(name).await?;
         }
-        Ok(cur)  
+        Ok(cur)
     }
+}
+
+#[macro_export]
+macro_rules! ensure_offset_is_tail {
+    ($offset:expr) => {
+        if $offset != $crate::fs::new_vfs::top::OFFSET_TAIL {
+            panic!("offset must be OFFSET_TAIL, but: {}", $offset);
+        }
+    };
 }
 
 #[macro_export]
 macro_rules! impl_vfs_default_non_dir {
     ($ty:ident) => {
-        fn list(&self) -> crate::tools::errors::ASysResult<alloc::vec::Vec<(alloc::string::String, crate::fs::new_vfs::top::VfsFileRef)>> {
+        fn list(
+            &self,
+        ) -> crate::tools::errors::ASysResult<
+            alloc::vec::Vec<(alloc::string::String, crate::fs::new_vfs::top::VfsFileRef)>,
+        > {
             unimplemented!(concat!(stringify!($ty), "::list"))
         }
-        fn lookup(&self, _name: &str) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
+        fn lookup(
+            &self,
+            _name: &str,
+        ) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
             unimplemented!(concat!(stringify!($ty), "::lookup"))
         }
-        fn create(&self, _name: &str, _kind: crate::fs::new_vfs::VfsFileKind) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
+        fn create(
+            &self,
+            _name: &str,
+            _kind: crate::fs::new_vfs::VfsFileKind,
+        ) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
             unimplemented!(concat!(stringify!($ty), "::create"))
         }
         fn remove(&self, _name: &str) -> crate::tools::errors::ASysResult {
             unimplemented!(concat!(stringify!($ty), "::remove"))
         }
-        fn detach(&self, _name: &str) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
+        fn detach(
+            &self,
+            _name: &str,
+        ) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
             unimplemented!(concat!(stringify!($ty), "::detach"))
         }
-        fn attach(&self, _name: &str, _node: crate::fs::new_vfs::top::VfsFileRef) -> crate::tools::errors::ASysResult {
+        fn attach(
+            &self,
+            _name: &str,
+            _node: crate::fs::new_vfs::top::VfsFileRef,
+        ) -> crate::tools::errors::ASysResult {
             unimplemented!(concat!(stringify!($ty), "::attach"))
         }
     };
@@ -101,14 +148,36 @@ macro_rules! impl_vfs_default_non_dir {
 #[macro_export]
 macro_rules! impl_vfs_default_non_file {
     ($ty:ident) => {
-        fn read_at(&self, _offset: usize, _buf: &mut [u8]) -> crate::tools::errors::ASysResult<usize> {
+        fn read_at(
+            &self,
+            _offset: usize,
+            _buf: &mut [u8],
+        ) -> crate::tools::errors::ASysResult<usize> {
             unimplemented!(concat!(stringify!(ty), "::read_at"))
         }
         fn write_at(&self, _offset: usize, _buf: &[u8]) -> crate::tools::errors::ASysResult<usize> {
             unimplemented!(concat!(stringify!(ty), "::write_at"))
         }
-        fn get_page(&self, _offset: usize, _kind: crate::fs::new_vfs::top::MmapKind) -> crate::tools::errors::ASysResult<crate::memory::address::PhysAddr4K> {
+        fn get_page(
+            &self,
+            _offset: usize,
+            _kind: crate::fs::new_vfs::top::MmapKind,
+        ) -> crate::tools::errors::ASysResult<crate::memory::address::PhysAddr4K> {
             unimplemented!(concat!(stringify!(ty), "::get_page"))
+        }
+        fn poll_ready(
+            &self,
+            offset: usize,
+            len: usize,
+            kind: crate::fs::new_vfs::top::PollKind,
+        ) -> crate::tools::errors::ASysResult<usize> {
+            unimplemented!(concat!(stringify!(ty), "::poll_ready"))
+        }
+        fn poll_read(&self, _offset: usize, _buf: &mut [u8]) -> usize {
+            unimplemented!(concat!(stringify!(ty), "::poll_read"))
+        }
+        fn poll_write(&self, _offset: usize, _buf: &[u8]) -> usize {
+            unimplemented!(concat!(stringify!(ty), "::poll_write"))
         }
     };
 }
@@ -148,6 +217,20 @@ macro_rules! impl_vfs_forward_file {
         }
         fn get_page(&self, offset: usize, kind: crate::fs::new_vfs::top::MmapKind) -> crate::tools::errors::ASysResult<crate::memory::address::PhysAddr4K> {
             self.$($e)+.get_page(offset, kind)
+        }
+        fn poll_ready(
+            &self,
+            offset: usize,
+            len: usize,
+            kind: crate::fs::new_vfs::top::PollKind,
+        ) -> crate::tools::errors::ASysResult<usize> {
+            self.$($e)+.poll_ready(offset, len, kind)
+        }
+        fn poll_read(&self, offset: usize, buf: &mut [u8]) -> usize {
+            self.$($e)+.poll_read(offset, buf)
+        }
+        fn poll_write(&self, offset: usize, buf: &[u8]) -> usize {
+            self.$($e)+.poll_write(offset, buf)
         }
     };
 }

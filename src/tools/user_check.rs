@@ -1,3 +1,4 @@
+use super::errors::{SysError, SysResult};
 use crate::{
     memory::address::VirtAddr,
     process::{
@@ -7,7 +8,6 @@ use crate::{
 };
 use alloc::{string::String, vec::Vec};
 use log::trace;
-use super::errors::{SysResult, SysError};
 
 pub struct UserCheck<'a> {
     lproc: &'a LightProcess,

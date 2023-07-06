@@ -1,17 +1,17 @@
-use core::cell::{SyncUnsafeCell};
 use super::disk::BLOCK_SIZE;
-use fatfs::{self, Read, Seek, Write, IoError, IoBase};
-use log::{warn};
+use super::new_vfs::dentry_cache::DEntryCacheDir;
+use super::new_vfs::sync_attr_cache::SyncAttrCacheFile;
+use super::new_vfs::top::{VfsFS, VfsFileRef};
 use super::new_vfs::underlying::{ConcreteFile, DEntryRef};
-use crate::tools::errors::{SysError, ASysResult, dyn_future};
 use super::new_vfs::{VfsFileAttr, VfsFileKind};
 use super::partition::Partition;
+use crate::tools::errors::{dyn_future, ASysResult, SysError};
 use alloc::string::String;
 use alloc::vec::Vec;
-use super::new_vfs::top::{VfsFileRef, VfsFS};
+use core::cell::SyncUnsafeCell;
 use core::mem::MaybeUninit;
-use super::new_vfs::sync_attr_cache::SyncAttrCacheFile;
-use super::new_vfs::dentry_cache::DEntryCacheDir;
+use fatfs::{self, IoBase, IoError, Read, Seek, Write};
+use log::warn;
 
 /// Implementation of the fatfs glue code
 /// FAT32 FS is supposed to work upon a partition
@@ -103,16 +103,19 @@ impl FatFileSystem {
         let root = self.inner.root_dir();
         let root = FatConcreteGenericFile::new_dir(root);
         // TODO: size & dev id
-        let root = SyncAttrCacheFile::new_direct(root, VfsFileAttr { 
-            kind: VfsFileKind::Directory, 
-            device_id: 0, 
-            self_device_id: 0, 
-            byte_size: 0, 
-            block_count: 0, 
-            access_time: 0, 
-            modify_time: 0, 
-            create_time: 0 
-        });
+        let root = SyncAttrCacheFile::new_direct(
+            root,
+            VfsFileAttr {
+                kind: VfsFileKind::Directory,
+                device_id: 0,
+                self_device_id: 0,
+                byte_size: 0,
+                block_count: 0,
+                access_time: 0,
+                modify_time: 0,
+                create_time: 0,
+            },
+        );
         let root = DEntryCacheDir::new_root(root);
         let root = VfsFileRef::new(root);
         unsafe { &mut *self.root.get() }.write(root);
@@ -127,7 +130,8 @@ impl VfsFS for FatFileSystem {
 
 type FatFile = fatfs::File<'static, Partition, fatfs::NullTimeProvider, fatfs::LossyOemCpConverter>;
 type FatDir = fatfs::Dir<'static, Partition, fatfs::NullTimeProvider, fatfs::LossyOemCpConverter>;
-type FatDEntry = fatfs::DirEntry<'static, Partition, fatfs::NullTimeProvider, fatfs::LossyOemCpConverter>;
+type FatDEntry =
+    fatfs::DirEntry<'static, Partition, fatfs::NullTimeProvider, fatfs::LossyOemCpConverter>;
 
 pub enum FatConcreteGenericFile {
     File(SyncUnsafeCell<FatFile>),
@@ -144,7 +148,7 @@ impl FatConcreteGenericFile {
 
     fn dir(&self) -> &mut FatDir {
         match self {
-            FatConcreteGenericFile::Dir(f) => unsafe { &mut *f.get() }
+            FatConcreteGenericFile::Dir(f) => unsafe { &mut *f.get() },
             _ => panic!("not a dir"),
         }
     }
@@ -186,15 +190,15 @@ impl DEntryRef for FatConcreteDirEntry {
         let byte_size = self.0.len() as usize;
         let block_count = byte_size / BLOCK_SIZE;
 
-        VfsFileAttr { 
-            kind, 
-            device_id: 1, 
-            self_device_id: 0, 
-            byte_size, 
-            block_count, 
-            modify_time: 0, 
-            access_time: 0, 
-            create_time: 0 
+        VfsFileAttr {
+            kind,
+            device_id: 1,
+            self_device_id: 0,
+            byte_size,
+            block_count,
+            modify_time: 0,
+            access_time: 0,
+            create_time: 0,
         }
     }
     fn file(&self) -> Self::FileT {
@@ -250,21 +254,25 @@ impl ConcreteFile for FatConcreteGenericFile {
         dyn_future(async move { result })
     }
 
-    fn lookup_batch(&self, skip_n: usize, _name: Option<&str>) -> ASysResult<(bool, Vec<Self::DEntryRefT>)> {
+    fn lookup_batch(
+        &self,
+        skip_n: usize,
+        _name: Option<&str>,
+    ) -> ASysResult<(bool, Vec<Self::DEntryRefT>)> {
         let dir = self.dir();
 
         if skip_n != 0 {
             todo!("skip_n != 0 is not supported")
         }
-        
+
         let sync_list = || -> Result<(bool, Vec<Self::DEntryRefT>), <FatFile as IoBase>::Error> {
             let mut v = Vec::new();
             for de in dir.iter() {
-                v.push(FatConcreteDirEntry(de?))     
+                v.push(FatConcreteDirEntry(de?))
             }
             Ok((true, v))
         };
-        
+
         let result = sync_list().map_err(as_vfs_err);
         dyn_future(async move { result })
     }
@@ -280,15 +288,25 @@ impl ConcreteFile for FatConcreteGenericFile {
             match kind {
                 VfsFileKind::RegularFile => {
                     dir.create_file(name)?;
-                    let dentry = dir.iter().map(Result::unwrap).filter(|x| x.file_name() == name).next().unwrap();
+                    let dentry = dir
+                        .iter()
+                        .map(Result::unwrap)
+                        .filter(|x| x.file_name() == name)
+                        .next()
+                        .unwrap();
                     Ok(FatConcreteDirEntry(dentry))
                 }
                 VfsFileKind::Directory => {
                     dir.create_dir(name)?;
-                    let dentry = dir.iter().map(Result::unwrap).filter(|x| x.file_name() == name).next().unwrap();
+                    let dentry = dir
+                        .iter()
+                        .map(Result::unwrap)
+                        .filter(|x| x.file_name() == name)
+                        .next()
+                        .unwrap();
                     Ok(FatConcreteDirEntry(dentry))
                 }
-                _ => unimplemented!()
+                _ => unimplemented!(),
             }
         };
 
@@ -299,9 +317,8 @@ impl ConcreteFile for FatConcreteGenericFile {
     fn remove(&self, dentry_ref: Self::DEntryRefT) -> ASysResult {
         let dir = self.dir();
 
-        let sync_remove = || -> Result<(), <FatFile as IoBase>::Error> {
-            dir.remove(&dentry_ref.name())
-        };
+        let sync_remove =
+            || -> Result<(), <FatFile as IoBase>::Error> { dir.remove(&dentry_ref.name()) };
 
         let result = sync_remove().map_err(as_vfs_err);
         dyn_future(async move { result })

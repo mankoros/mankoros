@@ -1,6 +1,6 @@
 use crate::{
     fs::new_vfs::{
-        top::{MmapKind, VfsFile},
+        top::{MmapKind, PollKind, VfsFile},
         DeviceIDCollection, VfsFileAttr, VfsFileKind,
     },
     impl_vfs_default_non_dir,
@@ -27,15 +27,12 @@ impl VfsFile for ZeroDev {
         })
     }
 
-    fn read_at<'a>(&'a self, _offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
-        dyn_future(async move {
-            buf.fill(0);
-            Ok(buf.len())
-        })
+    fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
+        dyn_future(async move { Ok(self.poll_read(offset, buf)) })
     }
 
-    fn write_at<'a>(&'a self, _offset: usize, buf: &'a [u8]) -> ASysResult<usize> {
-        dyn_future(async { Ok(buf.len()) })
+    fn write_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> ASysResult<usize> {
+        dyn_future(async move { Ok(self.poll_write(offset, buf)) })
     }
 
     fn get_page(&self, _offset: usize, kind: MmapKind) -> ASysResult<PhysAddr4K> {
@@ -48,5 +45,16 @@ impl VfsFile for ZeroDev {
                 }
             }
         })
+    }
+
+    fn poll_ready(&self, _offset: usize, len: usize, _kind: PollKind) -> ASysResult<usize> {
+        dyn_future(async move { Ok(len) })
+    }
+    fn poll_read(&self, _offset: usize, buf: &mut [u8]) -> usize {
+        buf.fill(0);
+        buf.len()
+    }
+    fn poll_write(&self, _offset: usize, buf: &[u8]) -> usize {
+        buf.len()
     }
 }

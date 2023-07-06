@@ -6,7 +6,8 @@ use crate::{
     arch::{switch_page_table, within_sum},
     consts::PAGE_SIZE,
     fs::{
-        self, new_vfs::{top::VfsFileRef, path::Path},
+        self,
+        new_vfs::{path::Path, top::VfsFileRef},
     },
     memory::address::VirtAddr,
     process::user_space::{init_stack, THREAD_STACK_SIZE},
@@ -235,12 +236,7 @@ impl LightProcess {
         })
     }
 
-    pub fn do_exec(
-        self: Arc<Self>,
-        elf_file: VfsFileRef,
-        args: Vec<String>,
-        envp: Vec<String>,
-    ) {
+    pub fn do_exec(self: Arc<Self>, elf_file: VfsFileRef, args: Vec<String>, envp: Vec<String>) {
         // create new userspace and release the old one
         *self.memory.lock(here!()) = UserSpace::new();
 

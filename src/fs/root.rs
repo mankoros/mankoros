@@ -4,17 +4,14 @@
 //! Copyright (C) 2023 by ArceOS
 //! Copyright (C) 2023 by MankorOS
 
-
-use alloc::{sync::Arc};
-
+use alloc::sync::Arc;
 
 use crate::lazy_init::LazyInit;
 
-
 use super::fatfs::FatFileSystem;
-use super::partition::Partition;
 use super::new_vfs::mount::MountPoint;
 use super::new_vfs::top::VfsFileRef;
+use super::partition::Partition;
 
 static ROOT_DIR: LazyInit<VfsFileRef> = LazyInit::new();
 

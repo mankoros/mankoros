@@ -14,21 +14,18 @@ use super::BlockDevice;
 
 use crate::drivers::DevResult;
 
-
-use crate::tools::errors::SysResult;
-use crate::tools::errors::ASysResult;
-use super::new_vfs::VfsFileAttr;
-use super::new_vfs::DeviceIDCollection;
-use crate::tools::errors::dyn_future;
-use crate::tools::errors::SysError;
 use super::new_vfs::underlying::ConcreteFile;
 use super::new_vfs::underlying::DEntryRef;
+use super::new_vfs::DeviceIDCollection;
+use super::new_vfs::VfsFileAttr;
+use crate::tools::errors::dyn_future;
+use crate::tools::errors::ASysResult;
+use crate::tools::errors::SysError;
+use crate::tools::errors::SysResult;
 
-
-
-use super::new_vfs::top::VfsFileRef;
 use super::new_vfs::page_cache::SyncPageCacheFile;
 use super::new_vfs::sync_attr_cache::SyncAttrCacheFile;
+use super::new_vfs::top::VfsFileRef;
 
 pub const BLOCK_SIZE: usize = 512;
 
@@ -233,24 +230,28 @@ impl ConcreteFile for Disk {
 
     // TODO: async dir read/write
     fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
-        dyn_future(async move {
-            self.sync_read_at(offset as u64, buf)
-        })
+        dyn_future(async move { self.sync_read_at(offset as u64, buf) })
     }
 
     fn write_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> ASysResult<usize> {
-        dyn_future(async move {
-            self.sync_write_at(offset as u64, buf)
-        })
+        dyn_future(async move { self.sync_write_at(offset as u64, buf) })
     }
 
-    fn lookup_batch(&self, _skip_n: usize, _name: Option<&str>) -> ASysResult<(bool, alloc::vec::Vec<Self::DEntryRefT>)> {
+    fn lookup_batch(
+        &self,
+        _skip_n: usize,
+        _name: Option<&str>,
+    ) -> ASysResult<(bool, alloc::vec::Vec<Self::DEntryRefT>)> {
         unimplemented!("Should never use dir-op for Disk")
     }
     fn set_attr(&self, _dentry_ref: Self::DEntryRefT, _attr: VfsFileAttr) -> ASysResult {
         unimplemented!("Should never use dir-op for Disk")
     }
-    fn create(&self, _name: &str, _kind: super::new_vfs::VfsFileKind) -> ASysResult<Self::DEntryRefT> {
+    fn create(
+        &self,
+        _name: &str,
+        _kind: super::new_vfs::VfsFileKind,
+    ) -> ASysResult<Self::DEntryRefT> {
         unimplemented!("Should never use dir-op for Disk")
     }
     fn remove(&self, _dentry_ref: Self::DEntryRefT) -> ASysResult {

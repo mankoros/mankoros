@@ -1,6 +1,12 @@
-use super::{top::{VfsFile, VfsFileRef}, path::Path};
-use alloc::{sync::{Weak, Arc}, string::ToString};
-use crate::{tools::errors::{SysResult}, impl_vfs_forward_dir, impl_vfs_forward_file};
+use super::{
+    path::Path,
+    top::{VfsFile, VfsFileRef},
+};
+use crate::{impl_vfs_forward_dir, impl_vfs_forward_file, tools::errors::SysResult};
+use alloc::{
+    string::ToString,
+    sync::{Arc, Weak},
+};
 
 pub struct VfsPathFile(Arc<VfsPathFileInner>);
 
@@ -12,11 +18,7 @@ struct VfsPathFileInner {
 
 impl VfsPathFile {
     fn new(path: Path, file: VfsFileRef, parent: Option<Weak<VfsPathFileInner>>) -> Self {
-        Self(Arc::new(VfsPathFileInner {
-            path,
-            file,
-            parent,
-        }))
+        Self(Arc::new(VfsPathFileInner { path, file, parent }))
     }
 
     pub fn new_root(file: VfsFileRef) -> Self {
@@ -52,7 +54,7 @@ impl VfsFile for VfsPathFile {
     fn attr(&self) -> crate::tools::errors::ASysResult<super::VfsFileAttr> {
         self.file().attr()
     }
-    
+
     impl_vfs_forward_dir!(file());
     impl_vfs_forward_file!(file());
 }

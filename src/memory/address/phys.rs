@@ -1,10 +1,9 @@
+use super::impl_fmt;
+use super::kernel_phys_to_virt;
+use super::{impl_arithmetic_with_usize, impl_usize_convert};
 use crate::consts;
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
-use super::{impl_arithmetic_with_usize, impl_usize_convert};
-use super::impl_fmt;
-use super::kernel_phys_to_virt;
-
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct PhysAddr4K(usize);
@@ -23,6 +22,13 @@ impl PhysAddr4K {
     }
     pub const fn page_num(self) -> PhysPageNum {
         PhysPageNum(self.0 / consts::PAGE_SIZE)
+    }
+
+    pub unsafe fn as_slice(self, len: usize) -> &'static [u8] {
+        self.into().as_slice(len)
+    }
+    pub unsafe fn as_mut_slice(self, len: usize) -> &'static mut [u8] {
+        self.into().as_mut_slice(len)
     }
 
     pub unsafe fn as_page_slice(self) -> &'static [u8] {

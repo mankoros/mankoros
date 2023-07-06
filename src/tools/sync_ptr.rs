@@ -1,4 +1,3 @@
-
 use core::ops::Deref;
 
 struct SyncMutPtr<T>(*mut T);
@@ -27,4 +26,3 @@ impl<T> SyncMutPtr<T> {
 }
 
 unsafe impl<T> Sync for SyncMutPtr<T> {}
-

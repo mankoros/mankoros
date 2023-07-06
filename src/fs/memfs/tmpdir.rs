@@ -12,7 +12,6 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use log::{debug, info};
 
 pub struct TmpDir {
     children: SpinNoIrqLock<BTreeMap<String, VfsFileRef>>,

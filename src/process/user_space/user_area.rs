@@ -1,32 +1,30 @@
-
 use bitflags::bitflags;
 
+use super::range_map::RangeMap;
+use crate::memory::address::VirtAddr;
 
-use super::{range_map::RangeMap};
-use crate::memory::address::{VirtAddr};
-
-use crate::{
-    memory::{
-        address::{VirtPageNum},
-        frame::{alloc_frame},
-        pagetable::{pagetable::PageTable, pte::PTEFlags},
-    },
+use crate::memory::{
+    address::VirtPageNum,
+    frame::alloc_frame,
+    pagetable::{pagetable::PageTable, pte::PTEFlags},
 };
 
-use riscv::register::{scause};
 use core::fmt::Debug;
+use riscv::register::scause;
 
-use crate::consts::address_space::{U_SEG_HEAP_BEG, U_SEG_FILE_END, U_SEG_FILE_BEG, U_SEG_STACK_BEG, U_SEG_STACK_END};
+use crate::consts::address_space::{
+    U_SEG_FILE_BEG, U_SEG_FILE_END, U_SEG_HEAP_BEG, U_SEG_STACK_BEG, U_SEG_STACK_END,
+};
 
-use crate::process::shared_frame_mgr::with_shared_frame_mgr;
 use crate::arch::get_curr_page_table_addr;
-use log::{debug, trace};
-use core::ops::Range;
-use crate::memory::frame::dealloc_frame;
 use crate::consts::PAGE_SIZE;
-use crate::fs::new_vfs::top::{VfsFileRef, MmapKind};
 use crate::executor::block_on;
-use crate::tools::errors::{SysResult, SysError};
+use crate::fs::new_vfs::top::{MmapKind, VfsFileRef};
+use crate::memory::frame::dealloc_frame;
+use crate::process::shared_frame_mgr::with_shared_frame_mgr;
+use crate::tools::errors::{SysError, SysResult};
+use core::ops::Range;
+use log::{debug, trace};
 
 pub type VirtAddrRange = Range<VirtAddr>;
 
@@ -85,8 +83,7 @@ impl Into<PageFaultAccessType> for UserAreaPerm {
         if self.intersects(Self::WRITE) {
             return PageFaultAccessType::RW;
         }
-        if self.intersects(Self::EXECUTE) 
-        {
+        if self.intersects(Self::EXECUTE) {
             return PageFaultAccessType::RX;
         }
         PageFaultAccessType::RO
@@ -106,7 +103,7 @@ impl From<xmas_elf::program::Flags> for UserAreaPerm {
         if flags.is_execute() {
             area_flags |= UserAreaPerm::EXECUTE;
         }
-    
+
         area_flags
     }
 }
@@ -157,10 +154,7 @@ enum UserAreaType {
     /// 匿名映射区域
     MmapAnonymous,
     /// 私有映射区域
-    MmapPrivate {
-        file: VfsFileRef,
-        offset: usize,
-    },
+    MmapPrivate { file: VfsFileRef, offset: usize },
     // TODO: 共享映射区域
     // MmapShared {
     //     file: VfsFileRef,
@@ -172,11 +166,9 @@ impl Debug for UserAreaType {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             UserAreaType::MmapAnonymous => write!(f, "MmapAnonymous"),
-            UserAreaType::MmapPrivate { file: _, offset } => write!(
-                f,
-                "MmapPrivate {{ offset: {} }}",
-                offset
-            ),
+            UserAreaType::MmapPrivate { file: _, offset } => {
+                write!(f, "MmapPrivate {{ offset: {} }}", offset)
+            }
         }
     }
 }
@@ -187,7 +179,6 @@ pub enum PageFaultErr {
     PermUnmatch,
     KernelOOM,
 }
-
 
 unsafe impl Send for PageFaultErr {}
 unsafe impl Sync for PageFaultErr {}
@@ -206,11 +197,7 @@ impl UserArea {
         }
     }
 
-    pub fn new_private(
-        perm: UserAreaPerm,
-        file: VfsFileRef,
-        offset: usize,
-    ) -> Self {
+    pub fn new_private(perm: UserAreaPerm, file: VfsFileRef, offset: usize) -> Self {
         Self {
             kind: UserAreaType::MmapPrivate { file, offset },
             perm,
@@ -228,8 +215,13 @@ impl UserArea {
         access_vpn: VirtPageNum,
         access_type: PageFaultAccessType,
     ) -> Result<(), PageFaultErr> {
-        debug!("page fault: {:?}, {:?}, {:?} at page table {:?}", 
-            self, access_vpn, access_type, page_table.root_paddr());
+        debug!(
+            "page fault: {:?}, {:?}, {:?} at page table {:?}",
+            self,
+            access_vpn,
+            access_type,
+            page_table.root_paddr()
+        );
 
         if !access_type.can_access(self.perm()) {
             return Err(PageFaultErr::PermUnmatch);
@@ -238,7 +230,7 @@ impl UserArea {
         // anyway we need a new frame
         let mut frame = 0.into();
         debug_assert!(frame == 0); // depress the warning of unused value
-    
+
         // perpare the data for the new frame
         let pte = page_table.get_pte_copied_from_vpn(access_vpn);
         if let Some(pte) = pte && pte.is_valid() {
@@ -252,7 +244,7 @@ impl UserArea {
             // decrease the old frame's ref count
             let old_frame = pte.paddr();
             with_shared_frame_mgr(|mgr| {
-                mgr.remove_ref(old_frame.page_num()); 
+                mgr.remove_ref(old_frame.page_num());
             });
 
             // copy the data
@@ -292,15 +284,13 @@ impl UserArea {
         use UserAreaType::*;
         // return left-hand-side area
         match &mut self.kind {
-            MmapAnonymous => {
-                UserArea::new_anonymous(self.perm)
-            },
+            MmapAnonymous => UserArea::new_anonymous(self.perm),
             MmapPrivate { file, offset } => {
                 let old_offset = *offset;
                 // change self to become the new right-hand-side area
                 *offset += split_at - range.start;
                 UserArea::new_private(self.perm, file.clone(), old_offset)
-            },
+            }
         }
     }
 
@@ -309,12 +299,10 @@ impl UserArea {
         // change self to become the new left-hand-side area: nothing need to do
         // return right-hand-side area
         match &self.kind {
-            MmapAnonymous => {
-                UserArea::new_anonymous(self.perm)
-            },
+            MmapAnonymous => UserArea::new_anonymous(self.perm),
             MmapPrivate { file, offset } => {
                 UserArea::new_private(self.perm, file.clone(), *offset + (split_at - range.start))
-            },
+            }
         }
     }
 }
@@ -323,13 +311,15 @@ impl UserArea {
 /// 包括堆和栈
 #[derive(Clone)]
 pub struct UserAreaManager {
-    map: RangeMap<VirtAddr, UserArea>,    
+    map: RangeMap<VirtAddr, UserArea>,
 }
 
 impl UserAreaManager {
     const HEAP_BEG: VirtAddr = VirtAddr::from(U_SEG_HEAP_BEG);
-    const STACK_RANGE: VirtAddrRange = VirtAddr::from(U_SEG_STACK_BEG)..VirtAddr::from(U_SEG_STACK_END);
-    const MMAP_RANGE: VirtAddrRange = VirtAddr::from(U_SEG_FILE_BEG)..VirtAddr::from(U_SEG_FILE_END);
+    const STACK_RANGE: VirtAddrRange =
+        VirtAddr::from(U_SEG_STACK_BEG)..VirtAddr::from(U_SEG_STACK_END);
+    const MMAP_RANGE: VirtAddrRange =
+        VirtAddr::from(U_SEG_FILE_BEG)..VirtAddr::from(U_SEG_FILE_END);
 
     pub fn new() -> Self {
         Self {
@@ -356,7 +346,8 @@ impl UserAreaManager {
     /// 返回栈的开始地址 sp_init, [sp_init - size, sp_init] 都是栈的范围。
     /// sp_init 16 字节对齐
     pub fn alloc_stack(&mut self, size: usize) -> VirtAddr {
-        let range = self.map
+        let range = self
+            .map
             .find_free_range(Self::STACK_RANGE, size, |va, n| (va + n).round_up().into())
             .expect("too many stack!");
 
@@ -364,11 +355,9 @@ impl UserAreaManager {
         let sp_init = VirtAddr::from((range.end.bits() - 1) & !0xf);
         debug!("alloc stack: {:x?}, sp_init: {:x?}", range, sp_init);
 
-        let area = UserArea::new_anonymous(
-            UserAreaPerm::READ | UserAreaPerm::WRITE
-        );
+        let area = UserArea::new_anonymous(UserAreaPerm::READ | UserAreaPerm::WRITE);
         self.map.try_insert(range, area).unwrap();
-        
+
         sp_init
     }
 
@@ -382,24 +371,21 @@ impl UserAreaManager {
     }
 
     pub fn get_heap_break(&self) -> VirtAddr {
-        let (Range { start: _, end }, _) = self.map.get(Self::HEAP_BEG)
-            .expect("get heap break without heap");
+        let (Range { start: _, end }, _) =
+            self.map.get(Self::HEAP_BEG).expect("get heap break without heap");
         end
     }
 
     pub fn reset_heap_break(&mut self, new_brk: VirtAddr) -> SysResult<()> {
         // TODO-PERF: 缓存 heap 的位置，减少一次查询
-        let (Range { start, end }, _) = self.map.get(Self::HEAP_BEG)
-            .expect("brk without heap");
+        let (Range { start, end }, _) = self.map.get(Self::HEAP_BEG).expect("brk without heap");
 
         if end < new_brk {
             // when larger, create a new area [heap_end, new_brk), then merge it with current heap
-            self.map.extend_back(start, new_brk)
-                .map_err(|_| SysError::ENOMEM)
+            self.map.extend_back(start, new_brk).map_err(|_| SysError::ENOMEM)
         } else if new_brk < end {
             // when smaller, split the area into [heap_start, new_brk), [new_brk, heap_end), then remove the second one
-            self.map.reduce_back(start, new_brk)
-                .map(|_| ()).map_err(|_| SysError::ENOMEM)
+            self.map.reduce_back(start, new_brk).map(|_| ()).map_err(|_| SysError::ENOMEM)
             // TODO: release page
         } else {
             // when equal, do nothing
@@ -411,17 +397,21 @@ impl UserAreaManager {
         self.map
             .find_free_range(Self::MMAP_RANGE, size, |va, n| (va + n).round_up().into())
             .map(|r| (r.start, r.end - r.start))
-            .ok_or(SysError::ENOMEM) 
+            .ok_or(SysError::ENOMEM)
     }
 
-    pub fn insert_mmap_anonymous(&mut self, size: usize, perm: UserAreaPerm) -> SysResult<(VirtAddrRange, &UserArea)> {
+    pub fn insert_mmap_anonymous(
+        &mut self,
+        size: usize,
+        perm: UserAreaPerm,
+    ) -> SysResult<(VirtAddrRange, &UserArea)> {
         let (begin, size) = self.find_free_mmap_area(size)?;
         self.insert_mmap_anonymous_at(begin, size, perm)
     }
 
     pub fn insert_mmap_private(
-        &mut self, 
-        size: usize, 
+        &mut self,
+        size: usize,
         perm: UserAreaPerm,
         file: VfsFileRef,
         offset: usize,
@@ -431,24 +421,26 @@ impl UserAreaManager {
     }
 
     pub fn insert_mmap_anonymous_at(
-        &mut self, 
-        begin_vaddr: VirtAddr, 
-        size: usize, 
-        perm: UserAreaPerm
+        &mut self,
+        begin_vaddr: VirtAddr,
+        size: usize,
+        perm: UserAreaPerm,
     ) -> SysResult<(VirtAddrRange, &UserArea)> {
         let range = VirtAddrRange {
             start: begin_vaddr,
             end: begin_vaddr + size,
         };
         let area = UserArea::new_anonymous(perm);
-        self.map.try_insert(range.clone(), area)
-            .map(|v| (range, &*v)).map_err(|_| SysError::ENOMEM)
+        self.map
+            .try_insert(range.clone(), area)
+            .map(|v| (range, &*v))
+            .map_err(|_| SysError::ENOMEM)
     }
 
     pub fn insert_mmap_private_at(
-        &mut self, 
-        begin_vaddr: VirtAddr, 
-        size: usize, 
+        &mut self,
+        begin_vaddr: VirtAddr,
+        size: usize,
         perm: UserAreaPerm,
         file: VfsFileRef,
         offset: usize,
@@ -458,17 +450,29 @@ impl UserAreaManager {
             end: begin_vaddr + size,
         };
         let area = UserArea::new_private(perm, file, offset);
-        self.map.try_insert(range.clone(), area)
-            .map(|v| (range, &*v)).map_err(|_| SysError::ENOMEM)
+        self.map
+            .try_insert(range.clone(), area)
+            .map(|v| (range, &*v))
+            .map_err(|_| SysError::ENOMEM)
     }
 
-    pub fn page_fault(&mut self, page_table: &mut PageTable, access_vpn: VirtPageNum, access_type: PageFaultAccessType) -> Result<(), PageFaultErr> {
-        let (range, area) = self.map.get_mut(access_vpn.addr().into())
-            .ok_or(PageFaultErr::NoSegment)?;
+    pub fn page_fault(
+        &mut self,
+        page_table: &mut PageTable,
+        access_vpn: VirtPageNum,
+        access_type: PageFaultAccessType,
+    ) -> Result<(), PageFaultErr> {
+        let (range, area) =
+            self.map.get_mut(access_vpn.addr().into()).ok_or(PageFaultErr::NoSegment)?;
         area.page_fault(page_table, range.start, access_vpn, access_type)
     }
 
-    pub fn force_map_range(&mut self, page_table: &mut PageTable, range: VirtAddrRange, perm: UserAreaPerm) {
+    pub fn force_map_range(
+        &mut self,
+        page_table: &mut PageTable,
+        range: VirtAddrRange,
+        perm: UserAreaPerm,
+    ) {
         debug!("force map range: {:?}, perm: {:?}", range, perm);
 
         let vpn_begin = range.start.assert_4k().page_num();
@@ -483,15 +487,16 @@ impl UserAreaManager {
 
     pub fn unmap_range(&mut self, page_table: &mut PageTable, range: VirtAddrRange) {
         debug!("unmap range: {:?}", range);
-        self.map.remove(range, 
+        self.map.remove(
+            range,
             UserArea::split_and_make_left,
-            UserArea::split_and_make_right, 
-            |_area, range| Self::release_range(page_table, range) 
+            UserArea::split_and_make_right,
+            |_area, range| Self::release_range(page_table, range),
         );
     }
 
     /// 释放一个虚拟地址范围内的所有页
-    /// 
+    ///
     /// **注意**: 只释放物理页，不会管分段
     pub fn release_range(page_table: &mut PageTable, range: VirtAddrRange) {
         debug!("release range: {:?}", range);
@@ -510,7 +515,7 @@ impl UserAreaManager {
                 // 如果是共享的，则只减少引用计数，否则释放
                 if mgr.is_shared(ppn) {
                     mgr.remove_ref(ppn);
-                } 
+                }
                 if mgr.is_unique(ppn) {
                     dealloc_frame(ppn.addr());
                 }

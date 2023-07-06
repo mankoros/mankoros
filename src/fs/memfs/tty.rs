@@ -1,7 +1,7 @@
 use crate::{
     fs::{
         new_vfs::{
-            top::{MmapKind, VfsFile},
+            top::{MmapKind, PollKind, VfsFile},
             DeviceIDCollection, VfsFileAttr, VfsFileKind,
         },
         stdio::{Stdin, Stdout},
@@ -40,5 +40,15 @@ impl VfsFile for TTY {
 
     fn get_page(&self, _offset: usize, kind: MmapKind) -> ASysResult<PhysAddr4K> {
         dyn_future(async move { unimplemented!() })
+    }
+
+    fn poll_ready(&self, offset: usize, len: usize, kind: PollKind) -> ASysResult<usize> {
+        Stdin.poll_ready(offset, len, kind)
+    }
+    fn poll_read(&self, offset: usize, buf: &mut [u8]) -> usize {
+        Stdin.poll_read(offset, buf)
+    }
+    fn poll_write(&self, offset: usize, buf: &[u8]) -> usize {
+        Stdout.poll_write(offset, buf)
     }
 }

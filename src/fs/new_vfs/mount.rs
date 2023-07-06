@@ -1,6 +1,10 @@
-use super::{top::{VfsFS, VfsFile, VfsFileRef}, path::Path, DeviceID};
-use alloc::{sync::Arc, vec::Vec, collections::BTreeMap};
+use super::{
+    path::Path,
+    top::{VfsFS, VfsFile, VfsFileRef},
+    DeviceID,
+};
 use crate::{impl_vfs_default_non_file, impl_vfs_forward_dir};
+use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 
 pub struct MountPoint {
     fs: Arc<dyn VfsFS>,
@@ -29,6 +33,5 @@ impl VfsFile for MountPoint {
 pub struct MountManager {
     mounted_fs: BTreeMap<DeviceID, Arc<dyn VfsFS>>,
     // 按照路径的长度降序排序
-    mount_points: Vec<(Path, MountPoint)>
+    mount_points: Vec<(Path, MountPoint)>,
 }
-

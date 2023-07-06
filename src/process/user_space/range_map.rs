@@ -47,7 +47,7 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
         None
     }
     /// 在 [start, end) 中找到一个长至少为 size 的空闲区间
-    /// 
+    ///
     /// 这个空闲区间将会以某个地址 a 为起点, 以 offset(a, n) 为终点,
     /// offset 函数用于提供一个将 U 和 usize 相加并返回 U 的方法
     pub fn find_free_range(
@@ -313,8 +313,8 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
         Ok(())
     }
 
-    /// 向后 (虚拟地址增大方向) 减少一个从 start 开始的段, 这个段必须存在. 
-    /// 
+    /// 向后 (虚拟地址增大方向) 减少一个从 start 开始的段, 这个段必须存在.
+    ///
     /// 减少成功 (长度为 0 时删除该段) 返回被删除的段的范围, 越界或超出长度返回 Err
     pub fn reduce_back(&mut self, start: U, new_end: U) -> Result<Range<U>, ()> {
         let node = self.0.get_mut(&start).unwrap();
@@ -330,7 +330,6 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
             Err(())
         }
     }
-
 
     pub fn iter(&self) -> impl Iterator<Item = (Range<U>, &V)> {
         self.0.iter().map(|(&s, n)| {
