@@ -84,7 +84,10 @@ impl<'a> Syscall<'a> {
             SYSCALL_GETTIMEOFDAY => self.sys_gettimeofday(),
             SYSCALL_NANOSLEEP => self.sys_nanosleep().await,
             SYSCALL_GETUID => self.sys_getuid(),
-            _ => panic!("Unknown syscall_id: {}", syscall_no),
+            _ => {
+                warn!("Unknown syscall_id: {}", syscall_no);
+                Ok(0)
+            }
         };
 
         // 设置返回值

@@ -1,9 +1,21 @@
-use super::{underlying::ConcreteFile, top::{VfsFileRef, VfsFile}, sync_attr_cache::SyncAttrCacheFile};
-use crate::{sync::{SpinNoIrqLock}, impl_vfs_default_non_file, tools::errors::{ASysResult, dyn_future, SysResult, SysError}, fs::{new_vfs::{VfsFileKind, page_cache::SyncPageCacheFile}}, here};
-use alloc::{collections::BTreeMap, string::String, vec::Vec};
-use core::{sync::atomic::{AtomicBool, Ordering}, cell::{SyncUnsafeCell}};
-use crate::fs::new_vfs::underlying::DEntryRef;
+use super::{
+    sync_attr_cache::SyncAttrCacheFile,
+    top::{VfsFile, VfsFileRef},
+    underlying::ConcreteFile,
+};
 use crate::alloc::string::ToString;
+use crate::fs::new_vfs::underlying::DEntryRef;
+use crate::{
+    fs::new_vfs::{page_cache::SyncPageCacheFile, VfsFileKind},
+    here, impl_vfs_default_non_file,
+    sync::SpinNoIrqLock,
+    tools::errors::{dyn_future, ASysResult, SysError, SysResult},
+};
+use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use core::{
+    cell::SyncUnsafeCell,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 enum DEntryCache<F: ConcreteFile> {
     Unactive(F::DEntryRefT),
@@ -42,12 +54,11 @@ pub struct DEntryCacheDir<F: ConcreteFile> {
 
 async fn pack_entry<F: ConcreteFile>(dentry_ref: &F::DEntryRefT) -> SysResult<VfsFileRef> {
     let sync_file = SyncAttrCacheFile::<F>::new(dentry_ref);
-    let vfs_file: VfsFileRef = 
-        if sync_file.kind() == VfsFileKind::Directory {
-            VfsFileRef::new(DEntryCacheDir::new(sync_file))
-        } else {
-            VfsFileRef::new(SyncPageCacheFile::new(sync_file))
-        };
+    let vfs_file: VfsFileRef = if sync_file.kind() == VfsFileKind::Directory {
+        VfsFileRef::new(DEntryCacheDir::new(sync_file))
+    } else {
+        VfsFileRef::new(SyncPageCacheFile::new(sync_file))
+    };
     Ok(vfs_file)
 }
 
@@ -58,7 +69,7 @@ impl<F: ConcreteFile> DEntryCache<F> {
                 Self::Unactive(dentry_ref) => {
                     let vfs_file = pack_entry::<F>(dentry_ref).await?;
                     *self = Self::Internal(dentry_ref.clone(), vfs_file.clone());
-                    break vfs_file
+                    break vfs_file;
                 }
                 Self::Internal(_, vfs_file) => break vfs_file.clone(),
                 Self::External(vfs_file, _, _) => break vfs_file.clone(),
@@ -74,11 +85,9 @@ impl<F: ConcreteFile> DEntryCache<F> {
                 }
                 Self::Internal(dentry_ref, vfs_file) => {
                     *self = Self::External(externel_file, dentry_ref.clone(), vfs_file.clone());
-                    break Ok(())
+                    break Ok(());
                 }
-                Self::External(_, _, _) => {
-                    break Err(SysError::EBUSY)
-                }
+                Self::External(_, _, _) => break Err(SysError::EBUSY),
             }
         }
     }
@@ -89,13 +98,11 @@ impl<F: ConcreteFile> DEntryCache<F> {
                 Self::Unactive(_) => {
                     self.active().await?;
                 }
-                Self::Internal(_, vfs_file) => {
-                    break Ok((true, vfs_file.clone()))
-                }
+                Self::Internal(_, vfs_file) => break Ok((true, vfs_file.clone())),
                 Self::External(new, dentry_ref, original) => {
                     let new = new.clone();
                     *self = Self::Internal(dentry_ref.clone(), original.clone());
-                    break Ok((false, new.clone()))
+                    break Ok((false, new.clone()));
                 }
             }
         }
@@ -109,7 +116,6 @@ impl<F: ConcreteFile> DEntryCache<F> {
         }
     }
 }
-
 
 impl<F: ConcreteFile> DEntryCacheDir<F> {
     pub fn new_root(dir: SyncAttrCacheFile<F>) -> Self {
@@ -135,7 +141,10 @@ impl<F: ConcreteFile> DEntryCacheDir<F> {
         entries.insert(name, dentry_cache);
     }
 
-    async fn lookup_entry(entries: &mut EntriesMap<F>, name: &str) -> SysResult<Option<VfsFileRef>> {
+    async fn lookup_entry(
+        entries: &mut EntriesMap<F>,
+        name: &str,
+    ) -> SysResult<Option<VfsFileRef>> {
         if let Some(dentry_cache) = entries.get(name) {
             let dentry_cache = unsafe { dentry_cache.get_mut() };
             let vfs_file = dentry_cache.active().await?;
@@ -145,7 +154,11 @@ impl<F: ConcreteFile> DEntryCacheDir<F> {
         }
     }
 
-    async fn get_entries(&self, entries_map: &mut EntriesMap<F>, name: Option<&str>) -> SysResult<()> {
+    async fn get_entries(
+        &self,
+        entries_map: &mut EntriesMap<F>,
+        name: Option<&str>,
+    ) -> SysResult<()> {
         let cached_cnt = entries_map.len();
         let (is_end, entries) = self.dir.lock().await.lookup_batch(cached_cnt, name).await?;
         for dentry_ref in entries {
@@ -201,7 +214,7 @@ impl<F: ConcreteFile> VfsFile for DEntryCacheDir<F> {
     fn lookup<'a>(&'a self, name: &'a str) -> ASysResult<VfsFileRef> {
         dyn_future(async {
             let mut entries_map = self.entries.lock(here!());
-            
+
             // 1. 先尝试从缓存中获取
             if let Some(vfs_file) = Self::lookup_entry(&mut entries_map, name).await? {
                 return Ok(vfs_file);
@@ -261,9 +274,13 @@ impl<F: ConcreteFile> VfsFile for DEntryCacheDir<F> {
             // 1. 如果缓存中有, 删除或反挂载之
             if let Some((_, dentry_cache)) = entries_map.remove_entry(name) {
                 let dentry_cache = unsafe { dentry_cache.get_mut() };
-                
+
                 let (is_internal, vfs_file) = dentry_cache.unshadow().await?;
-                log::debug!("AAAAAAAAAAA: is_internal: {}, name: {}", is_internal, name.to_string());
+                log::debug!(
+                    "AAAAAAAAAAA: is_internal: {}, name: {}",
+                    is_internal,
+                    name.to_string()
+                );
                 if is_internal {
                     let dentry_ref = dentry_cache.get_dentry_ref().clone();
                     self.dir.lock().await.detach(dentry_ref).await?;
@@ -292,12 +309,11 @@ impl<F: ConcreteFile> VfsFile for DEntryCacheDir<F> {
 
     fn attach<'a>(&'a self, name: &'a str, file: VfsFileRef) -> ASysResult {
         dyn_future(async {
-            log::debug!("BBBBBBBBBBB: name: {}", name.to_string());
             let mut entries_map = self.entries.lock(here!());
             // 1. 如果缓存中有, 则检查名字是否是代表一个目录并替换之
             if let Some(dentry_cache) = entries_map.get(name) {
                 let dentry_cache = unsafe { dentry_cache.get_mut() };
-                return dentry_cache.shadow(file).await
+                return dentry_cache.shadow(file).await;
             }
 
             // 2. 如果缓存中没有, 则向 fs 查询, 若有则替换之, 若无则返回 ENOENT

@@ -50,7 +50,6 @@ impl VfsFile for TmpDir {
 
     fn lookup<'a>(&'a self, name: &'a str) -> ASysResult<VfsFileRef> {
         dyn_future(async move {
-            debug!("TmpDir::lookup: name={:?}", name);
             let children = self.children.lock(here!());
             match children.get(name) {
                 Some(file) => Ok(file.clone()),
