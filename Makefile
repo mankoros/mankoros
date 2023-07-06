@@ -73,6 +73,19 @@ debug: build
 release-qemu: release
 	@$(QEMU_CMD)
 
+preliminary-qemu: SDCARD_IMG = fs.img
+preliminary-qemu: QEMU_DEVICES = -drive file=$(SDCARD_IMG),format=raw,id=hd0 -device virtio-blk-device,drive=hd0
+preliminary-qemu: QEMU_CMD = qemu-system-riscv64 		\
+						-machine virt		\
+						-nographic 			\
+						-bios default 		\
+						-m $(MEM_SIZE)		\
+						-smp $(CPUS) 		\
+						$(QEMU_DEVICES)		\
+						-kernel $(BIN_FILE)
+preliminary-qemu: release
+	$(QEMU_CMD)
+	
 # First set release mode
 release: MODE = release
 release: CARGO_BUILD_ARGS += --release

@@ -192,57 +192,8 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
 
     fs::init_filesystems(manager.disks()[0].clone());
 
-    cfg_if::cfg_if! {
-        if #[cfg(debug_assertions)] {
-            let cases = [];
-        } else {
-            let cases = [
-                "getpid",
-                "getppid",
-                "brk",
-                "open",
-                "fstat",
-                "uname",
-                "getcwd",
-                "dup",
-                "dup2",
-                "mkdir_",
-                "fork",
-                "yield",
-                "clone",
-                "execve",
-                "chdir",
-                "exit",
-                "read",
-                "write",
-                "close",
-                "mmap",
-                "munmap",
-                "getdents",
-                "unlink",
-                "wait",
-                "waitpid",
-                "openat",
-                "pipe",
-                "mount",
-                "umount",
-                "gettimeofday",
-                "times",
-                "sleep",
-            ];
-        }
-    }
-
-    let root_dir = fs::root::get_root_dir();
-    for case_name in cases.into_iter() {
-        warn!(
-            "============== Running test case: {} ================",
-            case_name
-        );
-        let test_case = block_on(root_dir.lookup(case_name)).expect("Read test case failed");
-        process::spawn_proc_from_file(test_case);
-        executor::run_until_idle();
-    }
+    // Probe prelimiary devices
+    run_preliminary_test();
 
     process::spawn_init();
     executor::run_until_idle();
@@ -252,6 +203,54 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
 
     unreachable!();
 }
+
+fn run_preliminary_test() {
+    let cases = [
+        "getpid",
+        "getppid",
+        "brk",
+        "open",
+        "fstat",
+        "uname",
+        "getcwd",
+        "dup",
+        "dup2",
+        "mkdir_",
+        "fork",
+        "yield",
+        "clone",
+        "execve",
+        "chdir",
+        "exit",
+        "read",
+        "write",
+        "close",
+        "mmap",
+        "munmap",
+        "getdents",
+        "unlink",
+        "wait",
+        "waitpid",
+        "openat",
+        "pipe",
+        "mount",
+        "umount",
+        "gettimeofday",
+        "times",
+        "sleep",
+    ];
+
+    let root_dir = fs::root::get_root_dir();
+    for case_name in cases.into_iter() {
+        let test_case = block_on(root_dir.lookup(case_name));
+        if test_case.is_err() {
+            break;
+        }
+        process::spawn_proc_from_file(test_case.unwrap());
+        executor::run_until_idle();
+    }
+}
+
 /// Other hart rust entry point
 ///
 ///

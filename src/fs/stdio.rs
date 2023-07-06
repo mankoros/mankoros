@@ -197,7 +197,13 @@ impl VfsFile for Stderr {
     fn poll_write(&self, offset: usize, buf: &[u8]) -> usize {
         ensure_offset_is_tail!(offset);
         if let Ok(data) = core::str::from_utf8(buf) {
-            warn!("User stderr: {}", data);
+            cfg_if::cfg_if! {
+                if #[cfg(debug_assertions)] {
+                    warn!("User stderr: {}", data);
+                } else {
+                    print!("{}", data);
+                }
+            }
         } else {
             for i in 0..buf.len() {
                 warn!("User stderr (non-utf8): {} ", buf[i]);
