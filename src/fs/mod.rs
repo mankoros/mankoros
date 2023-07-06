@@ -3,20 +3,24 @@ use log::info;
 use mbr_nostd::PartitionTable;
 
 use crate::{
-    drivers::{BlockDevice},
+    drivers::BlockDevice,
+    fs::{
+        memfs::{tmpdir::TmpDir, zero::ZeroDev},
+        new_vfs::top::VfsFileRef,
+    },
     here,
-    sync::SpinNoIrqLock, fs::{memfs::{tmpdir::TmpDir, zero::{ZeroDev}}, new_vfs::top::{VfsFileRef}},
+    sync::SpinNoIrqLock,
 };
 
 pub mod disk;
 pub mod fatfs;
 pub mod partition;
 
+pub mod memfs;
+pub mod new_vfs;
 pub mod pipe;
 pub mod root;
 pub mod stdio;
-pub mod new_vfs;
-pub mod memfs;
 
 pub fn init_filesystems(blk_dev: Arc<dyn BlockDevice>) {
     info!("Filesystem built-in self testing (BIST)...");
@@ -53,7 +57,7 @@ pub fn init_filesystems(blk_dev: Arc<dyn BlockDevice>) {
 
     let root_dir = self::root::get_root_dir();
     // Mount devfs
-    let dev_dir = VfsFileRef::new(TmpDir::new()); 
+    let dev_dir = VfsFileRef::new(TmpDir::new());
     root_dir.attach("dev", dev_dir.clone());
     dev_dir.attach("zero", VfsFileRef::new(ZeroDev));
     dev_dir.attach("vda2", VfsFileRef::new(ZeroDev));

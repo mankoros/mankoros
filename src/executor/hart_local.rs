@@ -1,6 +1,6 @@
-use alloc::{vec::Vec, sync::Arc};
+use alloc::{sync::Arc, vec::Vec};
 
-use crate::{consts, sync::SpinNoIrqLock, process::lproc::LightProcess};
+use crate::{consts, process::lproc::LightProcess, sync::SpinNoIrqLock};
 use core::arch::asm;
 
 pub struct HartLocal {

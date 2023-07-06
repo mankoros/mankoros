@@ -1,9 +1,9 @@
 //! From Oops: utils/path.rs
+use crate::tools::errors::SysResult;
 use alloc::format;
 use alloc::{collections::VecDeque, string::String};
 use core::fmt::{Debug, Formatter};
 use core::ops::{Deref, DerefMut};
-use crate::tools::errors::SysResult;
 
 /// 代表一个已经正规化的路径, 即不存在 `.` 和 `..` 等成分的路径
 /// 可以直接使用 `path[0]`, `path[1]`, ... 等来访问各个组成部分

@@ -7,7 +7,8 @@ use log::info;
 use crate::{
     consts::PAGE_MASK,
     memory::{address::VirtAddr, pagetable::pte::PTEFlags},
-    process::user_space::user_area::UserAreaPerm, tools::errors::SysError,
+    process::user_space::user_area::UserAreaPerm,
+    tools::errors::SysError,
 };
 
 use super::{Syscall, SyscallResult};
@@ -87,11 +88,8 @@ impl<'a> Syscall<'a> {
             let cur_brk = self.lproc.with_memory(|m| m.areas().get_heap_break());
             Ok(cur_brk.bits())
         } else {
-            self.lproc.with_mut_memory(|m| {
-                m.areas_mut()
-                    .reset_heap_break(VirtAddr::from(brk))
-                    .map(|_| 0)
-            })
+            self.lproc
+                .with_mut_memory(|m| m.areas_mut().reset_heap_break(VirtAddr::from(brk)).map(|_| 0))
         }
     }
 

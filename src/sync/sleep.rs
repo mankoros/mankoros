@@ -1,10 +1,15 @@
 //! 睡眠锁
 
 use super::SpinNoIrqLock;
-use alloc::collections::VecDeque;
-use core::{task::{Waker, Context, Poll}, cell::UnsafeCell, future::{Future}, pin::Pin, ops::{Deref, DerefMut}};
 use crate::here;
-
+use alloc::collections::VecDeque;
+use core::{
+    cell::UnsafeCell,
+    future::Future,
+    ops::{Deref, DerefMut},
+    pin::Pin,
+    task::{Context, Poll, Waker},
+};
 
 /// 睡眠锁本体, 保存数据和等待队列
 /// 使用方法: `let guard = A.lock().await;`
@@ -68,7 +73,7 @@ pub struct SleepLockGuard<'a, T: ?Sized + 'a> {
     mutex: &'a SleepLock<T>,
 }
 
-impl <'a, T: ?Sized> Drop for SleepLockGuard<'a, T> {
+impl<'a, T: ?Sized> Drop for SleepLockGuard<'a, T> {
     fn drop(&mut self) {
         let mut inner = self.mutex.inner.lock(here!());
         // 因为新等待的人再次被唤醒时会获得新的 Guard, 而新的 guard.await 中会检查锁是否被持有

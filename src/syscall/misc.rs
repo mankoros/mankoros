@@ -1,7 +1,7 @@
 //! Misc syscall
 //!
 
-use log::{info};
+use log::info;
 
 use crate::{
     arch::within_sum,

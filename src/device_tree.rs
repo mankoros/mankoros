@@ -1,6 +1,4 @@
-
 use fdt::Fdt;
-
 
 use crate::{
     consts::{self, address_space::K_SEG_DTB},

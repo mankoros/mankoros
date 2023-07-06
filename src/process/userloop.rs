@@ -7,9 +7,10 @@ use riscv::register::{
 use crate::{
     arch,
     executor::{hart_local::set_curr_lproc, util_futures::yield_now},
+    memory::address::VirtAddr,
     process::user_space::user_area::PageFaultAccessType,
     syscall::Syscall,
-    trap::trap::run_user, memory::address::VirtAddr,
+    trap::trap::run_user,
 };
 
 use super::lproc::{LightProcess, ProcessStatus};
@@ -103,8 +104,9 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                         _ => unreachable!(),
                     };
 
-                    let result =
-                        lproc.with_mut_memory(|m| m.handle_pagefault(VirtAddr::from(stval), access_type));
+                    let result = lproc.with_mut_memory(|m| {
+                        m.handle_pagefault(VirtAddr::from(stval), access_type)
+                    });
                     if let Err(_) = result {
                         is_exit = true;
                     }

@@ -1,6 +1,12 @@
-use crate::{sync::{SleepLock, SpinNoIrqLock, SleepLockFuture}, here};
-use super::{underlying::{ConcreteFile, DEntryRef}, VfsFileAttr, VfsFileKind};
-use core::{sync::atomic::{AtomicBool, Ordering}};
+use super::{
+    underlying::{ConcreteFile, DEntryRef},
+    VfsFileAttr, VfsFileKind,
+};
+use crate::{
+    here,
+    sync::{SleepLock, SleepLockFuture, SpinNoIrqLock},
+};
+use core::sync::atomic::{AtomicBool, Ordering};
 
 pub struct SyncAttrCacheFile<F: ConcreteFile> {
     file: SleepLock<F>,
@@ -51,19 +57,19 @@ impl<F: ConcreteFile> SyncAttrCacheFile<F> {
 // impl<F: ConcreteFile> VfsFile for SyncAttrCacheFile<F> {
 //     fn attr(&self) -> crate::tools::errors::ASysResult<VfsFileAttr> {
 //         dyn_future(async {
-//             Ok(self.with_attr_read(|&a| a.clone()))  
+//             Ok(self.with_attr_read(|&a| a.clone()))
 //         })
 //     }
 
 //     fn read_at(&self, offset: usize, buf: &mut [u8]) -> crate::tools::errors::ASysResult<usize> {
 //         dyn_future(async {
-//             self.lock().await.read_at(offset, buf).await  
+//             self.lock().await.read_at(offset, buf).await
 //         })
 //     }
 
 //     fn write_at(&self, offset: usize, buf: &[u8]) -> crate::tools::errors::ASysResult<usize> {
 //         dyn_future(async {
-//             self.lock().await.write_at(offset, buf).await  
+//             self.lock().await.write_at(offset, buf).await
 //         })
 //     }
 
@@ -118,7 +124,7 @@ impl<F: ConcreteFile> SyncAttrCacheFile<F> {
 
 //     fn remove(&self, name: &str) -> crate::tools::errors::ASysResult {
 //         dyn_future(async {
-//             self.lock().await.remove(name).await  
+//             self.lock().await.remove(name).await
 //         })
 //     }
 
@@ -129,4 +135,4 @@ impl<F: ConcreteFile> SyncAttrCacheFile<F> {
 //     fn attach(&self, name: &str, file: super::top::VfsFileRef) -> crate::tools::errors::ASysResult {
 //         todo!()
 //     }
-// } 
+// }

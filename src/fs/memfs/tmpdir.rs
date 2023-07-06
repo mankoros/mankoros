@@ -1,22 +1,33 @@
-use crate::{sync::SpinNoIrqLock, impl_vfs_default_non_file, tools::errors::{dyn_future, SysError, ASysResult}, here, fs::new_vfs::{VfsFileKind, top::{VfsFileRef, VfsFile}, VfsFileAttr, DeviceIDCollection}};
-use alloc::{collections::BTreeMap, string::{String, ToString}, vec::Vec};
-
+use crate::{
+    fs::new_vfs::{
+        top::{VfsFile, VfsFileRef},
+        DeviceIDCollection, VfsFileAttr, VfsFileKind,
+    },
+    here, impl_vfs_default_non_file,
+    sync::SpinNoIrqLock,
+    tools::errors::{dyn_future, ASysResult, SysError},
+};
+use alloc::{
+    collections::BTreeMap,
+    string::{String, ToString},
+    vec::Vec,
+};
 
 pub struct TmpDir {
-    children: SpinNoIrqLock<BTreeMap<String, VfsFileRef>>
+    children: SpinNoIrqLock<BTreeMap<String, VfsFileRef>>,
 }
 
 impl TmpDir {
     pub fn new() -> Self {
         Self {
-            children: SpinNoIrqLock::new(BTreeMap::new())
+            children: SpinNoIrqLock::new(BTreeMap::new()),
         }
     }
 }
 
 impl VfsFile for TmpDir {
     impl_vfs_default_non_file!(TmpDir);
-    
+
     fn attr(&self) -> ASysResult<VfsFileAttr> {
         dyn_future(async {
             Ok(VfsFileAttr {
@@ -28,7 +39,7 @@ impl VfsFile for TmpDir {
                 access_time: 0,
                 modify_time: 0,
                 create_time: 0,
-            })  
+            })
         })
     }
 
@@ -41,7 +52,7 @@ impl VfsFile for TmpDir {
             let children = self.children.lock(here!());
             match children.get(name) {
                 Some(file) => Ok(file.clone()),
-                None => Err(SysError::ENOENT)
+                None => Err(SysError::ENOENT),
             }
         })
     }
@@ -51,7 +62,7 @@ impl VfsFile for TmpDir {
             let mut children = self.children.lock(here!());
             match children.remove(name) {
                 Some(file) => Ok(file),
-                None => Err(SysError::ENOENT)
+                None => Err(SysError::ENOENT),
             }
         })
     }
@@ -61,15 +72,13 @@ impl VfsFile for TmpDir {
             let mut children = self.children.lock(here!());
             match children.insert(name.to_string(), file) {
                 Some(_) => Err(SysError::EEXIST),
-                None => Ok(())
+                None => Ok(()),
             }
         })
     }
 
     fn remove<'a>(&'a self, name: &'a str) -> ASysResult {
-        dyn_future(async {
-            self.detach(name).await.map(|_| ())  
-        })
+        dyn_future(async { self.detach(name).await.map(|_| ()) })
     }
 
     fn list(&self) -> ASysResult<Vec<(String, VfsFileRef)>> {

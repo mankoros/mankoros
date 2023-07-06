@@ -5,8 +5,15 @@ use alloc::{string::String, vec::Vec};
 
 use crate::{
     arch::get_curr_page_table_addr,
-    memory::{address::{VirtAddr, PhysAddr}, pagetable::{pagetable::PageTable, pte::PTEFlags}, frame::alloc_frame},
-    process::{aux_vector::AuxElement, user_space::user_area::PageFaultAccessType}, fs::new_vfs::top::VfsFileRef, executor::block_on, consts::PAGE_SIZE,
+    consts::PAGE_SIZE,
+    executor::block_on,
+    fs::new_vfs::top::VfsFileRef,
+    memory::{
+        address::{PhysAddr, VirtAddr},
+        frame::alloc_frame,
+        pagetable::{pagetable::PageTable, pte::PTEFlags},
+    },
+    process::{aux_vector::AuxElement, user_space::user_area::PageFaultAccessType},
 };
 
 use super::{aux_vector::AuxVector, shared_frame_mgr::with_shared_frame_mgr};
@@ -228,8 +235,7 @@ impl UserSpace {
                 );
                 let area_slice = unsafe { area_begin.as_mut_slice(area_size) };
                 // TODO-PERF: async here
-                block_on(elf_file.read_at(offset, area_slice))
-                    .expect("failed to copy elf data");
+                block_on(elf_file.read_at(offset, area_slice)).expect("failed to copy elf data");
 
                 // Change permission to user
                 // TODO: use SUM ?

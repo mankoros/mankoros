@@ -1,9 +1,10 @@
+use crate::{arch::within_sum, tools::errors::Async};
+use alloc::vec::Vec;
 use core::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
-use crate::arch::within_sum;
 
 pub struct YieldFuture(bool);
 
@@ -26,16 +27,14 @@ pub fn yield_now() -> YieldFuture {
 }
 
 pub struct SumFuture<F: Future> {
-    future: F
+    future: F,
 }
 
 impl<F: Future> Future for SumFuture<F> {
     type Output = F::Output;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        within_sum(|| unsafe {
-            Pin::new_unchecked(&mut self.get_unchecked_mut().future).poll(cx)
-        })
+        within_sum(|| unsafe { Pin::new_unchecked(&mut self.get_unchecked_mut().future).poll(cx) })
     }
 }
 
