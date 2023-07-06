@@ -10,7 +10,7 @@ use ringbuffer::{AllocRingBuffer, RingBuffer, RingBufferRead, RingBufferWrite};
 
 use super::new_vfs::{top::VfsFile, DeviceIDCollection, VfsFileAttr};
 use crate::{
-    consts,
+    consts, ensure_offset_is_tail,
     executor::util_futures::yield_now,
     here, impl_vfs_default_non_dir,
     sync::SpinNoIrqLock,
@@ -57,7 +57,8 @@ impl Pipe {
 impl VfsFile for Pipe {
     impl_vfs_default_non_dir!(Pipe);
 
-    fn write_at<'a>(&'a self, _offset: usize, buf: &'a [u8]) -> ASysResult<usize> {
+    fn write_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> ASysResult<usize> {
+        ensure_offset_is_tail!(offset);
         Box::pin(async move {
             // Check if the pipe is writable
             if self.is_read {
@@ -90,7 +91,8 @@ impl VfsFile for Pipe {
         })
     }
 
-    fn read_at<'a>(&'a self, _offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
+    fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
+        ensure_offset_is_tail!(offset);
         Box::pin(async move {
             // Check if the pipe is readable
             if !self.is_read {
@@ -123,18 +125,20 @@ impl VfsFile for Pipe {
 
     fn get_page(
         &self,
-        _offset: usize,
+        offset: usize,
         _kind: super::new_vfs::top::MmapKind,
     ) -> ASysResult<crate::memory::address::PhysAddr4K> {
+        ensure_offset_is_tail!(offset);
         unimplemented!("Should never get page for a pipe")
     }
 
     fn poll_ready(
         &self,
-        _offset: usize,
+        offset: usize,
         len: usize,
         kind: super::new_vfs::top::PollKind,
     ) -> ASysResult<usize> {
+        ensure_offset_is_tail!(offset);
         dyn_future(async move {
             let poll_is_read = kind == super::new_vfs::top::PollKind::Read;
             if poll_is_read != self.is_read {
@@ -162,7 +166,8 @@ impl VfsFile for Pipe {
         })
     }
 
-    fn poll_read(&self, _offset: usize, buf: &mut [u8]) -> usize {
+    fn poll_read(&self, offset: usize, buf: &mut [u8]) -> usize {
+        ensure_offset_is_tail!(offset);
         debug_assert!(self.is_read);
         let mut data = self.data.lock(here!());
         let len = min(data.len(), buf.len());
@@ -172,7 +177,8 @@ impl VfsFile for Pipe {
         len
     }
 
-    fn poll_write(&self, _offset: usize, buf: &[u8]) -> usize {
+    fn poll_write(&self, offset: usize, buf: &[u8]) -> usize {
+        ensure_offset_is_tail!(offset);
         debug_assert!(!self.is_read);
         let mut data = self.data.lock(here!());
         let len = min(data.capacity() - data.len(), buf.len());

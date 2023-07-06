@@ -6,7 +6,7 @@
 
 use super::new_vfs::{top::VfsFile, DeviceIDCollection, VfsFileAttr};
 use crate::{
-    impl_vfs_default_non_dir,
+    ensure_offset_is_tail, impl_vfs_default_non_dir,
     tools::errors::{dyn_future, ASysResult, SysError},
 };
 use log::warn;
@@ -26,7 +26,8 @@ impl VfsFile for Stdin {
         dyn_future(async { Err(SysError::EPERM) })
     }
 
-    fn read_at<'a>(&'a self, _offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
+    fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
+        ensure_offset_is_tail!(offset);
         // Offset is ignored
         dyn_future(async move {
             if buf.len() == 0 {
@@ -48,7 +49,7 @@ impl VfsFile for Stdin {
     fn poll_ready(
         &self,
         _offset: usize,
-        len: usize,
+        _len: usize,
         kind: super::new_vfs::top::PollKind,
     ) -> ASysResult<usize> {
         dyn_future(async move {
@@ -60,11 +61,12 @@ impl VfsFile for Stdin {
             }
         })
     }
-    fn poll_read(&self, offset: usize, buf: &mut [u8]) -> usize {
+    fn poll_read(&self, offset: usize, _buf: &mut [u8]) -> usize {
+        ensure_offset_is_tail!(offset);
         // TODO: implement read
         1
     }
-    fn poll_write(&self, offset: usize, buf: &[u8]) -> usize {
+    fn poll_write(&self, _offset: usize, _buf: &[u8]) -> usize {
         panic!("Stdin::poll_write")
     }
 
@@ -109,6 +111,7 @@ impl VfsFile for Stdout {
         len: usize,
         kind: super::new_vfs::top::PollKind,
     ) -> ASysResult<usize> {
+        ensure_offset_is_tail!(offset);
         dyn_future(async move {
             if kind != super::new_vfs::top::PollKind::Write {
                 return Err(SysError::EPERM);
@@ -117,10 +120,11 @@ impl VfsFile for Stdout {
             }
         })
     }
-    fn poll_read(&self, offset: usize, buf: &mut [u8]) -> usize {
+    fn poll_read(&self, _offset: usize, _buf: &mut [u8]) -> usize {
         panic!("Stdout::poll_read")
     }
     fn poll_write(&self, offset: usize, buf: &[u8]) -> usize {
+        ensure_offset_is_tail!(offset);
         if let Ok(data) = core::str::from_utf8(buf) {
             warn!("User stdout: {}", data);
         } else {
@@ -172,6 +176,7 @@ impl VfsFile for Stderr {
         len: usize,
         kind: super::new_vfs::top::PollKind,
     ) -> ASysResult<usize> {
+        ensure_offset_is_tail!(offset);
         dyn_future(async move {
             if kind != super::new_vfs::top::PollKind::Write {
                 return Err(SysError::EPERM);
@@ -180,10 +185,11 @@ impl VfsFile for Stderr {
             }
         })
     }
-    fn poll_read(&self, offset: usize, buf: &mut [u8]) -> usize {
+    fn poll_read(&self, _offset: usize, _buf: &mut [u8]) -> usize {
         panic!("stderr::poll_read")
     }
     fn poll_write(&self, offset: usize, buf: &[u8]) -> usize {
+        ensure_offset_is_tail!(offset);
         if let Ok(data) = core::str::from_utf8(buf) {
             warn!("User stderr: {}", data);
         } else {

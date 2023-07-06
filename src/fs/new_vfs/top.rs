@@ -22,6 +22,8 @@ pub enum PollKind {
     Write,
 }
 
+pub const OFFSET_TAIL: usize = usize::MAX;
+
 pub trait VfsFile: Send + Sync {
     // 文件操作
     /// 获取文件的各类属性,
@@ -90,6 +92,15 @@ impl VfsFileRef {
         }
         Ok(cur)
     }
+}
+
+#[macro_export]
+macro_rules! ensure_offset_is_tail {
+    ($offset:expr) => {
+        if $offset != $crate::fs::new_vfs::top::OFFSET_TAIL {
+            panic!("offset must be OFFSET_TAIL, but: {}", $offset);
+        }
+    };
 }
 
 #[macro_export]
