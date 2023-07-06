@@ -100,7 +100,7 @@ impl Syscall<'_> {
                 let (dir_path, file_name) = path.split_dir_file();
                 let direct_dir = dir.resolve(&dir_path).await?;
                 // 2. create file
-                
+
                 direct_dir.create(&file_name, VfsFileKind::RegularFile).await?
             }
             Err(e) => {
@@ -180,7 +180,11 @@ impl Syscall<'_> {
             args[3],
         );
 
-        info!("Syscall: ppoll, fds: {}, nfds: {}", fds.as_usize(), nfds);
+        info!(
+            "Syscall: ppoll, fds: 0x{:x}, nfds: {}",
+            fds.as_usize(),
+            nfds
+        );
 
         let user_check = UserCheck::new_with_sum(&self.lproc);
         // future_idx -> (fd_idx, event)
@@ -191,6 +195,7 @@ impl Syscall<'_> {
         for i in 0..nfds {
             let poll_fd = user_check.checked_read(poll_fd_ptr.raw_ptr())?;
             let fd = poll_fd.fd as usize;
+            debug!("ppoll on fd: {}", fd);
             let events = poll_fd.events;
             let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
 
@@ -224,9 +229,12 @@ impl Syscall<'_> {
             PollFd::POLLOUT => PollFd::POLLOUT,
             _ => unreachable!(),
         };
+        debug!("poll fd: {:?}", ready_poll_fd_value);
         user_check.checked_write(ready_poll_fd_ptr.raw_ptr() as *mut _, ready_poll_fd_value)?;
 
-        Ok(0)
+        // Return value is the number of file descriptors that were ready.
+        // Currently, this is always 1.
+        Ok(1)
     }
 
     pub async fn sys_writev(&mut self) -> SyscallResult {
@@ -238,11 +246,7 @@ impl Syscall<'_> {
         }
 
         let args = self.cx.syscall_args();
-        let (fd, iov, iovcnt) = (
-            args[0],
-            UserReadPtr::<IoVec>::from(args[1]),
-            args[2],
-        );
+        let (fd, iov, iovcnt) = (args[0], UserReadPtr::<IoVec>::from(args[1]), args[2]);
 
         info!(
             "Syscall: writev, fd: {}, iov: 0x{:x}, iovcnt: {}",

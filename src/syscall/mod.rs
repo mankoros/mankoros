@@ -2,7 +2,7 @@ use crate::process::lproc::LightProcess;
 
 use crate::trap::context::UKContext;
 
-use log::{debug, warn};
+use log::{info, warn};
 
 mod fs;
 mod io;
@@ -104,7 +104,7 @@ impl<'a> Syscall<'a> {
             Err(_) => -1isize as usize,
         };
 
-        debug!("Syscall ret: {:?}", result);
+        info!("Syscall ret: {:?}", result);
 
         self.cx.set_user_a0(ret);
         self.do_exit

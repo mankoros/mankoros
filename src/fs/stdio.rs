@@ -130,6 +130,7 @@ impl VfsFile for Stdout {
                 if #[cfg(debug_assertions)] {
                     warn!("User stdout: {}", data);
                 } else {
+                    use crate::print;
                     print!("{}", data);
                 }
             }
@@ -201,6 +202,7 @@ impl VfsFile for Stderr {
                 if #[cfg(debug_assertions)] {
                     warn!("User stderr: {}", data);
                 } else {
+                    use crate::print;
                     print!("{}", data);
                 }
             }

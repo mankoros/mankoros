@@ -68,7 +68,7 @@ qemu: build
 
 debug: build
 	@$(QEMU_CMD)	\
-			-s -d int
+			-s -S
 
 release-qemu: release
 	@$(QEMU_CMD)
@@ -85,7 +85,7 @@ preliminary-qemu: QEMU_CMD = qemu-system-riscv64 		\
 						-kernel $(BIN_FILE)
 preliminary-qemu: release
 	$(QEMU_CMD)
-	
+
 # First set release mode
 release: MODE = release
 release: CARGO_BUILD_ARGS += --release

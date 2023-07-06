@@ -116,7 +116,7 @@ macro_rules! impl_vfs_default_non_dir {
         fn lookup(
             &self,
             _name: &str,
-        ) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
+        ) -> $crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
             unimplemented!(concat!(stringify!($ty), "::lookup"))
         }
         fn create(
@@ -161,7 +161,7 @@ macro_rules! impl_vfs_default_non_file {
         fn get_page(
             &self,
             _offset: usize,
-            _kind: crate::fs::new_vfs::top::MmapKind,
+            _kind: $crate::fs::new_vfs::top::MmapKind,
         ) -> crate::tools::errors::ASysResult<crate::memory::address::PhysAddr4K> {
             unimplemented!(concat!(stringify!(ty), "::get_page"))
         }
@@ -188,7 +188,7 @@ macro_rules! impl_vfs_forward_dir {
         fn list(&self) -> $crate::tools::errors::ASysResult<alloc::vec::Vec<(alloc::string::String, $crate::fs::new_vfs::top::VfsFileRef)>> {
             self.$($e)+.list()
         }
-        fn lookup<'a>(&'a self, name: &'a str) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
+        fn lookup<'a>(&'a self, name: &'a str) -> $crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
             self.$($e)+.lookup(name)
         }
         fn create<'a>(&'a self, name: &'a str, kind: crate::fs::new_vfs::VfsFileKind) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
@@ -215,7 +215,7 @@ macro_rules! impl_vfs_forward_file {
         fn write_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> $crate::tools::errors::ASysResult<usize> {
             self.$($e)+.write_at(offset, buf)
         }
-        fn get_page(&self, offset: usize, kind: crate::fs::new_vfs::top::MmapKind) -> crate::tools::errors::ASysResult<crate::memory::address::PhysAddr4K> {
+        fn get_page(&self, offset: usize, kind: $crate::fs::new_vfs::top::MmapKind) -> crate::tools::errors::ASysResult<crate::memory::address::PhysAddr4K> {
             self.$($e)+.get_page(offset, kind)
         }
         fn poll_ready(
