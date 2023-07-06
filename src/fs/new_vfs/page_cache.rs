@@ -5,6 +5,7 @@ use super::{
 };
 use crate::{
     consts::PAGE_SIZE,
+    executor::block_on,
     impl_vfs_default_non_dir,
     memory::{
         address::{PhysAddr, PhysAddr4K},
@@ -66,6 +67,28 @@ impl<F: ConcreteFile> VfsFile for SyncPageCacheFile<F> {
         })
     }
 
+    fn poll_ready(
+        &self,
+        offset: usize,
+        len: usize,
+        _kind: super::top::PollKind,
+    ) -> ASysResult<usize> {
+        dyn_future(
+            async move { self.mgr.lock().await.perpare_range(&self.file, offset, len).await },
+        )
+    }
+
+    fn poll_read(&self, offset: usize, buf: &mut [u8]) -> usize {
+        let mgr = block_on(self.mgr.lock());
+        mgr.cached_read(offset, buf)
+    }
+
+    fn poll_write(&self, offset: usize, buf: &[u8]) -> usize {
+        let mut mgr = block_on(self.mgr.lock());
+        mgr.cached_write(offset, buf);
+        buf.len()
+    }
+
     impl_vfs_default_non_dir!(SyncPageCacheFile);
 }
 
@@ -89,15 +112,17 @@ impl<F: ConcreteFile> PageManager<F> {
         file: &SyncAttrCacheFile<F>,
         offset: usize,
         len: usize,
-    ) -> SysResult<()> {
+    ) -> SysResult<usize> {
         let begin = PhysAddr::from(offset).round_down().bits();
         let end = PhysAddr::from(offset + len).round_up().bits();
 
+        let mut total_len = 0;
         for page_begin in (begin..end).step_by(PAGE_SIZE) {
             if !self.cached_pages.contains_key(&(page_begin as usize)) {
                 let page = CachedPage::alloc()?;
                 let len = file.lock().await.read_at(page_begin, page.for_read()).await?;
                 page.set_len(len);
+                total_len += len;
                 self.cached_pages.insert(page_begin, page);
 
                 // 读到文件尾了
@@ -107,7 +132,7 @@ impl<F: ConcreteFile> PageManager<F> {
             }
         }
 
-        Ok(())
+        Ok(total_len)
     }
 
     pub async fn get_page(

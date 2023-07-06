@@ -8,12 +8,15 @@
 use alloc::{boxed::Box, sync::Arc};
 use ringbuffer::{AllocRingBuffer, RingBuffer, RingBufferRead, RingBufferWrite};
 
+use super::new_vfs::{top::VfsFile, DeviceIDCollection, VfsFileAttr};
 use crate::{
-    consts, executor::util_futures::yield_now, here,
-    sync::SpinNoIrqLock, impl_vfs_default_non_dir, tools::errors::{ASysResult, dyn_future, SysError},
+    consts,
+    executor::util_futures::yield_now,
+    here, impl_vfs_default_non_dir,
+    sync::SpinNoIrqLock,
+    tools::errors::{dyn_future, ASysResult, SysError},
 };
-use super::new_vfs::{top::VfsFile, VfsFileAttr, DeviceIDCollection};
-
+use core::cmp::min;
 
 /// 管道本体，每次创建两份，一个是读端，一个是写端
 pub struct Pipe {
@@ -118,8 +121,65 @@ impl VfsFile for Pipe {
         })
     }
 
-    fn get_page(&self, _offset: usize, _kind: super::new_vfs::top::MmapKind) -> ASysResult<crate::memory::address::PhysAddr4K> {
+    fn get_page(
+        &self,
+        _offset: usize,
+        _kind: super::new_vfs::top::MmapKind,
+    ) -> ASysResult<crate::memory::address::PhysAddr4K> {
         unimplemented!("Should never get page for a pipe")
+    }
+
+    fn poll_ready(
+        &self,
+        _offset: usize,
+        len: usize,
+        kind: super::new_vfs::top::PollKind,
+    ) -> ASysResult<usize> {
+        dyn_future(async move {
+            let poll_is_read = kind == super::new_vfs::top::PollKind::Read;
+            if poll_is_read != self.is_read {
+                return Err(SysError::EPERM);
+            }
+
+            let data = self.data.lock(here!());
+            if poll_is_read {
+                loop {
+                    if data.len() >= len {
+                        break Ok(len);
+                    } else {
+                        yield_now().await;
+                    }
+                }
+            } else {
+                loop {
+                    if data.capacity() - data.len() >= len {
+                        break Ok(len);
+                    } else {
+                        yield_now().await;
+                    }
+                }
+            }
+        })
+    }
+
+    fn poll_read(&self, _offset: usize, buf: &mut [u8]) -> usize {
+        debug_assert!(self.is_read);
+        let mut data = self.data.lock(here!());
+        let len = min(data.len(), buf.len());
+        for i in 0..len {
+            buf[i] = data.dequeue().expect("Just checked for len, should not fail");
+        }
+        len
+    }
+
+    fn poll_write(&self, _offset: usize, buf: &[u8]) -> usize {
+        debug_assert!(!self.is_read);
+        let mut data = self.data.lock(here!());
+        let len = min(data.capacity() - data.len(), buf.len());
+        for i in 0..len {
+            data.push(buf[i]);
+        }
+        len
     }
 
     /// 文件属性
