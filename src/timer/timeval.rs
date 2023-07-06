@@ -45,8 +45,8 @@ impl From<usize> for TimeVal {
     }
 }
 
-impl Into<usize> for TimeVal {
-    fn into(self) -> usize {
-        self.tv_sec * super::USEC_PER_SEC + self.tv_usec
+impl From<TimeVal> for usize {
+    fn from(val: TimeVal) -> Self {
+        val.tv_sec * super::USEC_PER_SEC + val.tv_usec
     }
 }

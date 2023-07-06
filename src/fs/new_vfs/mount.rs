@@ -22,7 +22,7 @@ impl MountPoint {
 }
 
 impl VfsFile for MountPoint {
-    fn attr<'a>(&'a self) -> crate::tools::errors::ASysResult<'a, super::VfsFileAttr> {
+    fn attr(&self) -> crate::tools::errors::ASysResult<'_, super::VfsFileAttr> {
         self.root.attr()
     }
 

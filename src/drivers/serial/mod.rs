@@ -109,7 +109,7 @@ impl Device for Serial {
     }
 
     fn as_char(self: alloc::sync::Arc<Self>) -> Option<alloc::sync::Arc<dyn CharDevice>> {
-        Some(self.clone())
+        Some(self)
     }
 
     fn as_blk(self: alloc::sync::Arc<Self>) -> Option<alloc::sync::Arc<dyn super::BlockDevice>> {
@@ -181,7 +181,7 @@ pub fn probe() -> Option<Serial> {
 /// This guarantees to return a Serial device
 /// The device is not initialized yet
 fn probe_serial_console(stdout: &fdt::node::FdtNode) -> Serial {
-    let reg = stdout.reg().unwrap().into_iter().next().unwrap();
+    let reg = stdout.reg().unwrap().next().unwrap();
     let base_paddr = reg.starting_address as usize;
     let size = reg.size.unwrap();
     let base_vaddr = kernel_phys_dev_to_virt(base_paddr);

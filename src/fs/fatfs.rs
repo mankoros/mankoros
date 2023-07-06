@@ -124,7 +124,7 @@ impl FatFileSystem {
 
 impl VfsFS for FatFileSystem {
     fn root(&self) -> VfsFileRef {
-        unsafe { (&*self.root.get()).assume_init_ref() }.clone()
+        unsafe { (*self.root.get()).assume_init_ref() }.clone()
     }
 }
 
@@ -226,7 +226,7 @@ impl ConcreteFile for FatConcreteGenericFile {
             file.seek(fatfs::SeekFrom::Start(offset as u64))?;
             // This for loop is needed since fatfs do not guarantee read the whole buffer, may only read a sector
             let mut buf = buf;
-            while buf.len() != 0 && !file_end {
+            while !buf.is_empty() && !file_end {
                 let fat_read_len = file.read(buf)?;
                 if fat_read_len == 0 {
                     file_end = true;
@@ -290,9 +290,7 @@ impl ConcreteFile for FatConcreteGenericFile {
                     dir.create_file(name)?;
                     let dentry = dir
                         .iter()
-                        .map(Result::unwrap)
-                        .filter(|x| x.file_name() == name)
-                        .next()
+                        .map(Result::unwrap).find(|x| x.file_name() == name)
                         .unwrap();
                     Ok(FatConcreteDirEntry(dentry))
                 }
@@ -300,9 +298,7 @@ impl ConcreteFile for FatConcreteGenericFile {
                     dir.create_dir(name)?;
                     let dentry = dir
                         .iter()
-                        .map(Result::unwrap)
-                        .filter(|x| x.file_name() == name)
-                        .next()
+                        .map(Result::unwrap).find(|x| x.file_name() == name)
                         .unwrap();
                     Ok(FatConcreteDirEntry(dentry))
                 }

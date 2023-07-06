@@ -50,7 +50,7 @@ mod tools;
 mod trap;
 
 use drivers::EarlyConsole;
-use log::{error, info, warn};
+use log::{error, info};
 use memory::frame;
 use memory::heap;
 use sync::SpinNoIrqLock;
@@ -291,20 +291,16 @@ fn panic(info: &PanicInfo) -> ! {
                 info.message().unwrap()
             );
         }
-    } else {
-        if let Some(msg) = info.message() {
-            if logging_initialized {
-                error!("Panicked: {}", msg);
-            } else {
-                println!("Panicked: {}", msg);
-            }
+    } else if let Some(msg) = info.message() {
+        if logging_initialized {
+            error!("Panicked: {}", msg);
         } else {
-            if logging_initialized {
-                error!("Unknown panic: {:?}", info);
-            } else {
-                println!("Unknown panic: {:?}", info);
-            }
+            println!("Panicked: {}", msg);
         }
+    } else if logging_initialized {
+        error!("Unknown panic: {:?}", info);
+    } else {
+        println!("Unknown panic: {:?}", info);
     }
 
     xdebug::backtrace();

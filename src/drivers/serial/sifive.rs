@@ -31,7 +31,7 @@ impl SifiveUart {
     pub fn new(base_address: usize, in_freq: usize) -> SifiveUart {
         SifiveUart {
             base_address,
-            in_freq: in_freq,
+            in_freq,
             baud_rate: 115200,
         }
     }

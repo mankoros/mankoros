@@ -32,7 +32,7 @@ impl SharedFrameManager {
             .and_modify(|info| {
                 info.increase();
             })
-            .or_insert_with(|| SharedFrameInfo::new());
+            .or_insert_with(SharedFrameInfo::new);
         debug!("add_ref: {:x}, ({:x})", page, info.get());
     }
 

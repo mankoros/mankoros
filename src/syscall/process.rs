@@ -131,7 +131,7 @@ impl<'a> Syscall<'a> {
         let wstatus = wstatus as *mut u32;
         if !wstatus.is_null() {
             // 末尾 8 位是 SIG 信息，再上 8 位是退出码
-            let status = ((result_lproc.exit_code() as u32 & 0xff) << 8) | 0x00;
+            let status = (result_lproc.exit_code() as u32 & 0xff) << 8;
             debug!("wstatus: {:#x}", status);
             let user_check = UserCheck::new_with_sum(&self.lproc);
             user_check.checked_write(wstatus, status)?;

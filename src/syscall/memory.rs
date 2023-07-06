@@ -26,33 +26,33 @@ bitflags! {
     }
 }
 
-impl Into<PTEFlags> for MMAPPROT {
-    fn into(self) -> PTEFlags {
+impl From<MMAPPROT> for PTEFlags {
+    fn from(val: MMAPPROT) -> Self {
         // 记得加 user 项，否则用户拿到后无法访问
         let mut flag = PTEFlags::U;
-        if self.contains(MMAPPROT::PROT_READ) {
+        if val.contains(MMAPPROT::PROT_READ) {
             flag |= PTEFlags::R;
         }
-        if self.contains(MMAPPROT::PROT_WRITE) {
+        if val.contains(MMAPPROT::PROT_WRITE) {
             flag |= PTEFlags::W;
         }
-        if self.contains(MMAPPROT::PROT_EXEC) {
+        if val.contains(MMAPPROT::PROT_EXEC) {
             flag |= PTEFlags::X;
         }
         flag
     }
 }
 
-impl Into<UserAreaPerm> for MMAPPROT {
-    fn into(self) -> UserAreaPerm {
+impl From<MMAPPROT> for UserAreaPerm {
+    fn from(val: MMAPPROT) -> Self {
         let mut flag = UserAreaPerm::empty();
-        if self.contains(MMAPPROT::PROT_READ) {
+        if val.contains(MMAPPROT::PROT_READ) {
             flag |= UserAreaPerm::READ;
         }
-        if self.contains(MMAPPROT::PROT_WRITE) {
+        if val.contains(MMAPPROT::PROT_WRITE) {
             flag |= UserAreaPerm::WRITE;
         }
-        if self.contains(MMAPPROT::PROT_EXEC) {
+        if val.contains(MMAPPROT::PROT_EXEC) {
             flag |= UserAreaPerm::EXECUTE;
         }
 

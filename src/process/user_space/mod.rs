@@ -20,7 +20,7 @@ use crate::{
 use super::{aux_vector::AuxVector, shared_frame_mgr::with_shared_frame_mgr};
 
 use self::user_area::{PageFaultErr, UserAreaManager, UserAreaPerm, VirtAddrRange};
-use log::{debug, info};
+use log::{debug};
 
 pub const THREAD_STACK_SIZE: usize = 16 * 1024;
 
@@ -184,7 +184,7 @@ impl UserSpace {
         block_on(elf_file.read_at(0, header_data.as_mut_slice()))
             .expect("failed to read elf header");
 
-        let elf = xmas_elf::ElfFile::new(&header_data.as_slice()).expect("failed to parse elf");
+        let elf = xmas_elf::ElfFile::new(header_data.as_slice()).expect("failed to parse elf");
         let elf_header = elf.header;
 
         let magic = elf_header.pt1.magic;
@@ -234,7 +234,7 @@ impl UserSpace {
                 let begin_offset = area_begin.bits() - begin;
                 let begin_residual = PAGE_SIZE - begin_offset;
                 let file_end = area_begin + file_size;
-                let end = VirtAddr::from(area_begin + area_size).round_up().bits();
+                let end = (area_begin + area_size).round_up().bits();
                 let end_residual = (area_begin.bits() + file_size) & PAGE_MASK;
                 let mut read_size = 0;
                 for vaddr in (begin..end).step_by(PAGE_SIZE) {

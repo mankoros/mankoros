@@ -78,6 +78,6 @@ pub unsafe fn raw_ptr_to_ref_str(start: *const u8) -> &'static str {
             print!("{c} ");
         }
         println!("");
-        &"p"
+        "p"
     }
 }

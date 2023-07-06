@@ -6,7 +6,7 @@
 
 use super::new_vfs::{top::VfsFile, DeviceIDCollection, VfsFileAttr};
 use crate::{
-    ensure_offset_is_tail, impl_vfs_default_non_dir, print,
+    ensure_offset_is_tail, impl_vfs_default_non_dir,
     tools::errors::{dyn_future, ASysResult, SysError},
 };
 use log::warn;
@@ -30,7 +30,7 @@ impl VfsFile for Stdin {
         ensure_offset_is_tail!(offset);
         // Offset is ignored
         dyn_future(async move {
-            if buf.len() == 0 {
+            if buf.is_empty() {
                 return Ok(0);
             }
             // TODO: implement read
@@ -54,7 +54,7 @@ impl VfsFile for Stdin {
     ) -> ASysResult<usize> {
         dyn_future(async move {
             if kind != super::new_vfs::top::PollKind::Read {
-                return Err(SysError::EPERM);
+                Err(SysError::EPERM)
             } else {
                 // TODO: implement read
                 Ok(1)
@@ -107,14 +107,14 @@ impl VfsFile for Stdout {
 
     fn poll_ready(
         &self,
-        offset: usize,
+        _offset: usize,
         len: usize,
         kind: super::new_vfs::top::PollKind,
     ) -> ASysResult<usize> {
         // ensure_offset_is_tail!(offset);
         dyn_future(async move {
             if kind != super::new_vfs::top::PollKind::Write {
-                return Err(SysError::EPERM);
+                Err(SysError::EPERM)
             } else {
                 Ok(len)
             }
@@ -123,7 +123,7 @@ impl VfsFile for Stdout {
     fn poll_read(&self, _offset: usize, _buf: &mut [u8]) -> usize {
         panic!("Stdout::poll_read")
     }
-    fn poll_write(&self, offset: usize, buf: &[u8]) -> usize {
+    fn poll_write(&self, _offset: usize, buf: &[u8]) -> usize {
         // ensure_offset_is_tail!(offset);
         if let Ok(data) = core::str::from_utf8(buf) {
             cfg_if::cfg_if! {
@@ -185,7 +185,7 @@ impl VfsFile for Stderr {
         ensure_offset_is_tail!(offset);
         dyn_future(async move {
             if kind != super::new_vfs::top::PollKind::Write {
-                return Err(SysError::EPERM);
+                Err(SysError::EPERM)
             } else {
                 Ok(len)
             }

@@ -44,7 +44,7 @@ pub fn init_filesystems(blk_dev: Arc<dyn BlockDevice>) {
             ))
         }
     }
-    if partitions.len() == 0 {
+    if partitions.is_empty() {
         // The disk may not have a partition table.
         // Assume it is a FAT32 filesystem.
         partitions.push(partition::Partition::new(

@@ -92,7 +92,7 @@ impl<'a> Syscall<'a> {
                     }
                 });
 
-                return Ok(0);
+                Ok(0)
             }
             None => {
                 panic!("Current hart have no lporc");

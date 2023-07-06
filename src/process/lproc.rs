@@ -106,7 +106,7 @@ impl LightProcess {
     }
 
     pub fn signal(&self) -> signal::SignalSet {
-        self.signal.lock(here!()).clone()
+        *self.signal.lock(here!())
     }
 
     pub fn tgid(&self) -> Pid {
@@ -161,7 +161,7 @@ impl LightProcess {
     }
     pub fn do_exit(self: Arc<Self>) {
         if let Some(parent) = self.parent() {
-            let parent = parent.upgrade().unwrap().clone();
+            let parent = parent.upgrade().unwrap();
             // No remove from parent here, because it will be done in the parent's wait
             // Just send a signal to the parent
             parent.set_signal(signal::SignalSet::SIGCHLD);
@@ -170,7 +170,7 @@ impl LightProcess {
         }
         // Set children's parent to None
         let children = self.children.lock(here!());
-        children.iter().for_each(|c| *c.parent.lock(here!()) = self.parent().clone());
+        children.iter().for_each(|c| *c.parent.lock(here!()) = self.parent());
     }
 
     pub fn with_group<T>(&self, f: impl FnOnce(&ThreadGroup) -> T) -> T {
@@ -347,7 +347,7 @@ impl LightProcess {
 
         // TODO: signal handler
 
-        let mut new = Self {
+        let new = Self {
             id,
             parent,
             context,
@@ -440,7 +440,7 @@ impl FdTable {
     }
 
     pub fn get(&self, fd: usize) -> Option<Arc<FileDescriptor>> {
-        self.table.get(&fd).map(|f| f.clone())
+        self.table.get(&fd).cloned()
     }
 }
 

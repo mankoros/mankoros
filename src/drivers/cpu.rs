@@ -38,17 +38,16 @@ pub fn probe() -> Vec<CPU> {
                         _ => unreachable!(),
                     }
                 })
-                .or_else(|| Some(0))
-                .unwrap(),
+                .unwrap_or(0),
             timebase_freq: dtb_cpu.timebase_frequency(),
         };
 
         // Mask CPU without MMU
         // Get RISC-V ISA string
         let isa = dtb_cpu.property("riscv,isa").expect("RISC-V ISA not found");
-        if isa.as_str().unwrap().contains("u") {
+        if isa.as_str().unwrap().contains('u') {
             // Privleged mode is in ISA string
-            if !isa.as_str().unwrap().contains("s") {
+            if !isa.as_str().unwrap().contains('s') {
                 cpu.usable = false;
             }
         }

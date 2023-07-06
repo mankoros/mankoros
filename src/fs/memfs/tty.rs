@@ -7,8 +7,8 @@ use crate::{
         stdio::{Stdin, Stdout},
     },
     impl_vfs_default_non_dir,
-    memory::{address::PhysAddr4K, frame::alloc_frame},
-    tools::errors::{dyn_future, ASysResult, SysError},
+    memory::{address::PhysAddr4K},
+    tools::errors::{dyn_future, ASysResult},
 };
 
 pub struct TTY;
@@ -38,7 +38,7 @@ impl VfsFile for TTY {
         Stdout.write_at(offset, buf)
     }
 
-    fn get_page(&self, _offset: usize, kind: MmapKind) -> ASysResult<PhysAddr4K> {
+    fn get_page(&self, _offset: usize, _kind: MmapKind) -> ASysResult<PhysAddr4K> {
         dyn_future(async move { unimplemented!() })
     }
 

@@ -108,8 +108,8 @@ macro_rules! impl_vfs_default_non_dir {
     ($ty:ident) => {
         fn list(
             &self,
-        ) -> crate::tools::errors::ASysResult<
-            alloc::vec::Vec<(alloc::string::String, crate::fs::new_vfs::top::VfsFileRef)>,
+        ) -> $crate::tools::errors::ASysResult<
+            alloc::vec::Vec<(alloc::string::String, $crate::fs::new_vfs::top::VfsFileRef)>,
         > {
             unimplemented!(concat!(stringify!($ty), "::list"))
         }
@@ -152,10 +152,10 @@ macro_rules! impl_vfs_default_non_file {
             &self,
             _offset: usize,
             _buf: &mut [u8],
-        ) -> crate::tools::errors::ASysResult<usize> {
+        ) -> $crate::tools::errors::ASysResult<usize> {
             unimplemented!(concat!(stringify!(ty), "::read_at"))
         }
-        fn write_at(&self, _offset: usize, _buf: &[u8]) -> crate::tools::errors::ASysResult<usize> {
+        fn write_at(&self, _offset: usize, _buf: &[u8]) -> $crate::tools::errors::ASysResult<usize> {
             unimplemented!(concat!(stringify!(ty), "::write_at"))
         }
         fn get_page(
@@ -167,9 +167,9 @@ macro_rules! impl_vfs_default_non_file {
         }
         fn poll_ready(
             &self,
-            offset: usize,
-            len: usize,
-            kind: crate::fs::new_vfs::top::PollKind,
+            _offset: usize,
+            _len: usize,
+            _kind: crate::fs::new_vfs::top::PollKind,
         ) -> crate::tools::errors::ASysResult<usize> {
             unimplemented!(concat!(stringify!(ty), "::poll_ready"))
         }
@@ -185,7 +185,7 @@ macro_rules! impl_vfs_default_non_file {
 #[macro_export]
 macro_rules! impl_vfs_forward_dir {
     ($($e:tt)+) => {
-        fn list(&self) -> crate::tools::errors::ASysResult<alloc::vec::Vec<(alloc::string::String, crate::fs::new_vfs::top::VfsFileRef)>> {
+        fn list(&self) -> $crate::tools::errors::ASysResult<alloc::vec::Vec<(alloc::string::String, $crate::fs::new_vfs::top::VfsFileRef)>> {
             self.$($e)+.list()
         }
         fn lookup<'a>(&'a self, name: &'a str) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
@@ -209,10 +209,10 @@ macro_rules! impl_vfs_forward_dir {
 #[macro_export]
 macro_rules! impl_vfs_forward_file {
     ($($e:tt)+) => {
-        fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> crate::tools::errors::ASysResult<usize> {
+        fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> $crate::tools::errors::ASysResult<usize> {
             self.$($e)+.read_at(offset, buf)
         }
-        fn write_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> crate::tools::errors::ASysResult<usize> {
+        fn write_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> $crate::tools::errors::ASysResult<usize> {
             self.$($e)+.write_at(offset, buf)
         }
         fn get_page(&self, offset: usize, kind: crate::fs::new_vfs::top::MmapKind) -> crate::tools::errors::ASysResult<crate::memory::address::PhysAddr4K> {

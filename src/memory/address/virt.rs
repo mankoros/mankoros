@@ -49,15 +49,15 @@ impl const From<usize> for VirtAddr4K {
     }
 }
 
-impl Into<VirtAddr> for VirtAddr4K {
-    fn into(self) -> VirtAddr {
-        self.into()
+impl From<VirtAddr4K> for VirtAddr {
+    fn from(val: VirtAddr4K) -> Self {
+        val.into()
     }
 }
 
-impl Into<VirtPageNum> for VirtAddr4K {
-    fn into(self) -> VirtPageNum {
-        self.page_num()
+impl From<VirtAddr4K> for VirtPageNum {
+    fn from(val: VirtAddr4K) -> Self {
+        val.page_num()
     }
 }
 

@@ -17,20 +17,20 @@ use crate::consts::address_space::{
 };
 
 use crate::arch::get_curr_page_table_addr;
-use crate::consts::PAGE_SIZE;
+
 use crate::executor::block_on;
 use crate::fs::new_vfs::top::{MmapKind, VfsFileRef};
 use crate::memory::frame::dealloc_frame;
 use crate::process::shared_frame_mgr::with_shared_frame_mgr;
 use crate::tools::errors::{SysError, SysResult};
 use core::ops::Range;
-use log::{debug, trace};
+use log::{debug};
 
 pub type VirtAddrRange = Range<VirtAddr>;
 
 #[inline(always)]
 ///! 用于迭代虚拟地址范围内的所有页, 如果首尾不是页对齐的就 panic
-fn iter_vpn(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum) -> ()) {
+fn iter_vpn(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum)) {
     let start_vpn = range.start.assert_4k().page_num();
     let end_vpn = range.end.round_up().page_num(); // End vaddr may not be 4k aligned
     let mut vpn = start_vpn;
@@ -43,7 +43,7 @@ fn iter_vpn(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum) -> ()) {
 #[inline(always)]
 ///! 用于迭代虚拟地址范围内的所有页, 如果首尾不是页对齐的, 会自动向前或向后扩展到页对齐.
 ///! 不知道有没有用, 先留着吧
-fn iter_vpn_extend(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum) -> ()) {
+fn iter_vpn_extend(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum)) {
     let start_vpn = range.start.round_down().page_num();
     let end_vpn = range.end.round_up().page_num();
     let mut vpn = start_vpn;
@@ -62,28 +62,28 @@ bitflags! {
     }
 }
 
-impl Into<PTEFlags> for UserAreaPerm {
-    fn into(self) -> PTEFlags {
+impl From<UserAreaPerm> for PTEFlags {
+    fn from(val: UserAreaPerm) -> Self {
         let mut pte_flag = PTEFlags::V | PTEFlags::U;
-        if self.contains(Self::READ) {
+        if val.contains(UserAreaPerm::READ) {
             pte_flag |= PTEFlags::R;
         }
-        if self.contains(Self::WRITE) {
+        if val.contains(UserAreaPerm::WRITE) {
             pte_flag |= PTEFlags::W;
         }
-        if self.contains(Self::EXECUTE) {
+        if val.contains(UserAreaPerm::EXECUTE) {
             pte_flag |= PTEFlags::X;
         }
         pte_flag
     }
 }
 
-impl Into<PageFaultAccessType> for UserAreaPerm {
-    fn into(self) -> PageFaultAccessType {
-        if self.intersects(Self::WRITE) {
+impl From<UserAreaPerm> for PageFaultAccessType {
+    fn from(val: UserAreaPerm) -> Self {
+        if val.intersects(UserAreaPerm::WRITE) {
             return PageFaultAccessType::RW;
         }
-        if self.intersects(Self::EXECUTE) {
+        if val.intersects(UserAreaPerm::EXECUTE) {
             return PageFaultAccessType::RX;
         }
         PageFaultAccessType::RO
@@ -145,7 +145,7 @@ impl PageFaultAccessType {
             return false;
         }
 
-        return true;
+        true
     }
 }
 

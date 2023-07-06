@@ -1,7 +1,7 @@
 //! Filesystem related syscall
 //!
 
-use core::cmp::min;
+
 use log::{debug, info, warn};
 
 use crate::{
@@ -11,7 +11,6 @@ use crate::{
         disk::BLOCK_SIZE,
         memfs::zero::ZeroDev,
         new_vfs::{path::Path, top::VfsFileRef, VfsFileKind},
-        pipe::Pipe,
     },
     memory::{UserReadPtr, UserWritePtr},
     tools::{errors::SysError, user_check::UserCheck},
@@ -224,7 +223,7 @@ impl<'a> Syscall<'a> {
             debug!("dirent: {:x}", dirent_beg as usize);
 
             let user_check = UserCheck::new_with_sum(&self.lproc);
-            user_check.checked_write(dirent_beg, dirent_front.clone())?;
+            user_check.checked_write(dirent_beg, dirent_front)?;
             user_check.checked_write_cstr(d_name_beg.as_usize() as *mut u8, &name)?;
 
             wroten_len += this_entry_len;
@@ -280,7 +279,7 @@ impl<'a> Syscall<'a> {
 
         // TODO: 延迟删除: 这个操作会直接让底层 FS 删除文件, 但是如果有其他进程正在使用这个文件, 应该延迟删除
         // 已知 fat32 fs 要求被删除的文件夹是空的, 不然会返回错误, 可能该行为需要被明确到 VFS 层
-        dir.remove(&file_name).await.map(|_| 0)
+        dir.remove(file_name).await.map(|_| 0)
     }
 
     pub async fn sys_mount(&mut self) -> SyscallResult {

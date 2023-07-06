@@ -71,7 +71,7 @@ impl<H: Hal + 'static, T: Transport + 'static> Device for VirtIoBlkDev<H, T> {
     }
 
     fn as_blk(self: Arc<Self>) -> Option<Arc<dyn BlockDevice>> {
-        Some(self.clone())
+        Some(self)
     }
 
     fn as_char(self: Arc<Self>) -> Option<Arc<dyn crate::drivers::CharDevice>> {
@@ -176,9 +176,9 @@ unsafe impl virtio_drivers::Hal for VirtIoHalImpl {
         _direction: virtio_drivers::BufferDirection,
     ) -> virtio_drivers::PhysAddr {
         let vaddr = buffer.as_ptr() as *mut u8 as usize;
-        if vaddr < K_SEG_PHY_MEM_END && vaddr >= K_SEG_PHY_MEM_BEG {
+        if (K_SEG_PHY_MEM_BEG..K_SEG_PHY_MEM_END).contains(&vaddr) {
             kernel_virt_to_phys(vaddr)
-        } else if vaddr < K_SEG_DATA_END && vaddr >= K_SEG_DATA_BEG {
+        } else if (K_SEG_DATA_BEG..K_SEG_DATA_END).contains(&vaddr) {
             kernel_virt_text_to_phys(vaddr)
         } else {
             warn!(

@@ -96,12 +96,12 @@ impl Path {
         if self.is_root() {
             panic!("is_root")
         }
-        return &self.components[self.len() - 1];
+        &self.components[self.len() - 1]
     }
 
     #[allow(unused)]
     pub fn first(&self) -> &String {
-        return &self.components[0];
+        &self.components[0]
     }
 
     /// Remove the head of the path

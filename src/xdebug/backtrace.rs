@@ -22,7 +22,7 @@ pub fn backtrace() {
                 current_pc - size_of::<usize>(),
                 current_fp
             );
-            stack_num = stack_num + 1;
+            stack_num += 1;
             current_fp = *(current_fp as *const usize).offset(-2);
             current_pc = *(current_fp as *const usize).offset(-1);
         }

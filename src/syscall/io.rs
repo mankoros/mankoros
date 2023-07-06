@@ -73,21 +73,19 @@ impl Syscall<'_> {
 
         let dir = if path.is_absolute() {
             fs::root::get_root_dir()
+        } else if dir_fd == AT_FDCWD {
+            let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone());
+            fs::root::get_root_dir().resolve(&cwd).await?
         } else {
-            if dir_fd == AT_FDCWD {
-                let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone());
-                fs::root::get_root_dir().resolve(&cwd).await?
-            } else {
-                let file = self
-                    .lproc
-                    .with_mut_fdtable(|f| f.get(dir_fd as usize))
-                    .map(|fd| fd.file.clone())
-                    .ok_or(SysError::EBADF)?;
-                if file.attr().await?.kind != VfsFileKind::Directory {
-                    return Err(SysError::ENOTDIR);
-                }
-                file
+            let file = self
+                .lproc
+                .with_mut_fdtable(|f| f.get(dir_fd))
+                .map(|fd| fd.file.clone())
+                .ok_or(SysError::EBADF)?;
+            if file.attr().await?.kind != VfsFileKind::Directory {
+                return Err(SysError::ENOTDIR);
             }
+            file
         };
 
         let file = match dir.resolve(&path).await {
@@ -102,15 +100,15 @@ impl Syscall<'_> {
                 let (dir_path, file_name) = path.split_dir_file();
                 let direct_dir = dir.resolve(&dir_path).await?;
                 // 2. create file
-                let file = direct_dir.create(&file_name, VfsFileKind::RegularFile).await?;
-                file
+                
+                direct_dir.create(&file_name, VfsFileKind::RegularFile).await?
             }
             Err(e) => {
                 return Err(e);
             }
         };
 
-        self.lproc.with_mut_fdtable(|f| Ok(f.alloc(file) as usize))
+        self.lproc.with_mut_fdtable(|f| Ok(f.alloc(file)))
     }
 
     /// 创建管道，在 *pipe 记录读管道的 fd，在 *(pipe+1) 记录写管道的 fd。
@@ -177,7 +175,7 @@ impl Syscall<'_> {
         let args = self.cx.syscall_args();
         let (fds, nfds, _timeout_ts, _sigmask) = (
             UserReadPtr::<PollFd>::from_usize(args[0]),
-            args[1] as usize,
+            args[1],
             args[2],
             args[3],
         );
@@ -241,9 +239,9 @@ impl Syscall<'_> {
 
         let args = self.cx.syscall_args();
         let (fd, iov, iovcnt) = (
-            args[0] as usize,
+            args[0],
             UserReadPtr::<IoVec>::from(args[1]),
-            args[2] as usize,
+            args[2],
         );
 
         info!(

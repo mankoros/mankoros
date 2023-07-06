@@ -102,7 +102,7 @@ impl<F: ConcreteFile> DEntryCache<F> {
                 Self::External(new, dentry_ref, original) => {
                     let new = new.clone();
                     *self = Self::Internal(dentry_ref.clone(), original.clone());
-                    break Ok((false, new.clone()));
+                    break Ok((false, new));
                 }
             }
         }
@@ -136,7 +136,7 @@ impl<F: ConcreteFile> DEntryCacheDir<F> {
 
     // 因为 entries 是有锁的, 为了避免在一个小方法里频繁开关锁, 我们直接接受一个 entries_map 参数
     fn add_entry(entries: &mut EntriesMap<F>, dentry_ref: F::DEntryRefT) {
-        let name = dentry_ref.name().to_string();
+        let name = dentry_ref.name();
         let dentry_cache = AsyncUnsafeCell::new(DEntryCache::Unactive(dentry_ref));
         entries.insert(name, dentry_cache);
     }
@@ -196,7 +196,7 @@ impl<F: ConcreteFile> VfsFile for DEntryCacheDir<F> {
             // 3. 收集并返回所有项
             let mut res = Vec::new();
             for (name, dentry_cache) in entries_map.iter() {
-                let dentry_cache = unsafe { &*dentry_cache.get() };
+                let dentry_cache = unsafe { dentry_cache.get() };
                 match dentry_cache {
                     DEntryCache::Internal(_, vfs_file) => {
                         res.push((name.clone(), vfs_file.clone()));

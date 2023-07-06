@@ -58,15 +58,15 @@ impl const From<usize> for PhysAddr4K {
     }
 }
 
-impl Into<PhysAddr> for PhysAddr4K {
-    fn into(self) -> PhysAddr {
-        self.into()
+impl From<PhysAddr4K> for PhysAddr {
+    fn from(val: PhysAddr4K) -> Self {
+        val.into()
     }
 }
 
-impl Into<PhysPageNum> for PhysAddr4K {
-    fn into(self) -> PhysPageNum {
-        self.page_num()
+impl From<PhysAddr4K> for PhysPageNum {
+    fn from(val: PhysAddr4K) -> Self {
+        val.page_num()
     }
 }
 

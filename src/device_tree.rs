@@ -15,7 +15,7 @@ pub fn early_parse_device_tree() -> Fdt<'static> {
     let phy_mem = device_tree.memory().regions().next().expect("No memory region found");
     unsafe {
         consts::device::PHYMEM_START = phy_mem.starting_address as usize;
-        consts::device::MAX_PHYSICAL_MEMORY = phy_mem.size.unwrap() as usize;
+        consts::device::MAX_PHYSICAL_MEMORY = phy_mem.size.unwrap();
     }
     device_tree
 }

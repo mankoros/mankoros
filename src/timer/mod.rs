@@ -10,7 +10,7 @@ pub use self::tms::Tms;
 use crate::arch;
 use log::info;
 use riscv::register::{sie, time};
-use sbi_rt;
+
 
 /// 时钟频率，和平台有关
 /// 目前硬编码为 10MHz(for qemu)

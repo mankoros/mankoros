@@ -31,17 +31,13 @@ impl DeviceManager {
     pub fn disks(&self) -> Vec<Arc<dyn BlockDevice>> {
         self.devices
             .iter()
-            .map(|d| d.clone().as_blk())
-            .filter(|d| d.is_some())
-            .map(|d| d.unwrap())
+            .filter_map(|d| d.clone().as_blk())
             .collect::<Vec<_>>()
     }
     pub fn serials(&self) -> Vec<Arc<dyn CharDevice>> {
         self.devices
             .iter()
-            .map(|d| d.clone().as_char())
-            .filter(|d| d.is_some())
-            .map(|d| d.unwrap())
+            .filter_map(|d| d.clone().as_char())
             .collect::<Vec<_>>()
     }
 
@@ -136,7 +132,7 @@ impl DeviceManager {
     }
 
     fn min_hart_id(&self) -> usize {
-        self.bootable_cpus().iter().min().unwrap().clone()
+        *self.bootable_cpus().iter().min().unwrap()
     }
 
     // Calculate the interrupt context from current hart id

@@ -54,7 +54,7 @@ where
     F: FnOnce(MmioTransport) -> Option<D>,
 {
     if let Some(transport) = probe_mmio_device(
-        kernel_phys_dev_to_virt(base.into()) as *mut u8,
+        kernel_phys_dev_to_virt(base) as *mut u8,
         size,
         Some(dev_type),
     ) {

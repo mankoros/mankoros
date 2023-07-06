@@ -57,7 +57,7 @@ impl Disk {
         Self {
             block_id: Cell::new(0),
             offset: Cell::new(0),
-            dev: dev,
+            dev,
         }
     }
 
@@ -162,7 +162,7 @@ impl Disk {
     fn sync_read_at(&self, _offset: u64, buf: &mut [u8]) -> SysResult<usize> {
         // Offset is ignored
 
-        if buf.len() == 0 {
+        if buf.is_empty() {
             return Ok(0);
         }
         // TODO: implement read

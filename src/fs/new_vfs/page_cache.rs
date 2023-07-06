@@ -118,7 +118,7 @@ impl<F: ConcreteFile> PageManager<F> {
 
         let mut total_len = 0;
         for page_begin in (begin..end).step_by(PAGE_SIZE) {
-            if !self.cached_pages.contains_key(&(page_begin as usize)) {
+            if !self.cached_pages.contains_key(&{ page_begin }) {
                 let page = CachedPage::alloc()?;
                 let len = file.lock().await.read_at(page_begin, page.for_read()).await?;
                 page.set_len(len);
@@ -205,7 +205,7 @@ impl<F: ConcreteFile> PageManager<F> {
 
     /// 写入数据到缓存中, 必定能全部写入
     /// 要求文件 offset 所在的页范围中的内容必须已经在缓存中或本来就不存在, 以避免使用 async 读
-    pub fn cached_write(&mut self, offset: usize, mut buf: &[u8]) {
+    pub fn cached_write(&mut self, offset: usize, buf: &[u8]) {
         let mut target_buf = buf; // 目标区域, 会随着写入逐渐向后取
         let mut page_buf;
         let mut page_addr = PhysAddr::from(offset).round_down().bits();
