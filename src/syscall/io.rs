@@ -1,18 +1,26 @@
 use log::{debug, info};
 
 use crate::{
-    executor::util_futures::within_sum_async,
+    executor::util_futures::{within_sum_async, AnyFuture},
     fs::{
         self,
-        new_vfs::{path::Path, top::VfsFileRef, VfsFileKind},
+        new_vfs::{
+            path::Path,
+            top::{PollKind, VfsFileRef, OFFSET_TAIL},
+            VfsFileKind,
+        },
         pipe::Pipe,
     },
-    memory::UserWritePtr,
+    memory::{address::VirtAddr, UserReadPtr, UserWritePtr},
     syscall::fs::AT_FDCWD,
-    tools::{errors::SysError, user_check::UserCheck},
+    tools::{
+        errors::{dyn_future, Async, SysError, SysResult},
+        user_check::UserCheck,
+    },
 };
 
 use super::{Syscall, SyscallResult};
+use alloc::{collections::BTreeMap, vec::Vec};
 
 impl Syscall<'_> {
     pub async fn sys_write(&mut self) -> SyscallResult {
@@ -146,11 +154,120 @@ impl Syscall<'_> {
     }
 
     pub async fn sys_ppoll(&mut self) -> SyscallResult {
-        todo!()
+        #[repr(C)]
+        #[derive(Debug, Copy, Clone)]
+        struct PollFd {
+            // int   fd;         /* file descriptor */
+            // short events;     /* requested events */
+            // short revents;    /* returned events */
+            fd: i32,
+            events: i16,
+            revents: i16,
+        }
+
+        impl PollFd {
+            pub const POLLIN: i16 = 0x001;
+            pub const POLLPRI: i16 = 0x002;
+            pub const POLLOUT: i16 = 0x004;
+            pub const POLLERR: i16 = 0x008;
+            pub const POLLHUP: i16 = 0x010;
+            pub const POLLNVAL: i16 = 0x020;
+        }
+
+        let args = self.cx.syscall_args();
+        let (fds, nfds, _timeout_ts, _sigmask) = (
+            UserReadPtr::<PollFd>::from_usize(args[0]),
+            args[1] as usize,
+            args[2],
+            args[3],
+        );
+
+        info!("Syscall: ppoll, fds: {}, nfds: {}", fds.as_usize(), nfds);
+
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+        // future_idx -> (fd_idx, event)
+        let mut mapping = BTreeMap::<usize, (usize, i16)>::new();
+        let mut futures = Vec::<Async<SysResult<usize>>>::new();
+
+        let mut poll_fd_ptr = fds;
+        for i in 0..nfds {
+            let poll_fd = user_check.checked_read(poll_fd_ptr.raw_ptr())?;
+            let fd = poll_fd.fd as usize;
+            let events = poll_fd.events;
+            let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
+
+            if events & PollFd::POLLIN != 0 {
+                // 使用一个新的 Future 将 file 的所有权移动进去并保存, 以供给 poll_ready 使用
+                // TODO: 是否需要更加仔细地考虑 VfsFile 上方法对 self 的占有方式?
+                let file = fd.file.clone();
+                let future = async move { file.poll_ready(OFFSET_TAIL, 1, PollKind::Read).await };
+                futures.push(dyn_future(future));
+                mapping.insert(futures.len() - 1, (i, PollFd::POLLIN));
+            }
+            if events & PollFd::POLLOUT != 0 {
+                let file = fd.file.clone();
+                let future = async move { file.poll_ready(OFFSET_TAIL, 1, PollKind::Write).await };
+                futures.push(dyn_future(future));
+                mapping.insert(futures.len() - 1, (i, PollFd::POLLOUT));
+            }
+            if events & !(PollFd::POLLIN | PollFd::POLLOUT) != 0 {
+                log::warn!("Unsupported poll event: {}", events);
+            }
+            poll_fd_ptr = poll_fd_ptr.add(1);
+        }
+
+        let (future_id, _) = AnyFuture::new_with(futures).await;
+        let (fd_idx, event) = mapping.remove(&future_id).unwrap();
+
+        let ready_poll_fd_ptr = fds.add(fd_idx);
+        let mut ready_poll_fd_value = user_check.checked_read(ready_poll_fd_ptr.raw_ptr())?;
+        ready_poll_fd_value.revents = match event {
+            PollFd::POLLIN => PollFd::POLLIN,
+            PollFd::POLLOUT => PollFd::POLLOUT,
+            _ => unreachable!(),
+        };
+        user_check.checked_write(ready_poll_fd_ptr.raw_ptr() as *mut _, ready_poll_fd_value)?;
+
+        Ok(0)
     }
 
     pub async fn sys_writev(&mut self) -> SyscallResult {
-        todo!()
+        #[repr(C)]
+        #[derive(Debug, Clone, Copy)]
+        struct IoVec {
+            base: usize,
+            len: usize,
+        }
+
+        let args = self.cx.syscall_args();
+        let (fd, iov, iovcnt) = (
+            args[0] as usize,
+            UserReadPtr::<IoVec>::from(args[1]),
+            args[2] as usize,
+        );
+
+        info!(
+            "Syscall: writev, fd: {}, iov: {}, iovcnt: {}",
+            fd,
+            iov.as_usize(),
+            iovcnt
+        );
+
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+        let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
+        let file = fd.file.clone();
+
+        let mut total_len = 0;
+        let mut iov_ptr = iov;
+        for _ in 0..iovcnt {
+            let iov = user_check.checked_read(iov_ptr.raw_ptr())?;
+            // TODO: 检查用户给的指针是不是合法的
+            let buf = unsafe { VirtAddr::from(iov.base).as_slice(iov.len) };
+            total_len += file.write_at(total_len, buf).await?;
+            iov_ptr = iov_ptr.add(1);
+        }
+
+        Ok(total_len)
     }
 }
 
