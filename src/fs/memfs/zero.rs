@@ -1,4 +1,12 @@
-use crate::{fs::new_vfs::{top::{VfsFile, MmapKind}, VfsFileAttr, VfsFileKind, DeviceIDCollection}, impl_vfs_default_non_dir, tools::errors::{dyn_future, SysError, ASysResult}, memory::{frame::alloc_frame, address::PhysAddr4K}};
+use crate::{
+    fs::new_vfs::{
+        top::{MmapKind, VfsFile},
+        DeviceIDCollection, VfsFileAttr, VfsFileKind,
+    },
+    impl_vfs_default_non_dir,
+    memory::{address::PhysAddr4K, frame::alloc_frame},
+    tools::errors::{dyn_future, ASysResult, SysError},
+};
 
 pub struct ZeroDev;
 impl VfsFile for ZeroDev {
@@ -7,15 +15,15 @@ impl VfsFile for ZeroDev {
     fn attr(&self) -> ASysResult<VfsFileAttr> {
         dyn_future(async {
             Ok(VfsFileAttr {
-               kind: VfsFileKind::CharDevice,
-               device_id: DeviceIDCollection::DEV_FS_ID,
-               self_device_id: 0,
-               byte_size: 0,
-               block_count: 0,
-               access_time: 0,
-               modify_time: 0,
-               create_time: 0, // TODO: create time
-           })
+                kind: VfsFileKind::CharDevice,
+                device_id: DeviceIDCollection::DEV_FS_ID,
+                self_device_id: 0,
+                byte_size: 0,
+                block_count: 0,
+                access_time: 0,
+                modify_time: 0,
+                create_time: 0, // TODO: create time
+            })
         })
     }
 
@@ -31,13 +39,13 @@ impl VfsFile for ZeroDev {
     }
 
     fn get_page(&self, _offset: usize, kind: MmapKind) -> ASysResult<PhysAddr4K> {
-        dyn_future(async move { 
+        dyn_future(async move {
             match kind {
                 MmapKind::Shared => unimplemented!(),
                 MmapKind::Private => {
                     // TODO: 这直接 alloc 出来的内存真的是清零的吗
                     alloc_frame().ok_or(SysError::ENOMEM)
-                },
+                }
             }
         })
     }

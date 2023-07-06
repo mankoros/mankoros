@@ -1,7 +1,6 @@
 //! Filesystem related syscall
 //!
 
-
 use core::cmp::min;
 use log::{debug, info, warn};
 
@@ -10,10 +9,13 @@ use crate::{
     executor::util_futures::within_sum_async,
     fs::{
         self,
-        pipe::Pipe, new_vfs::{path::{Path}, VfsFileKind, top::VfsFileRef}, memfs::{zero::ZeroDev}, disk::BLOCK_SIZE
+        disk::BLOCK_SIZE,
+        memfs::zero::ZeroDev,
+        new_vfs::{path::Path, top::VfsFileRef, VfsFileKind},
+        pipe::Pipe,
     },
     memory::{UserReadPtr, UserWritePtr},
-    tools::{user_check::UserCheck, errors::SysError},
+    tools::{errors::SysError, user_check::UserCheck},
 };
 
 use super::{Syscall, SyscallResult};
@@ -152,12 +154,8 @@ impl<'a> Syscall<'a> {
 
     pub async fn sys_openat(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (dir_fd, path, raw_flags, _user_mode) = (
-            args[0],
-            args[1],
-            args[2] as u32,
-            args[3] as i32,
-        );
+        let (dir_fd, path, raw_flags, _user_mode) =
+            (args[0], args[1], args[2] as u32, args[3] as i32);
 
         info!("Syscall: openat");
 
@@ -167,6 +165,7 @@ impl<'a> Syscall<'a> {
         let user_check = UserCheck::new_with_sum(&self.lproc);
         let path = user_check.checked_read_cstr(path as *const u8)?;
         let path = Path::from_string(path).expect("Error parsing path");
+        debug!("path: {:?}", path);
 
         let dir = if path.is_absolute() {
             fs::root::get_root_dir()
@@ -196,7 +195,7 @@ impl<'a> Syscall<'a> {
                 }
                 // Create file
                 // 1. ensure file dir exists
-                let (dir_path, file_name) = path.split_dir_file(); 
+                let (dir_path, file_name) = path.split_dir_file();
                 let direct_dir = dir.resolve(&dir_path).await?;
                 // 2. create file
                 let file = direct_dir.create(&file_name, VfsFileKind::RegularFile).await?;
@@ -381,7 +380,9 @@ impl<'a> Syscall<'a> {
 
         info!(
             "Syscall: getdents (fd: {:?}, buf: {:?}, len: {:?})",
-            fd, buf.as_usize(), len
+            fd,
+            buf.as_usize(),
+            len
         );
 
         let fd_obj = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
@@ -399,15 +400,15 @@ impl<'a> Syscall<'a> {
         }
 
         impl DirentFront {
-            const DT_UNKNOWN    : u8 = 0;
-            const DT_FIFO       : u8 = 1;
-            const DT_CHR        : u8 = 2;
-            const DT_DIR        : u8 = 4;
-            const DT_BLK        : u8 = 6;
-            const DT_REG        : u8 = 8;
-            const DT_LNK        : u8 = 10;
-            const DT_SOCK       : u8 = 12;
-            const DT_WHT        : u8 = 14;
+            const DT_UNKNOWN: u8 = 0;
+            const DT_FIFO: u8 = 1;
+            const DT_CHR: u8 = 2;
+            const DT_DIR: u8 = 4;
+            const DT_BLK: u8 = 6;
+            const DT_REG: u8 = 8;
+            const DT_LNK: u8 = 10;
+            const DT_SOCK: u8 = 12;
+            const DT_WHT: u8 = 14;
 
             pub fn as_dtype(kind: VfsFileKind) -> u8 {
                 match kind {
@@ -484,11 +485,7 @@ impl<'a> Syscall<'a> {
                 let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone());
                 fs::root::get_root_dir().resolve(&cwd).await?
             } else {
-                self.lproc
-                    .with_fdtable(|f| f.get(dir_fd))
-                    .ok_or(SysError::EBADF)?
-                    .file
-                    .clone()
+                self.lproc.with_fdtable(|f| f.get(dir_fd)).ok_or(SysError::EBADF)?.file.clone()
             };
 
             let rel_dir_path = path.remove_tail();

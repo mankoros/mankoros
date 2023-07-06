@@ -26,7 +26,7 @@ pub fn spawn_init() {
     let root_dir = fs::root::get_root_dir();
     let busybox = block_on(root_dir.lookup("busybox")).expect("Read busybox failed");
 
-    let args = ["busybox"]
+    let args = ["busybox", "sh"]
         .to_vec()
         .into_iter()
         .map(|s: &str| s.to_string())

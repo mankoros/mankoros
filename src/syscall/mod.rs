@@ -1,20 +1,17 @@
-
-
 use crate::process::lproc::LightProcess;
 
+use crate::trap::context::UKContext;
 
-use crate::{trap::context::UKContext};
-
-use log::debug;
+use log::{debug, warn};
 
 mod fs;
 mod memory;
 mod misc;
 mod process;
 
+use crate::tools::errors::SysResult;
 use alloc::sync::Arc;
 pub use process::CloneFlags;
-use crate::tools::errors::SysResult;
 
 pub struct Syscall<'a> {
     cx: &'a mut UKContext,
@@ -64,6 +61,18 @@ impl<'a> Syscall<'a> {
             SYSCALL_GETPPID => self.sys_getppid(),
             SYSCALL_GETPID => self.sys_getpid(),
             SYSCALL_SET_TID_ADDRESS => self.sys_set_tid_address(),
+            SYSCALL_SIGACTION => {
+                warn!("Syscall sigaction not implemented");
+                Ok(0)
+            }
+            SYSCALL_SIGPROCMASK => {
+                warn!("Syscall sigprocmask is not implemented");
+                Ok(0)
+            }
+            SYSCALL_IOCTL => {
+                warn!("Syscall ioctl is not implemented");
+                Ok(0)
+            }
             // Memory related
             SYSCALL_BRK => self.sys_brk(),
             SYSCALL_MUNMAP => self.sys_munmap(),
