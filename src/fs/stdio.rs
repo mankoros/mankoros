@@ -185,7 +185,7 @@ impl VfsFile for Stderr {
 
     fn poll_ready(
         &self,
-        offset: usize,
+        _offset: usize,
         len: usize,
         kind: super::new_vfs::top::PollKind,
     ) -> ASysResult<usize> {
@@ -201,7 +201,7 @@ impl VfsFile for Stderr {
     fn poll_read(&self, _offset: usize, _buf: &mut [u8]) -> usize {
         panic!("stderr::poll_read")
     }
-    fn poll_write(&self, offset: usize, buf: &[u8]) -> usize {
+    fn poll_write(&self, _offset: usize, buf: &[u8]) -> usize {
         // ensure_offset_is_tail!(offset);
         if let Ok(data) = core::str::from_utf8(buf) {
             cfg_if::cfg_if! {

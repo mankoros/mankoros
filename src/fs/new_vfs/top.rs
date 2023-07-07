@@ -122,7 +122,7 @@ macro_rules! impl_vfs_default_non_dir {
         fn create(
             &self,
             _name: &str,
-            _kind: crate::fs::new_vfs::VfsFileKind,
+            _kind: $crate::fs::new_vfs::VfsFileKind,
         ) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
             unimplemented!(concat!(stringify!($ty), "::create"))
         }
@@ -162,7 +162,7 @@ macro_rules! impl_vfs_default_non_file {
             &self,
             _offset: usize,
             _kind: $crate::fs::new_vfs::top::MmapKind,
-        ) -> $crate::tools::errors::ASysResult<crate::memory::address::PhysAddr4K> {
+        ) -> $crate::tools::errors::ASysResult<$crate::memory::address::PhysAddr4K> {
             unimplemented!(concat!(stringify!(ty), "::get_page"))
         }
         fn poll_ready(
@@ -191,7 +191,7 @@ macro_rules! impl_vfs_forward_dir {
         fn lookup<'a>(&'a self, name: &'a str) -> $crate::tools::errors::ASysResult<$crate::fs::new_vfs::top::VfsFileRef> {
             self.$($e)+.lookup(name)
         }
-        fn create<'a>(&'a self, name: &'a str, kind: crate::fs::new_vfs::VfsFileKind) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
+        fn create<'a>(&'a self, name: &'a str, kind: $crate::fs::new_vfs::VfsFileKind) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
             self.$($e)+.create(name, kind)
         }
         fn remove<'a>(&'a self, name: &'a str) -> crate::tools::errors::ASysResult {
@@ -215,7 +215,7 @@ macro_rules! impl_vfs_forward_file {
         fn write_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> $crate::tools::errors::ASysResult<usize> {
             self.$($e)+.write_at(offset, buf)
         }
-        fn get_page(&self, offset: usize, kind: $crate::fs::new_vfs::top::MmapKind) -> $crate::tools::errors::ASysResult<crate::memory::address::PhysAddr4K> {
+        fn get_page(&self, offset: usize, kind: $crate::fs::new_vfs::top::MmapKind) -> $crate::tools::errors::ASysResult<$crate::memory::address::PhysAddr4K> {
             self.$($e)+.get_page(offset, kind)
         }
         fn poll_ready(
