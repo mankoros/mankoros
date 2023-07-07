@@ -205,10 +205,7 @@ impl PageTable {
         self.get_entry_mut(vaddr).paddr().into() + vaddr.page_offset()
     }
 
-    pub fn copy_table_and_mark_self_cow(
-        &mut self,
-        do_with_frame: impl Fn(PhysAddr4K),
-    ) -> Self {
+    pub fn copy_table_and_mark_self_cow(&mut self, do_with_frame: impl Fn(PhysAddr4K)) -> Self {
         let old = self;
         let mut new = Self::new();
 
@@ -340,8 +337,8 @@ impl PageTable {
         let p2 = self.next_table_mut(p3e);
         let p2e = &mut p2[p2_index(vaddr)];
         let p1 = self.next_table_mut(p2e);
-        
-        &mut p1[p1_index(vaddr)] as _
+
+        &mut p1[p1_index(vaddr)]
     }
 
     fn get_entry_mut_or_create(&mut self, vaddr: VirtAddr) -> &mut PageTableEntry {
@@ -350,8 +347,8 @@ impl PageTable {
         let p2 = self.next_table_mut_or_create(p3e);
         let p2e = &mut p2[p2_index(vaddr)];
         let p1 = self.next_table_mut_or_create(p2e);
-        
-        &mut p1[p1_index(vaddr)] as _
+
+        &mut p1[p1_index(vaddr)]
     }
 }
 

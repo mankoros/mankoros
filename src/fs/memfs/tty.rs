@@ -7,7 +7,7 @@ use crate::{
         stdio::{Stdin, Stdout},
     },
     impl_vfs_default_non_dir,
-    memory::{address::PhysAddr4K},
+    memory::address::PhysAddr4K,
     tools::errors::{dyn_future, ASysResult},
 };
 

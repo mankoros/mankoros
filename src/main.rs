@@ -282,14 +282,16 @@ fn panic(info: &PanicInfo) -> ! {
     if let Some(location) = info.location() {
         if logging_initialized {
             error!(
-                "Panic at {}:{}, msg: {}",
+                "Hart {} panic at {}:{}, msg: {}",
+                arch::get_hart_id(),
                 location.file(),
                 location.line(),
                 info.message().unwrap()
             );
         } else {
             println!(
-                "Panic at {}:{}, msg: {}",
+                "Hart {} panic at {}:{}, msg: {}",
+                arch::get_hart_id(),
                 location.file(),
                 location.line(),
                 info.message().unwrap()

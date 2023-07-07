@@ -20,7 +20,7 @@ use crate::{
 use super::{aux_vector::AuxVector, shared_frame_mgr::with_shared_frame_mgr};
 
 use self::user_area::{PageFaultErr, UserAreaManager, UserAreaPerm, VirtAddrRange};
-use log::{debug};
+use log::debug;
 
 pub const THREAD_STACK_SIZE: usize = 16 * 1024;
 

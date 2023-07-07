@@ -45,6 +45,15 @@ bitflags! {
     }
 }
 
+bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub struct WaitOptions: u32 {
+        const WNOHANG = 0x00000001;
+        const WUNTRACED = 0x00000002;
+        const WCONTINUED = 0x00000004;
+    }
+}
+
 impl<'a> Syscall<'a> {
     pub async fn sys_chdir(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
@@ -85,15 +94,12 @@ impl<'a> Syscall<'a> {
     pub async fn sys_wait(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
         let (pid, wstatus, options) = (args[0] as isize, args[1], args[2]);
+        let options = WaitOptions::from_bits_truncate(options as u32);
 
         info!(
-            "syscall: wait: pid: {}, &wstatus: {:x}, options: {}",
+            "syscall: wait: pid: {}, &wstatus: {:x}, options: {:?}",
             pid, wstatus, options
         );
-
-        if options != 0 {
-            todo!("wait: options != 0");
-        }
 
         let result_lproc = loop {
             yield_now().await;

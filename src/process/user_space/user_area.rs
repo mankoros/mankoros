@@ -24,7 +24,7 @@ use crate::memory::frame::dealloc_frame;
 use crate::process::shared_frame_mgr::with_shared_frame_mgr;
 use crate::tools::errors::{SysError, SysResult};
 use core::ops::Range;
-use log::{debug};
+use log::debug;
 
 pub type VirtAddrRange = Range<VirtAddr>;
 
@@ -232,8 +232,10 @@ impl UserArea {
         debug_assert!(frame == 0); // depress the warning of unused value
 
         // perpare the data for the new frame
-        let pte = page_table.get_pte_copied_from_vpn(access_vpn);
-        if let Some(pte) = pte && pte.is_valid() {
+        let pte = page_table.get_pte_mut_from_vpn(access_vpn);
+        if let Some(pte) = pte {
+            // PTE valid is ensured
+
             // must be CoW
             let pte_flags = pte.flags();
             debug!("flags: {:?}", pte_flags);
@@ -243,17 +245,26 @@ impl UserArea {
 
             // decrease the old frame's ref count
             let old_frame = pte.paddr();
+            let mut is_shared = false;
             with_shared_frame_mgr(|mgr| {
-                mgr.remove_ref(old_frame.page_num());
+                is_shared = mgr.is_shared(old_frame.page_num());
             });
 
-            // copy the data
-            // assert we are in process's page table now
-            debug_assert!(page_table.root_paddr().bits() == get_curr_page_table_addr());
-            frame = alloc_frame().ok_or(PageFaultErr::KernelOOM)?;
-            unsafe {
-                frame.as_mut_page_slice()
-                    .copy_from_slice(old_frame.as_page_slice());
+            if is_shared {
+                with_shared_frame_mgr(|mgr| {
+                    mgr.remove_ref(old_frame.page_num());
+                });
+
+                // copy the data
+                // assert we are in process's page table now
+                debug_assert!(page_table.root_paddr().bits() == get_curr_page_table_addr());
+                frame = alloc_frame().ok_or(PageFaultErr::KernelOOM)?;
+                unsafe {
+                    frame.as_mut_page_slice().copy_from_slice(old_frame.as_page_slice());
+                }
+            } else {
+                // Not shared, just set the pte to writable
+                frame = old_frame;
             }
         } else {
             // a lazy alloc or lazy load (demand paging)

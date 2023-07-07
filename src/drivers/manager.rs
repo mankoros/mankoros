@@ -29,16 +29,10 @@ impl DeviceManager {
     }
 
     pub fn disks(&self) -> Vec<Arc<dyn BlockDevice>> {
-        self.devices
-            .iter()
-            .filter_map(|d| d.clone().as_blk())
-            .collect::<Vec<_>>()
+        self.devices.iter().filter_map(|d| d.clone().as_blk()).collect::<Vec<_>>()
     }
     pub fn serials(&self) -> Vec<Arc<dyn CharDevice>> {
-        self.devices
-            .iter()
-            .filter_map(|d| d.clone().as_char())
-            .collect::<Vec<_>>()
+        self.devices.iter().filter_map(|d| d.clone().as_char()).collect::<Vec<_>>()
     }
 
     pub fn probe(&mut self) {

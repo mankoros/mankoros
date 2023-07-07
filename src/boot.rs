@@ -4,6 +4,7 @@
 ///
 use crate::{
     consts::{
+        self,
         address_space::K_SEG_DTB,
         memlayout::{kernel_end, kernel_start},
         KERNEL_LINK_ADDR, PAGE_SIZE,
@@ -134,10 +135,12 @@ unsafe extern "C" fn entry(hartid: usize) -> ! {
 }
 
 #[naked]
-pub unsafe extern "C" fn alt_entry(hartid: usize) -> ! {
+pub unsafe extern "C" fn alt_entry(hartid: usize, boot_pgtbl: usize) -> ! {
     core::arch::asm!(
         "   mv    tp, a0",
         "   call  {set_boot_pgtbl}",
+        "   la    t0, {boot_pc_addr}",
+        "   ld    a1, (t0)",
         "   call  {set_stack}",
         // jump to alt_rust_main
         "   la    t0, alt_rust_main",
@@ -146,6 +149,7 @@ pub unsafe extern "C" fn alt_entry(hartid: usize) -> ! {
         ",
         set_stack = sym set_stack,
         set_boot_pgtbl = sym set_boot_pgtbl,
+        boot_pc_addr = sym consts::device::PLATFORM_BOOT_PC,
         options(noreturn),
     )
 }
@@ -154,10 +158,10 @@ pub unsafe extern "C" fn alt_entry(hartid: usize) -> ! {
 #[naked]
 unsafe extern "C" fn set_stack(hartid: usize, boot_pc: usize) {
     core::arch::asm!(
-        "   add  t0, a0, 1",
+        "   add  t0, a0, 1",  // Stack top
         "   slli t0, t0, 20", // 1 MiB Stack Each
         "   la   sp, {stack}",
-        "   sub  t1, sp, a1", // t0 = offset of stack
+        "   sub  t1, sp, a1", // t1 = offset of stack
         "   li   t2, 0xffffffff80000000",
         "   add  sp, t1, t2",
         "   add  sp, sp, t0

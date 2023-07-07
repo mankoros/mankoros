@@ -1,7 +1,7 @@
 //! Filesystem related syscall
 //!
 
-
+use alloc::string::String;
 use log::{debug, info, warn};
 
 use crate::{
@@ -13,7 +13,10 @@ use crate::{
         new_vfs::{path::Path, top::VfsFileRef, VfsFileKind},
     },
     memory::{UserReadPtr, UserWritePtr},
-    tools::{errors::SysError, user_check::UserCheck},
+    tools::{
+        errors::{SysError, SysResult},
+        user_check::UserCheck,
+    },
 };
 
 use super::{Syscall, SyscallResult};
@@ -95,6 +98,49 @@ impl<'a> Syscall<'a> {
             return Ok(0);
         }
         Err(SysError::EBADF)
+    }
+
+    pub async fn sys_fstatat(&self) -> SyscallResult {
+        info!("Syscall: fstatat");
+        let args = self.cx.syscall_args();
+        let (dir_fd, path_name, kstat, flags) = (args[0], args[1], args[2], args[3]);
+
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+        let path_name = user_check.checked_read_cstr(path_name as *const u8)?;
+
+        debug!("fstatat: path_name: {:?}", path_name);
+
+        let (dir, file_name) = self.at_helper(dir_fd, path_name, flags).await?;
+
+        let file = dir.lookup(&file_name).await?;
+
+        let fstat = file.attr().await?;
+
+        within_sum(|| unsafe {
+            *(kstat as *mut Kstat) = Kstat {
+                st_dev: fstat.device_id as u64,
+                st_ino: 1,
+                st_mode: 0,
+                // TODO: when linkat is implemented, use their infrastructure to check link num
+                st_nlink: 1,
+                st_uid: 0,
+                st_gid: 0,
+                st_rdev: 0,
+                _pad0: 0,
+                st_size: fstat.byte_size as u64,
+                st_blksize: BLOCK_SIZE as u32,
+                _pad1: 0,
+                st_blocks: fstat.block_count as u64,
+                st_atime_sec: 0,
+                st_atime_nsec: 0,
+                st_mtime_sec: 0,
+                st_mtime_nsec: 0,
+                st_ctime_sec: 0,
+                st_ctime_nsec: 0,
+            }
+        });
+
+        Ok(0)
     }
 
     pub async fn sys_mkdir(&self) -> SyscallResult {
@@ -248,14 +294,37 @@ impl<'a> Syscall<'a> {
 
         debug!("unlinkat: path_name: {:?}", path_name);
 
-        let path = Path::from_string(path_name)?;
+        let (dir, file_name) = self.at_helper(dir_fd, path_name, flags).await?;
 
+        let file_type = dir.clone().lookup(&file_name).await?.attr().await?.kind;
+        if need_to_be_dir && file_type != VfsFileKind::Directory {
+            return Err(SysError::ENOTDIR);
+        }
+        if !need_to_be_dir && file_type == VfsFileKind::Directory {
+            return Err(SysError::EISDIR);
+        }
+
+        // TODO: 延迟删除: 这个操作会直接让底层 FS 删除文件, 但是如果有其他进程正在使用这个文件, 应该延迟删除
+        // 已知 fat32 fs 要求被删除的文件夹是空的, 不然会返回错误, 可能该行为需要被明确到 VFS 层
+        dir.remove(&file_name).await.map(|_| 0)
+    }
+
+    /// Path resolve helper for __at syscall
+    async fn at_helper(
+        &self,
+        dir_fd: usize,
+        path_name: String,
+        flags: usize,
+    ) -> SysResult<(VfsFileRef, String)> {
         let dir;
         let file_name;
+
+        let path = Path::from_string(path_name)?;
+
         if path.is_absolute() {
             let dir_path = path.remove_tail();
             dir = fs::root::get_root_dir().resolve(&dir_path).await?;
-            file_name = path.last();
+            file_name = path.last().clone();
         } else {
             let fd_dir = if dir_fd == AT_FDCWD {
                 let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone());
@@ -266,20 +335,10 @@ impl<'a> Syscall<'a> {
 
             let rel_dir_path = path.remove_tail();
             dir = fd_dir.resolve(&rel_dir_path).await?;
-            file_name = path.last();
+            file_name = path.last().clone();
         }
 
-        let file_type = dir.clone().lookup(file_name).await?.attr().await?.kind;
-        if need_to_be_dir && file_type != VfsFileKind::Directory {
-            return Err(SysError::ENOTDIR);
-        }
-        if !need_to_be_dir && file_type == VfsFileKind::Directory {
-            return Err(SysError::EISDIR);
-        }
-
-        // TODO: 延迟删除: 这个操作会直接让底层 FS 删除文件, 但是如果有其他进程正在使用这个文件, 应该延迟删除
-        // 已知 fat32 fs 要求被删除的文件夹是空的, 不然会返回错误, 可能该行为需要被明确到 VFS 层
-        dir.remove(file_name).await.map(|_| 0)
+        Ok((dir, file_name))
     }
 
     pub async fn sys_mount(&mut self) -> SyscallResult {

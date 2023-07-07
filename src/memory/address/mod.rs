@@ -27,7 +27,7 @@
 //! 转换到任意长度的 slice 的方法 (unsafe `as_slice`/`as_slice_mut`), 以及转换到以页为长度的 slice 的方法，
 //! 可以按需取用。
 
-use log::{trace, warn};
+use log::{debug, trace, warn};
 
 use crate::consts;
 
@@ -57,7 +57,10 @@ pub fn kernel_phys_to_virt(addr: usize) -> usize {
     let offset = offset.unwrap();
     let virt_addr = offset.checked_add(consts::address_space::K_SEG_PHY_MEM_BEG);
     if virt_addr.is_none() {
-        panic!("Physical memory offset 0x{:x} is out of range", addr);
+        debug!("phymem_start: 0x{:x}", unsafe {
+            consts::device::PHYMEM_START
+        });
+        panic!("Physical memory offset 0x{:x} is out of range", offset);
     }
     virt_addr.unwrap()
 }

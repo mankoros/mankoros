@@ -155,7 +155,11 @@ macro_rules! impl_vfs_default_non_file {
         ) -> $crate::tools::errors::ASysResult<usize> {
             unimplemented!(concat!(stringify!(ty), "::read_at"))
         }
-        fn write_at(&self, _offset: usize, _buf: &[u8]) -> $crate::tools::errors::ASysResult<usize> {
+        fn write_at(
+            &self,
+            _offset: usize,
+            _buf: &[u8],
+        ) -> $crate::tools::errors::ASysResult<usize> {
             unimplemented!(concat!(stringify!(ty), "::write_at"))
         }
         fn get_page(

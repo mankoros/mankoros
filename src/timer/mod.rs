@@ -11,7 +11,6 @@ use crate::arch;
 use log::info;
 use riscv::register::{sie, time};
 
-
 /// 时钟频率，和平台有关
 /// 目前硬编码为 10MHz(for qemu)
 pub static mut CLOCK_FREQ: usize = 10_000_000;

@@ -288,18 +288,14 @@ impl ConcreteFile for FatConcreteGenericFile {
             match kind {
                 VfsFileKind::RegularFile => {
                     dir.create_file(name)?;
-                    let dentry = dir
-                        .iter()
-                        .map(Result::unwrap).find(|x| x.file_name() == name)
-                        .unwrap();
+                    let dentry =
+                        dir.iter().map(Result::unwrap).find(|x| x.file_name() == name).unwrap();
                     Ok(FatConcreteDirEntry(dentry))
                 }
                 VfsFileKind::Directory => {
                     dir.create_dir(name)?;
-                    let dentry = dir
-                        .iter()
-                        .map(Result::unwrap).find(|x| x.file_name() == name)
-                        .unwrap();
+                    let dentry =
+                        dir.iter().map(Result::unwrap).find(|x| x.file_name() == name).unwrap();
                     Ok(FatConcreteDirEntry(dentry))
                 }
                 _ => unimplemented!(),

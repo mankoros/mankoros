@@ -49,7 +49,8 @@ impl<'a> Syscall<'a> {
             SYSCALL_WRITEV => self.sys_writev().await,
 
             // FS related
-            SYSCALL_FSTAT => self.sys_fstat().await,
+            SYSCALL_NEWFSTAT => self.sys_fstat().await,
+            SYSCALL_NEWFSTATAT => self.sys_fstatat().await,
             SYSCALL_GETDENTS => self.sys_getdents().await,
             SYSCALL_LINKAT => todo!(),
             SYSCALL_UNLINKAT => self.sys_unlinkat().await,
@@ -147,7 +148,7 @@ pub const SYSCALL_PSELECT6: usize = 72;
 pub const SYSCALL_PPOLL: usize = 73;
 pub const SYSCALL_READLINKAT: usize = 78;
 pub const SYSCALL_NEWFSTATAT: usize = 79;
-pub const SYSCALL_FSTAT: usize = 80;
+pub const SYSCALL_NEWFSTAT: usize = 80;
 pub const SYSCALL_FSYNC: usize = 82;
 pub const SYSCALL_UTIMENSAT: usize = 88;
 pub const SYSCALL_EXIT: usize = 93;
