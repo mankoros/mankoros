@@ -189,7 +189,7 @@ impl VfsFile for Stderr {
         len: usize,
         kind: super::new_vfs::top::PollKind,
     ) -> ASysResult<usize> {
-        ensure_offset_is_tail!(offset);
+        // ensure_offset_is_tail!(offset);
         dyn_future(async move {
             if kind != super::new_vfs::top::PollKind::Write {
                 Err(SysError::EPERM)
@@ -202,7 +202,7 @@ impl VfsFile for Stderr {
         panic!("stderr::poll_read")
     }
     fn poll_write(&self, offset: usize, buf: &[u8]) -> usize {
-        ensure_offset_is_tail!(offset);
+        // ensure_offset_is_tail!(offset);
         if let Ok(data) = core::str::from_utf8(buf) {
             cfg_if::cfg_if! {
                 if #[cfg(debug_assertions)] {
