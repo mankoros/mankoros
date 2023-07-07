@@ -5,7 +5,7 @@ use riscv::register::{
 };
 
 use crate::{
-    arch,
+    arch, drivers,
     executor::{hart_local::set_curr_lproc, util_futures::yield_now},
     memory::address::VirtAddr,
     process::user_space::user_area::PageFaultAccessType,
@@ -27,7 +27,7 @@ impl AutoSIE {
     fn disable_interrupt_until_drop() -> Self {
         unsafe {
             if SIE_COUNT == 0 {
-                sstatus::set_sie();
+                sstatus::clear_sie();
             }
             SIE_COUNT += 1;
         }
@@ -40,7 +40,7 @@ impl Drop for AutoSIE {
         unsafe {
             SIE_COUNT -= 1;
             if SIE_COUNT == 0 {
-                sstatus::clear_sie();
+                sstatus::set_sie();
             }
         }
     }
@@ -135,6 +135,7 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                         yield_now().await;
                     }
                 }
+                Interrupt::UserExternal => drivers::get_device_manager_mut().interrupt_handler(),
                 _ => todo!(),
             },
         }

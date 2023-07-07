@@ -196,7 +196,11 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     run_preliminary_test();
 
     process::spawn_init();
-    executor::run_until_idle();
+    // Loop even if nothing in queue
+    // Maybe all the task is sleeping
+    loop {
+        executor::run_until_idle();
+    }
 
     // Shutdown
     sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);

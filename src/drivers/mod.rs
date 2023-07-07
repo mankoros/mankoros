@@ -66,7 +66,7 @@ pub enum DevError {
 
 pub type DevResult<T = ()> = Result<T, DevError>;
 type Async<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
-pub type ADevResult<'a> = Async<'a, DevResult>;
+pub type ADevResult<'a, T = ()> = Async<'a, DevResult<T>>;
 
 #[const_trait]
 pub trait Device: Send + Sync {
@@ -102,6 +102,6 @@ pub trait BlockDevice: Device + Debug {
 }
 
 pub trait CharDevice: Device + Debug {
-    fn read(&self, buf: &mut [u8]) -> ADevResult;
+    fn read<'a>(&'a self, buf: Pin<&'a mut [u8]>) -> ADevResult<usize>;
     fn write(&self, buf: &[u8]) -> DevResult;
 }

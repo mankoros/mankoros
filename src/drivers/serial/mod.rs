@@ -1,12 +1,16 @@
 mod sifive;
 mod uart8250;
 
-use alloc::boxed::Box;
-use log::info;
+use alloc::{boxed::Box, collections::VecDeque};
+use log::{info, warn};
+use ringbuffer::{RingBufferExt, RingBufferRead, RingBufferWrite};
 
 use core::{
     cell::UnsafeCell,
     fmt::{Debug, Write},
+    future::Future,
+    pin::Pin,
+    task::{Poll, Waker},
 };
 
 macro_rules! wait_for {
@@ -18,9 +22,12 @@ macro_rules! wait_for {
 }
 pub(crate) use wait_for;
 
-use crate::{consts::address_space::K_SEG_DTB, memory::kernel_phys_dev_to_virt, println};
+use crate::{
+    consts::address_space::K_SEG_DTB, here, memory::kernel_phys_dev_to_virt, println,
+    sync::SpinNoIrqLock,
+};
 
-use super::{CharDevice, Device, DeviceType};
+use super::{CharDevice, DevResult, Device, DeviceType};
 
 pub struct EarlyConsole;
 
@@ -41,7 +48,8 @@ trait UartDriver: Send + Sync {
 
 pub struct Serial {
     inner: UnsafeCell<Box<dyn UartDriver>>,
-    buffer: ringbuffer::ConstGenericRingBuffer<u8, 512>, // Hard-coded buffer size
+    buffer: SpinNoIrqLock<ringbuffer::ConstGenericRingBuffer<u8, 512>>, // Hard-coded buffer size
+    waiting: SpinNoIrqLock<VecDeque<Waker>>,
     base_address: usize,
     size: usize,
     interrupt_number: usize,
@@ -59,10 +67,11 @@ impl Serial {
     ) -> Self {
         Self {
             inner: UnsafeCell::new(driver),
-            buffer: ringbuffer::ConstGenericRingBuffer::new(),
+            buffer: SpinNoIrqLock::new(ringbuffer::ConstGenericRingBuffer::new()),
             base_address,
             size,
             interrupt_number,
+            waiting: SpinNoIrqLock::new(VecDeque::new()),
         }
     }
 }
@@ -101,6 +110,13 @@ impl Device for Serial {
                 "Serial interrupt handler got byte: {}",
                 core::str::from_utf8(&[b]).unwrap()
             );
+            self.buffer.lock(here!()).enqueue(b);
+            // Round Robin
+            if let Some(waiting) = self.waiting.lock(here!()).pop_front() {
+                waiting.wake();
+            }
+        } else {
+            warn!("Serial interrupt handler got no byte");
         }
     }
 
@@ -117,9 +133,33 @@ impl Device for Serial {
     }
 }
 
+pub struct SerialReadFuture<'a> {
+    buf: Pin<&'a mut [u8]>,
+    inner: &'a Serial,
+}
+
+impl Future for SerialReadFuture<'_> {
+    type Output = DevResult<usize>;
+
+    fn poll(
+        self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> Poll<Self::Output> {
+        let this = unsafe { self.get_unchecked_mut() };
+        if let Some(char) = this.inner.buffer.lock(here!()).dequeue() {
+            this.buf[0] = char;
+            Poll::Ready(Ok(1))
+        } else {
+            // Push itself to the waiting queue
+            this.inner.waiting.lock(here!()).push_back(cx.waker().clone());
+            Poll::Pending
+        }
+    }
+}
+
 impl CharDevice for Serial {
-    fn read(&self, _buf: &mut [u8]) -> super::ADevResult {
-        todo!()
+    fn read<'a>(&'a self, buf: Pin<&'a mut [u8]>) -> super::ADevResult<usize> {
+        Box::pin(SerialReadFuture { buf, inner: self })
     }
 
     fn write(&self, buf: &[u8]) -> super::DevResult {

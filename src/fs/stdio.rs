@@ -4,11 +4,14 @@
 //! Copyright 2022 (C) MaturinOS
 //! Copyright 2023 (C) MankorOS
 
+use core::pin::Pin;
+
 use super::new_vfs::{top::VfsFile, DeviceIDCollection, VfsFileAttr};
 use crate::{
-    ensure_offset_is_tail, impl_vfs_default_non_dir,
-    tools::errors::{dyn_future, ASysResult, SysError},
+    drivers, ensure_offset_is_tail, impl_vfs_default_non_dir,
+    tools::errors::{dyn_future, ASysResult, LinuxError, SysError},
 };
+
 use log::warn;
 
 /// 标准输入流
@@ -26,15 +29,18 @@ impl VfsFile for Stdin {
         dyn_future(async { Err(SysError::EPERM) })
     }
 
-    fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
-        ensure_offset_is_tail!(offset);
+    fn read_at<'a>(&'a self, _offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
         // Offset is ignored
-        dyn_future(async move {
+        // ensure_offset_is_tail!(offset);
+        let buf = Pin::new(buf);
+        dyn_future(async {
             if buf.is_empty() {
                 return Ok(0);
             }
-            // TODO: implement read
-            Ok(1)
+            if let Some(serial) = drivers::get_device_manager().serials().get(0) {
+                return (serial).read(buf).await.map_err(|_| LinuxError::EIO);
+            }
+            Ok(0)
         })
     }
 
