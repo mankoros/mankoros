@@ -71,4 +71,8 @@ impl UKContext {
         // sp == x2
         self.user_rx[2] = val;
     }
+
+    pub fn get_user_sp(&self) -> usize {
+        self.user_rx[2]
+    }
 }

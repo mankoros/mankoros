@@ -135,7 +135,9 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                         yield_now().await;
                     }
                 }
-                Interrupt::UserExternal => drivers::get_device_manager_mut().interrupt_handler(),
+                Interrupt::SupervisorExternal => {
+                    drivers::get_device_manager_mut().interrupt_handler()
+                }
                 _ => todo!(),
             },
         }

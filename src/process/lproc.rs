@@ -3,7 +3,7 @@ use super::{
     user_space::UserSpace,
 };
 use crate::{
-    arch::{switch_page_table, within_sum},
+    arch::{self, switch_page_table, within_sum},
     consts::PAGE_SIZE,
     fs::{
         self,
@@ -309,25 +309,61 @@ impl LightProcess {
 
         let memory;
         if flags.contains(CloneFlags::VM) {
+            // Share memory
             memory = self.memory.clone();
         } else {
-            // TODO-PERF: 这里应该可以优化
-            // 比如引入一个新的状态，表示这个进程的内存是应该 CoW 的，但是不真正去 CoW 本来的内存
-            // 只是给它一个全是 Invaild 的页表，然后如果它没有进行任何写入操作，直接进入 syscall exec 的话，
-            // 就可以直接来一个新的地址空间，不用连累旧的进程的地址空间也来一次 CoW.
-            // 反之如果在那种状态 page fault 了，那么我们就要进行 "昂贵" 的 CoW 操作了
-            // let _raw_memory = self.with_mut_memory(|m| m.clone_cow());
+            // 这里应该可以优化
+            // Noop, 这里不能优化，如果延迟cow，其他线程如果对vm做了修改，不能保证符合clone的语意
             memory = new_shared(self.with_mut_memory(|m| m.clone_cow()));
         }
+        let old_memory = self.memory.lock(here!());
+        let mut new_memory = memory.lock(here!());
 
-        let stack_begin;
+        let new_stack_top;
+        let new_sp;
+        let old_sp = self.context().get_user_sp();
+        let (old_stack_range, _) = old_memory.areas().get(old_sp.into()).unwrap();
+        let old_stack_top: usize = (old_stack_range.end - 1).bits() & !0xF;
         // 如果用户指定了栈，那么就用用户指定的栈，否则在新的地址空间里分配一个
         if let Some(sp) = user_stack_begin {
-            stack_begin = sp;
+            new_stack_top = sp;
+            new_sp = new_stack_top - (old_stack_top - old_sp);
+        } else if flags.contains(CloneFlags::VM) {
+            new_stack_top = new_memory.areas_mut().alloc_stack(THREAD_STACK_SIZE);
+            new_memory.force_map_area(new_stack_top);
+            // We should in old pagetable now
+            debug_assert!(
+                arch::get_curr_page_table_addr() == old_memory.page_table.root_paddr().bits()
+            );
+
+            let stack_length = old_stack_top - old_sp;
+            new_sp = new_stack_top - stack_length;
+            // Copy old stack to new stack
+            // [old_sp, old_stack_top] => [new_sp, new_stack_top]
+            within_sum(|| {
+                let new_stack = unsafe {
+                    core::slice::from_raw_parts_mut(new_sp.bits() as *mut u8, stack_length)
+                };
+                let old_stack = unsafe { core::slice::from_raw_parts(old_sp as _, stack_length) };
+                new_stack.copy_from_slice(old_stack);
+            });
         } else {
-            stack_begin = memory.lock(here!()).areas_mut().alloc_stack(THREAD_STACK_SIZE);
+            // CoW memory
+            new_stack_top = old_stack_top.into();
+            new_sp = old_sp.into();
         }
-        context.get_mut().set_user_sp(stack_begin.bits());
+        debug!(
+            "old stack top: 0x{:x}, old sp: 0x{:x}",
+            old_stack_top, old_sp
+        );
+        debug!(
+            "new stack top: 0x{:x}, new sp: 0x{:x}",
+            new_stack_top, new_sp
+        );
+
+        context.get_mut().set_user_sp(new_sp.bits());
+        drop(old_memory);
+        drop(new_memory);
 
         let fsinfo;
         if flags.contains(CloneFlags::FS) {
