@@ -203,7 +203,8 @@ impl<'a> Syscall<'a> {
         }
 
         if flags.contains(CloneFlags::SETTLS) {
-            new_lproc.context().set_user_tp(new_thread_local_storage_ptr);
+            // tp currently is used for hartid
+            // new_lproc.context().set_user_tp(new_thread_local_storage_ptr);
         }
 
         // syscall clone returns 0 in child process

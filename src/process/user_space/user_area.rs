@@ -288,6 +288,7 @@ impl UserArea {
         debug_assert!(frame != 0);
         // remap the frame
         page_table.remap_page(access_vpn.addr(), frame, self.perm().into());
+        unsafe { riscv::asm::sfence_vma_all() };
         Ok(())
     }
 

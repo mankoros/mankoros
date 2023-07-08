@@ -30,10 +30,7 @@ pub fn probe() -> Option<VirtIoBlockDev> {
         DeviceType::Block,
         reg.starting_address as usize,
         reg.size?,
-        |t| {
-            warn!("TODO: impl irq parsing");
-            VirtIoBlockDev::try_new(t, reg.starting_address as usize, reg.size?).ok()
-        },
+        |t| VirtIoBlockDev::try_new(t, reg.starting_address as usize, reg.size?).ok(),
     );
     kernel_page_table.unmap_region(
         (kernel_phys_dev_to_virt(reg.starting_address as usize)).into(),

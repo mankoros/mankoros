@@ -19,7 +19,7 @@ use core::{
     pin::Pin,
     task::{Context, Poll},
 };
-use log::{debug, info};
+use log::{debug, info, warn};
 
 struct AutoSIE {}
 static mut SIE_COUNT: i32 = 0;
@@ -115,7 +115,7 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                 }
                 Exception::InstructionFault | Exception::IllegalInstruction => {
                     // user die
-                    debug!(
+                    warn!(
                         "Invalid user programm, User SPEC: 0x{:x}, SCAUSE: {:#?}, STVAL: {:x}",
                         context.user_sepc, e, stval
                     );
