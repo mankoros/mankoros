@@ -528,15 +528,21 @@ impl UserAreaManager {
                 if pte.is_none() {
                     return;
                 }
+                let pte = pte.unwrap();
                 // Remove the page from the page table.
                 page_table.unmap_page(vpn.addr());
 
-                let ppn = pte.unwrap().ppn();
+                let ppn = pte.ppn();
                 // 如果是共享的，则只减少引用计数，否则释放
                 if mgr.is_shared(ppn) {
                     mgr.remove_ref(ppn);
-                }
-                if mgr.is_unique(ppn) {
+                } else {
+                    // Fill the page with zeroes when in debug mode
+                    cfg_if::cfg_if! {
+                        if #[cfg(debug_assertions)] {
+                            unsafe { pte.paddr().as_mut_page_slice().fill(0) };
+                        }
+                    }
                     dealloc_frame(ppn.addr());
                 }
             })
