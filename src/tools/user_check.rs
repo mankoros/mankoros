@@ -29,7 +29,16 @@ impl<'a> UserCheck<'a> {
 
     pub fn checked_read<T>(&self, ptr: *const T) -> SysResult<T> {
         let vaddr = VirtAddr::from(ptr as usize);
+        let pte = self.lproc.with_mut_memory(|m| {
+            m.page_table.get_pte_copied_from_vpn(vaddr.round_down().page_num())
+        });
         if self.has_perm(vaddr, UserAreaPerm::READ) {
+            if pte.is_none() {
+                // Try Copy-on-write
+                self.lproc
+                    .with_mut_memory(|m| m.handle_pagefault(vaddr, PageFaultAccessType::RO))
+                    .expect("Copy-on-write failed");
+            }
             unsafe { Ok(ptr.read()) }
         } else {
             Err(SysError::EFAULT)

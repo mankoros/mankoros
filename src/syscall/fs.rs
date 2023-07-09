@@ -108,7 +108,7 @@ impl<'a> Syscall<'a> {
         let user_check = UserCheck::new_with_sum(&self.lproc);
         let path_name = user_check.checked_read_cstr(path_name as *const u8)?;
 
-        debug!("fstatat: path_name: {:?}", path_name);
+        debug!("fstatat: dir_fd: {}, path_name: {:?}", dir_fd, path_name);
 
         let (dir, file_name) = self.at_helper(dir_fd, path_name, flags).await?;
 

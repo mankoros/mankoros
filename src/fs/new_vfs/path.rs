@@ -67,6 +67,9 @@ impl Path {
                 }
             }
         }
+        if components.is_empty() {
+            components.push_back(String::from(""));
+        }
 
         Ok(Self {
             components,
@@ -121,7 +124,10 @@ impl Path {
             panic!("already root")
         }
         let mut new = self.clone();
-        new.pop_back();
+        // If empty, usually it is "."
+        if !new.is_empty() {
+            new.pop_back();
+        }
         new
     }
 
@@ -305,5 +311,9 @@ pub fn path_test() {
             .unwrap()
             .to_string(),
         "/meh"
+    );
+    debug_assert_eq!(
+        Path::from_string(String::from(".")).unwrap().to_string(),
+        ""
     );
 }
