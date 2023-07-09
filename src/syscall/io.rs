@@ -69,6 +69,8 @@ impl Syscall<'_> {
 
         let user_check = UserCheck::new_with_sum(&self.lproc);
         let path = user_check.checked_read_cstr(path as *const u8)?;
+
+        debug!("Open path: {}", path);
         let path = Path::from_string(path).expect("Error parsing path");
 
         let dir = if path.is_absolute() {

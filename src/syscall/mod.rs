@@ -54,6 +54,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_GETDENTS => self.sys_getdents().await,
             SYSCALL_LINKAT => todo!(),
             SYSCALL_UNLINKAT => self.sys_unlinkat().await,
+            SYSCALL_FCNTL => self.sys_fcntl(),
             SYSCALL_MKDIRAT => self.sys_mkdir().await,
             SYSCALL_UMOUNT => self.sys_umount().await,
             SYSCALL_MOUNT => self.sys_mount().await,

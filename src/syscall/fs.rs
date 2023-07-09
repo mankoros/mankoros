@@ -63,6 +63,18 @@ pub struct Kstat {
 pub const AT_REMOVEDIR: usize = 1 << 9;
 pub const AT_FDCWD: usize = -100isize as usize;
 
+// fnctl flags
+bitflags::bitflags! {
+    #[derive(Default)]
+    pub struct FcntlFlags: u32 {
+        const F_DUPFD = 0;
+        const F_GETFD = 1;
+        const F_SETFD = 2;
+        const F_GETFL = 3;
+        const F_SETFL = 4;
+    }
+}
+
 impl<'a> Syscall<'a> {
     pub async fn sys_fstat(&self) -> SyscallResult {
         info!("Syscall: fstat");
@@ -339,6 +351,17 @@ impl<'a> Syscall<'a> {
         }
 
         Ok((dir, file_name))
+    }
+
+    pub fn sys_fcntl(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (fd, cmd, arg) = (args[0], args[1], args[2]);
+        info!(
+            "Syscall: fcntl (fd: {:?}, cmd: {:?}, arg: {:?})",
+            fd, cmd, arg
+        );
+        warn!("Syscall: fcntl is not implemented yet");
+        Ok(0)
     }
 
     pub async fn sys_mount(&mut self) -> SyscallResult {
