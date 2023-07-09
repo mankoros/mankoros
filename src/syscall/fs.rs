@@ -88,7 +88,7 @@ impl<'a> Syscall<'a> {
                 *(kstat as *mut Kstat) = Kstat {
                     st_dev: fstat.device_id as u64,
                     st_ino: 1,
-                    st_mode: 0,
+                    st_mode: u32::from(fstat.kind) | 0755, // 0755 permission, we don't care about permission
                     // TODO: when linkat is implemented, use their infrastructure to check link num
                     st_nlink: 1,
                     st_uid: 0,
@@ -124,15 +124,21 @@ impl<'a> Syscall<'a> {
 
         let (dir, file_name) = self.at_helper(dir_fd, path_name, flags).await?;
 
-        let file = dir.lookup(&file_name).await?;
+        let file = if file_name == String::from("") {
+            dir
+        } else {
+            dir.lookup(&file_name).await?
+        };
 
         let fstat = file.attr().await?;
+
+        debug!("Fstat: {:?}", fstat);
 
         within_sum(|| unsafe {
             *(kstat as *mut Kstat) = Kstat {
                 st_dev: fstat.device_id as u64,
                 st_ino: 1,
-                st_mode: 0,
+                st_mode: u32::from(fstat.kind) | 0755, // 0755 permission, we don't care about permission
                 // TODO: when linkat is implemented, use their infrastructure to check link num
                 st_nlink: 1,
                 st_uid: 0,
@@ -340,7 +346,11 @@ impl<'a> Syscall<'a> {
         } else {
             let fd_dir = if dir_fd == AT_FDCWD {
                 let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone());
-                fs::root::get_root_dir().resolve(&cwd).await?
+                if cwd.to_string() == "/" {
+                    fs::root::get_root_dir()
+                } else {
+                    fs::root::get_root_dir().resolve(&cwd).await?
+                }
             } else {
                 self.lproc.with_fdtable(|f| f.get(dir_fd)).ok_or(SysError::EBADF)?.file.clone()
             };

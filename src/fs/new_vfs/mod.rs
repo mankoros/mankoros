@@ -41,6 +41,22 @@ pub enum VfsFileKind {
     SocketFile,
 }
 
+impl From<VfsFileKind> for u32 {
+    fn from(val: VfsFileKind) -> Self {
+        // low 16 bits are for permissions, high 16 bits are for file type
+        match val {
+            VfsFileKind::Unknown => 0,
+            VfsFileKind::Pipe => 10000,
+            VfsFileKind::CharDevice => 20000,
+            VfsFileKind::Directory => 40000,
+            VfsFileKind::BlockDevice => 60000,
+            VfsFileKind::RegularFile => 100000,
+            VfsFileKind::SymbolLink => 120000,
+            VfsFileKind::SocketFile => 140000,
+        }
+    }
+}
+
 pub struct DeviceIDCollection;
 impl DeviceIDCollection {
     pub const TMP_FS_ID: DeviceID = 0;
