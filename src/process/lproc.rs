@@ -219,7 +219,7 @@ impl LightProcess {
 
     // ========================= 进程创建 =========================
     pub fn new() -> Arc<Self> {
-        Arc::new(Self {
+        let new = Arc::new(Self {
             id: alloc_pid(),
             parent: new_shared(None),
             context: SyncUnsafeCell::new(unsafe { UKContext::new_uninit() }),
@@ -233,19 +233,26 @@ impl LightProcess {
             fdtable: new_shared(FdTable::new_with_std()),
             signal: SpinNoIrqLock::new(signal::SignalSet::empty()),
             private_info: SpinNoIrqLock::new(PrivateInfo::new()),
-        })
+        });
+        // I am the group leader
+        new.group.lock(here!()).push_leader(new.clone());
+        new
     }
 
     pub fn do_exec(self: Arc<Self>, elf_file: VfsFileRef, args: Vec<String>, envp: Vec<String>) {
-        // create new userspace and release the old one
-        *self.memory.lock(here!()) = UserSpace::new();
+        // Create new userspace
+        let new_userspace = UserSpace::new();
 
-        let page_table_paddr = self.with_memory(|m| m.page_table.root_paddr());
+        let page_table_paddr = new_userspace.page_table.root_paddr();
         debug!(
             "Create new userspace with page table at {:?}",
             page_table_paddr
         );
+        // Switch to new userspace immediately
         switch_page_table(page_table_paddr.bits());
+
+        // Drop old userspace
+        *self.memory.lock(here!()) = new_userspace;
 
         // 把 elf 的 segment 映射到用户空间
         let (entry_point, auxv) = self.with_mut_memory(|m| m.parse_and_map_elf_file(elf_file));

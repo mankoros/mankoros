@@ -67,6 +67,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_EXIT => self.sys_exit(),
             SYSCALL_GETPPID => self.sys_getppid(),
             SYSCALL_GETPID => self.sys_getpid(),
+            SYSCALL_GETTID => self.sys_gettid(),
             SYSCALL_SET_TID_ADDRESS => self.sys_set_tid_address(),
             SYSCALL_SIGACTION => {
                 warn!("Syscall sigaction not implemented");

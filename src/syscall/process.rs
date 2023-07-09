@@ -269,6 +269,11 @@ impl<'a> Syscall<'a> {
 
     pub fn sys_getpid(&mut self) -> SyscallResult {
         info!("Syscall: getpid");
+        Ok(self.lproc.with_group(|g| g.tgid()).into())
+    }
+
+    pub fn sys_gettid(&mut self) -> SyscallResult {
+        info!("Syscall: gettid");
         Ok(self.lproc.id().into())
     }
 

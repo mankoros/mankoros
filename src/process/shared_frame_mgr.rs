@@ -4,7 +4,7 @@ use core::{
     cell::SyncUnsafeCell,
     sync::atomic::{AtomicUsize, Ordering},
 };
-use log::debug;
+use log::{debug, trace};
 
 static SHARED_FRAME_MANAGER: SpinNoIrqLock<SyncUnsafeCell<SharedFrameManager>> =
     SpinNoIrqLock::new(SyncUnsafeCell::new(SharedFrameManager::new()));
@@ -33,16 +33,15 @@ impl SharedFrameManager {
                 info.increase();
             })
             .or_insert_with(SharedFrameInfo::new);
-        debug!("add_ref: {:x}, ({:x})", page, info.get());
+        trace!("add_ref: {:x}, ({:x})", page, info.get());
     }
 
     pub fn remove_ref(&mut self, page: PhysPageNum) {
-        debug!("remove_ref: {:x}", page);
         let info = self.map.get_mut(&page).expect("remove_ref: page not found");
-        debug!("remove_ref: {:x}, ({:x})", page, info.get() - 1);
+        trace!("remove_ref: {:x}, ({:x})", page, info.get() - 1);
 
         if info.decrease() {
-            debug!("remove_ref: {:x}, removed from manager", page);
+            trace!("remove_ref: {:x}, removed from manager", page);
             self.map.remove(&page);
         }
     }

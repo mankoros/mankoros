@@ -24,7 +24,7 @@ use crate::memory::frame::dealloc_frame;
 use crate::process::shared_frame_mgr::with_shared_frame_mgr;
 use crate::tools::errors::{SysError, SysResult};
 use core::ops::Range;
-use log::debug;
+use log::{debug, info, warn};
 
 pub type VirtAddrRange = Range<VirtAddr>;
 
@@ -512,6 +512,14 @@ impl UserAreaManager {
     /// **注意**: 只释放物理页，不会管分段
     pub fn release_range(page_table: &mut PageTable, range: VirtAddrRange) {
         debug!("release range: {:?}", range);
+        let mut range = range;
+        if range.start.round_down().bits() != range.start.bits() {
+            warn!("Not aligned range start: {:x?}", range.start);
+            range = Range {
+                start: range.start.round_down().bits().into(),
+                end: range.end.round_up().bits().into(),
+            }
+        }
         // 释放被删除的段
         with_shared_frame_mgr(|mgr| {
             iter_vpn(range, |vpn| {
