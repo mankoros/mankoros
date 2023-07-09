@@ -322,6 +322,8 @@ impl LightProcess {
             // 这里应该可以优化
             // Noop, 这里不能优化，如果延迟cow，其他线程如果对vm做了修改，不能保证符合clone的语意
             memory = new_shared(self.with_mut_memory(|m| m.clone_cow()));
+            unsafe { riscv::asm::sfence_vma_all() }; // Flush both old and new process
+                                                     // TODO: avoid flushing global entries like kernel mappings
         }
         let old_memory = self.memory.lock(here!());
         let mut new_memory = memory.lock(here!());

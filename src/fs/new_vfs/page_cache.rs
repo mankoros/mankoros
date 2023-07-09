@@ -63,7 +63,9 @@ impl<F: ConcreteFile> VfsFile for SyncPageCacheFile<F> {
         }
         dyn_future(async move {
             let addr = self.mgr.lock().await.get_page(&self.file, offset).await?;
-            Ok(addr)
+            let new_page = alloc_frame().ok_or(SysError::ENOMEM)?;
+            unsafe { new_page.as_mut_page_slice().copy_from_slice(addr.as_page_slice()) };
+            Ok(new_page)
         })
     }
 
