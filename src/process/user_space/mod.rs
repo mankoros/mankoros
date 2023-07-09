@@ -20,7 +20,7 @@ use crate::{
 use super::{aux_vector::AuxVector, shared_frame_mgr::with_shared_frame_mgr};
 
 use self::user_area::{PageFaultErr, UserAreaManager, UserAreaPerm, VirtAddrRange};
-use log::debug;
+use log::{debug, trace};
 
 pub const THREAD_STACK_SIZE: usize = 16 * 1024;
 
@@ -87,7 +87,7 @@ pub fn init_stack(
         unsafe {
             // core::ptr::copy_nonoverlapping(s.as_ptr(), *sp as *mut u8, len);
             for (i, c) in s.bytes().enumerate() {
-                debug!(
+                trace!(
                     "push_str: {:x} ({:x}) <- {:?}",
                     *sp + i,
                     i,

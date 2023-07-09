@@ -3,7 +3,11 @@ use crate::{
     executor::{self, block_on},
     fs::{self, new_vfs::top::VfsFileRef},
 };
-use alloc::{string::ToString, sync::Arc, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    sync::Arc,
+    vec::Vec,
+};
 
 pub mod aux_vector;
 pub mod lproc;
@@ -31,6 +35,21 @@ pub fn spawn_init() {
         .into_iter()
         .map(|s: &str| s.to_string())
         .collect::<Vec<_>>();
+
+    // Some necessary environment variables.
+    let mut envp = Vec::new();
+    envp.push(String::from("LD_LIBRARY_PATH=/"));
+    envp.push(String::from("SHELL=/busybox"));
+    envp.push(String::from("PWD=/"));
+    envp.push(String::from("USER=root"));
+    envp.push(String::from("MOTD_SHOWN=pam"));
+    envp.push(String::from("LANG=C.UTF-8"));
+    envp.push(String::from("TERM=vt220"));
+    envp.push(String::from("SHLVL=1"));
+    envp.push(String::from("_=busybox"));
+    envp.push(String::from("LOGNAME=root"));
+    envp.push(String::from("HOME=/"));
+    envp.push(String::from("PATH=/"));
 
     let lproc = LightProcess::new();
     lproc.clone().do_exec(busybox, args, Vec::new());
