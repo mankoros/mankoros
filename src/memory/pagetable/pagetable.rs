@@ -51,8 +51,9 @@ pub fn map_kernel_phys_seg() {
     for i in (0..unsafe { MAX_PHYSICAL_MEMORY }).step_by(HUGE_PAGE_SIZE) {
         let paddr: usize = i + unsafe { PHYMEM_START };
         let vaddr = VirtAddr::from(i + K_SEG_PHY_MEM_BEG);
-        trace!("p3 index: {}", p3_index(vaddr));
-        boot_pagetable[p3_index(vaddr)] = PageTableEntry::from((paddr >> 2) | 0xcf);
+
+        // DA WRV
+        boot_pagetable[p3_index(vaddr)] = PageTableEntry::from((paddr >> 2) | 0xc7);
     }
 }
 

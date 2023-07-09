@@ -66,10 +66,10 @@ impl From<UserAreaPerm> for PTEFlags {
     fn from(val: UserAreaPerm) -> Self {
         let mut pte_flag = PTEFlags::V | PTEFlags::U;
         if val.contains(UserAreaPerm::READ) {
-            pte_flag |= PTEFlags::R;
+            pte_flag |= PTEFlags::R | PTEFlags::A; // Some hardware does not support setting A bit.
         }
         if val.contains(UserAreaPerm::WRITE) {
-            pte_flag |= PTEFlags::W;
+            pte_flag |= PTEFlags::W | PTEFlags::D; // Some hardware does not support setting D bit.
         }
         if val.contains(UserAreaPerm::EXECUTE) {
             pte_flag |= PTEFlags::X;
@@ -288,7 +288,7 @@ impl UserArea {
         debug_assert!(frame != 0);
         // remap the frame
         page_table.remap_page(access_vpn.addr(), frame, self.perm().into());
-        unsafe { riscv::asm::sfence_vma_all() };
+        unsafe { riscv::asm::sfence_vma(0, access_vpn.addr().bits()) };
         Ok(())
     }
 
