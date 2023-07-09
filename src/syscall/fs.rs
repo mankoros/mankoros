@@ -40,12 +40,12 @@ pub struct Kstat {
     pub st_rdev: u64,
     _pad0: u64,
     /// 文件大小
-    pub st_size: u64,
+    pub st_size: i64,
     /// 块大小
-    pub st_blksize: u32,
-    _pad1: u32,
+    pub st_blksize: i32,
+    _pad1: i32,
     /// 块个数
-    pub st_blocks: u64,
+    pub st_blocks: i64,
     /// 最后一次访问时间 (秒)
     pub st_atime_sec: isize,
     /// 最后一次访问时间 (纳秒)
@@ -88,17 +88,17 @@ impl<'a> Syscall<'a> {
                 *(kstat as *mut Kstat) = Kstat {
                     st_dev: fstat.device_id as u64,
                     st_ino: 1,
-                    st_mode: u32::from(fstat.kind) | 0755, // 0755 permission, we don't care about permission
+                    st_mode: u32::from(fstat.kind) | 0o777, // 0777 permission, we don't care about permission
                     // TODO: when linkat is implemented, use their infrastructure to check link num
                     st_nlink: 1,
                     st_uid: 0,
                     st_gid: 0,
                     st_rdev: 0,
                     _pad0: 0,
-                    st_size: fstat.byte_size as u64,
-                    st_blksize: BLOCK_SIZE as u32,
+                    st_size: fstat.byte_size as i64,
+                    st_blksize: BLOCK_SIZE as i32,
                     _pad1: 0,
-                    st_blocks: fstat.block_count as u64,
+                    st_blocks: fstat.block_count as i64,
                     st_atime_sec: 0,
                     st_atime_nsec: 0,
                     st_mtime_sec: 0,
@@ -120,7 +120,10 @@ impl<'a> Syscall<'a> {
         let user_check = UserCheck::new_with_sum(&self.lproc);
         let path_name = user_check.checked_read_cstr(path_name as *const u8)?;
 
-        debug!("fstatat: dir_fd: {}, path_name: {:?}", dir_fd, path_name);
+        debug!(
+            "fstatat: dir_fd: {}, path_name: {:?}, stat: 0x{:x}",
+            dir_fd, path_name, kstat
+        );
 
         let (dir, file_name) = self.at_helper(dir_fd, path_name, flags).await?;
 
@@ -138,17 +141,17 @@ impl<'a> Syscall<'a> {
             *(kstat as *mut Kstat) = Kstat {
                 st_dev: fstat.device_id as u64,
                 st_ino: 1,
-                st_mode: u32::from(fstat.kind) | 0755, // 0755 permission, we don't care about permission
+                st_mode: u32::from(fstat.kind) | 0o777, // 0777 permission, we don't care about permission
                 // TODO: when linkat is implemented, use their infrastructure to check link num
                 st_nlink: 1,
                 st_uid: 0,
                 st_gid: 0,
                 st_rdev: 0,
                 _pad0: 0,
-                st_size: fstat.byte_size as u64,
-                st_blksize: BLOCK_SIZE as u32,
+                st_size: fstat.byte_size as i64,
+                st_blksize: BLOCK_SIZE as i32,
                 _pad1: 0,
-                st_blocks: fstat.block_count as u64,
+                st_blocks: fstat.block_count as i64,
                 st_atime_sec: 0,
                 st_atime_nsec: 0,
                 st_mtime_sec: 0,
