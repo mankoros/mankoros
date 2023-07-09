@@ -112,6 +112,11 @@ impl<'a> Syscall<'a> {
                 .filter(|lp| lp.status() == ProcessStatus::STOPPED)
                 .collect::<Vec<_>>();
 
+            // If WNOHANG is specified, return immediately if no child exited.
+            if options.contains(WaitOptions::WNOHANG) && stopped_children.is_empty() {
+                return Ok(0);
+            }
+
             let target_child_opt = if pid < -1 {
                 let target_tgid = -pid as usize;
                 stopped_children.iter().find(|lp| lp.tgid() == target_tgid)
