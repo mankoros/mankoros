@@ -314,7 +314,7 @@ impl<'a> Syscall<'a> {
         &self,
         dir_fd: usize,
         path_name: String,
-        flags: usize,
+        _flags: usize,
     ) -> SysResult<(VfsFileRef, String)> {
         let dir;
         let file_name;

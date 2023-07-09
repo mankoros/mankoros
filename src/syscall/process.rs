@@ -154,7 +154,7 @@ impl<'a> Syscall<'a> {
     pub fn sys_clone(&mut self) -> SyscallResult {
         info!("syscall: clone");
         let args = self.cx.syscall_args();
-        let (flags, child_stack, parent_tid_ptr, child_tid_ptr, new_thread_local_storage_ptr) =
+        let (flags, child_stack, parent_tid_ptr, child_tid_ptr, _new_thread_local_storage_ptr) =
             (args[0] as u32, args[1], args[2], args[3], args[4]);
 
         let flags = CloneFlags::from_bits(flags & !0xff).ok_or(SysError::EINVAL)?;

@@ -24,7 +24,7 @@ use crate::memory::frame::dealloc_frame;
 use crate::process::shared_frame_mgr::with_shared_frame_mgr;
 use crate::tools::errors::{SysError, SysResult};
 use core::ops::Range;
-use log::{debug, info, warn};
+use log::{debug, warn};
 
 pub type VirtAddrRange = Range<VirtAddr>;
 

@@ -4,7 +4,7 @@ use core::{
     cell::SyncUnsafeCell,
     sync::atomic::{AtomicUsize, Ordering},
 };
-use log::{debug, trace};
+use log::{trace};
 
 static SHARED_FRAME_MANAGER: SpinNoIrqLock<SyncUnsafeCell<SharedFrameManager>> =
     SpinNoIrqLock::new(SyncUnsafeCell::new(SharedFrameManager::new()));

@@ -123,7 +123,7 @@ macro_rules! impl_vfs_default_non_dir {
             &self,
             _name: &str,
             _kind: $crate::fs::new_vfs::VfsFileKind,
-        ) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
+        ) -> $crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
             unimplemented!(concat!(stringify!($ty), "::create"))
         }
         fn remove(&self, _name: &str) -> crate::tools::errors::ASysResult {
@@ -173,7 +173,7 @@ macro_rules! impl_vfs_default_non_file {
             &self,
             _offset: usize,
             _len: usize,
-            _kind: crate::fs::new_vfs::top::PollKind,
+            _kind: $crate::fs::new_vfs::top::PollKind,
         ) -> crate::tools::errors::ASysResult<usize> {
             unimplemented!(concat!(stringify!(ty), "::poll_ready"))
         }
@@ -195,7 +195,7 @@ macro_rules! impl_vfs_forward_dir {
         fn lookup<'a>(&'a self, name: &'a str) -> $crate::tools::errors::ASysResult<$crate::fs::new_vfs::top::VfsFileRef> {
             self.$($e)+.lookup(name)
         }
-        fn create<'a>(&'a self, name: &'a str, kind: $crate::fs::new_vfs::VfsFileKind) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
+        fn create<'a>(&'a self, name: &'a str, kind: $crate::fs::new_vfs::VfsFileKind) -> $crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
             self.$($e)+.create(name, kind)
         }
         fn remove<'a>(&'a self, name: &'a str) -> crate::tools::errors::ASysResult {
@@ -226,7 +226,7 @@ macro_rules! impl_vfs_forward_file {
             &self,
             offset: usize,
             len: usize,
-            kind: crate::fs::new_vfs::top::PollKind,
+            kind: $crate::fs::new_vfs::top::PollKind,
         ) -> crate::tools::errors::ASysResult<usize> {
             self.$($e)+.poll_ready(offset, len, kind)
         }
