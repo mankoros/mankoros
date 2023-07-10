@@ -11,6 +11,7 @@ use core::ops::{Deref, DerefMut};
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Path {
     is_absolute: bool,
+    is_current: bool, // current dir
     components: VecDeque<String>,
 }
 
@@ -53,6 +54,7 @@ impl Path {
     pub fn from_string(path: String) -> SysResult<Self> {
         // TODO: 找到到底哪里有可能使得路径解析失败了
         let is_absolute = path.starts_with('/');
+        let is_current = path == ".";
         let mut components = VecDeque::new();
         for part in path.split('/') {
             match part {
@@ -67,13 +69,11 @@ impl Path {
                 }
             }
         }
-        if components.is_empty() {
-            components.push_back(String::from(""));
-        }
 
         Ok(Self {
             components,
             is_absolute,
+            is_current,
         })
     }
 
@@ -89,6 +89,10 @@ impl Path {
         self.is_absolute
     }
 
+    pub fn is_current(&self) -> bool {
+        self.is_current
+    }
+
     /// Whether it is the root
     pub fn is_root(&self) -> bool {
         self.is_absolute && self.components.is_empty()
@@ -98,6 +102,9 @@ impl Path {
     pub fn last(&self) -> &String {
         if self.is_root() {
             panic!("is_root")
+        }
+        if self.is_current() {
+            panic!("is_current")
         }
         &self.components[self.len() - 1]
     }

@@ -349,7 +349,7 @@ impl<'a> Syscall<'a> {
         } else {
             let fd_dir = if dir_fd == AT_FDCWD {
                 let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone());
-                if cwd.to_string() == "/" {
+                if cwd.is_root() {
                     fs::root::get_root_dir()
                 } else {
                     fs::root::get_root_dir().resolve(&cwd).await?
@@ -358,9 +358,14 @@ impl<'a> Syscall<'a> {
                 self.lproc.with_fdtable(|f| f.get(dir_fd)).ok_or(SysError::EBADF)?.file.clone()
             };
 
-            let rel_dir_path = path.remove_tail();
-            dir = fd_dir.resolve(&rel_dir_path).await?;
-            file_name = path.last().clone();
+            if path.is_current() {
+                dir = fd_dir;
+                file_name = String::from("");
+            } else {
+                let rel_dir_path = path.remove_tail();
+                dir = fd_dir.resolve(&rel_dir_path).await?;
+                file_name = path.last().clone();
+            }
         }
 
         Ok((dir, file_name))

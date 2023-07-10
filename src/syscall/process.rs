@@ -159,7 +159,7 @@ impl<'a> Syscall<'a> {
 
         let flags = CloneFlags::from_bits(flags & !0xff).ok_or(SysError::EINVAL)?;
 
-        debug!("clone flags: {:#?}", flags);
+        debug!("clone flags: {:?}", flags);
 
         let stack_begin = if child_stack != 0 {
             if child_stack % 16 != 0 {
