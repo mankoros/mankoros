@@ -24,7 +24,7 @@ use alloc::{
 };
 use core::{
     cell::SyncUnsafeCell,
-    sync::atomic::{AtomicI32, Ordering},
+    sync::atomic::{AtomicI32, AtomicUsize, Ordering},
 };
 use log::debug;
 use riscv::register::sstatus;
@@ -435,11 +435,15 @@ impl FsInfo {
 
 pub struct FileDescriptor {
     pub file: VfsFileRef,
+    pub get_dents_progress: AtomicUsize, // indicates how many dentries we have read so far
 }
 
 impl FileDescriptor {
     pub fn new(file: VfsFileRef) -> Arc<Self> {
-        Arc::new(Self { file })
+        Arc::new(Self {
+            file,
+            get_dents_progress: AtomicUsize::new(0),
+        })
     }
 }
 

@@ -269,7 +269,22 @@ impl<'a> Syscall<'a> {
 
         let mut wroten_len = 0;
 
-        for (name, vfs_entry) in file.list().await? {
+        let files = file.list().await?;
+        let total_files = files.len();
+        let mut progress = fd_obj.get_dents_progress.load(core::sync::atomic::Ordering::Relaxed);
+        let end_of_dir = total_files == progress;
+        if end_of_dir {
+            fd_obj.get_dents_progress.store(0, core::sync::atomic::Ordering::Relaxed);
+            // On end of directory, 0 is returned.
+            return Ok(0);
+        }
+
+        debug!(
+            "Old progress: {:?}, total files: {:?}",
+            progress, total_files
+        );
+
+        for (name, vfs_entry) in &files[progress.clone()..] {
             // TODO-BUG: 检查写入后的长度是否满足 u64 的对齐要求, 不满足补 0
             // TODO: d_name 是 &str, 末尾可能会有很多 \0, 想办法去掉它们
             let this_entry_len = core::mem::size_of::<DirentFront>() + name.len() + 1;
@@ -294,7 +309,11 @@ impl<'a> Syscall<'a> {
             user_check.checked_write_cstr(d_name_beg.as_usize() as *mut u8, &name)?;
 
             wroten_len += this_entry_len;
+            progress += 1;
         }
+
+        // Store progress back into fd
+        fd_obj.get_dents_progress.store(progress, core::sync::atomic::Ordering::Relaxed);
 
         Ok(wroten_len)
     }
