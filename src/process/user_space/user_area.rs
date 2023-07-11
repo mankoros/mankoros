@@ -272,6 +272,11 @@ impl UserArea {
                 // If lazy alloc, do nothing (or maybe memset it to zero?)
                 UserAreaType::MmapAnonymous => {
                     frame = alloc_frame().ok_or(PageFaultErr::KernelOOM)?;
+                    // https://man7.org/linux/man-pages/man2/mmap.2.html
+                    // MAP_ANONYMOUS
+                    // The mapping is not backed by any file; its contents are
+                    // initialized to zero.
+                    unsafe { frame.as_mut_page_slice().fill(0) };
                 }
                 // If lazy load, read from fs
                 UserAreaType::MmapPrivate { file, offset } => {

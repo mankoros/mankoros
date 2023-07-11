@@ -36,9 +36,9 @@ impl UtsName {
         Self {
             sysname: Self::from_str("MankorOS"),
             nodename: Self::from_str("MankorOS-VF2"),
-            release: Self::from_str("rolling"),
+            release: Self::from_str("6.1.0-7-riscv64"),
             version: Self::from_str("unknown"),
-            machine: Self::from_str("unknown"),
+            machine: Self::from_str("riscv64"),
             domainname: Self::from_str("localhost"),
         }
     }
@@ -52,6 +52,7 @@ impl UtsName {
 
 impl<'a> Syscall<'a> {
     pub fn sys_uname(&mut self) -> SyscallResult {
+        info!("Syscall: uname");
         let args = self.cx.syscall_args();
         let uts = args[0] as *mut UtsName;
 

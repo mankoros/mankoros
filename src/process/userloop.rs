@@ -121,7 +121,7 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                     );
                     is_exit = true;
                 }
-                _ => todo!(),
+                e => panic!("Unknown user exception: {:?}", e),
             },
             scause::Trap::Interrupt(i) => match i {
                 Interrupt::SupervisorTimer => {
