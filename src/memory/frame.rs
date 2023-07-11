@@ -70,7 +70,15 @@ pub fn init() {
 /// Allocate a frame
 /// returns the physical address of the frame, usually 0x80xxxxxx
 pub fn alloc_frame() -> Option<PhysAddr4K> {
-    GlobalFrameAlloc.alloc()
+    let paddr = GlobalFrameAlloc.alloc();
+    cfg_if::cfg_if! {
+        if #[cfg(debug_assertions)] {
+            if let Some(paddr) = paddr {
+                unsafe { paddr.as_mut_page_slice().fill(0x5); } // Fill with junk
+            }
+        }
+    }
+    paddr
 }
 pub fn dealloc_frame(target: PhysAddr4K) {
     GlobalFrameAlloc.dealloc(target);

@@ -109,6 +109,7 @@ impl AuxVector {
         push_elm!(AT_HWCAP, 0);
         push_elm!(AT_CLKTCK, 100);
         push_elm!(AT_SECURE, 0);
+        push_elm!(AT_RANDOM, pgm_header_addr); // Just use program as random
 
         // rest entries are not nesscary for now
 

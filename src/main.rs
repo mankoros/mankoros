@@ -119,8 +119,6 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
 
     // Initial memory system
     frame::init();
-    // Test the physical frame allocator
-    frame::test_first_frame();
     heap::init();
 
     // Initialize interrupt controller
@@ -144,6 +142,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
 
     // Next stage device initialization
     device_tree::device_init();
+
     // Probe devices
     drivers::init_device_manager();
     let manager = drivers::get_device_manager_mut();
