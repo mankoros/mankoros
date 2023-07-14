@@ -1,5 +1,5 @@
 use super::{
-    underlying::{ConcreteFile, DEntryRef},
+    underlying::{ConcreteDEntryRef, ConcreteFile},
     VfsFileAttr, VfsFileKind,
 };
 use crate::{

@@ -2,7 +2,7 @@ use super::{VfsFileAttr, VfsFileKind};
 use crate::tools::errors::ASysResult;
 use alloc::{string::String, vec::Vec};
 
-pub trait DEntryRef: Clone + Send + Sync + Sized {
+pub trait ConcreteDEntryRef: Clone + Send + Sync + Sized {
     type FileT: ConcreteFile;
     fn name(&self) -> String;
     fn attr(&self) -> VfsFileAttr;
@@ -10,7 +10,7 @@ pub trait DEntryRef: Clone + Send + Sync + Sized {
 }
 
 pub trait ConcreteFile: Send + Sync + Sized + 'static {
-    type DEntryRefT: DEntryRef<FileT = Self>;
+    type DEntryRefT: ConcreteDEntryRef<FileT = Self>;
 
     // 文件操作
     fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize>;

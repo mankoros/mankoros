@@ -14,8 +14,8 @@ use super::BlockDevice;
 
 use crate::drivers::DevResult;
 
+use super::new_vfs::underlying::ConcreteDEntryRef;
 use super::new_vfs::underlying::ConcreteFile;
-use super::new_vfs::underlying::DEntryRef;
 use super::new_vfs::DeviceIDCollection;
 use super::new_vfs::VfsFileAttr;
 use crate::tools::errors::dyn_future;
@@ -211,7 +211,7 @@ impl Disk {
 
 #[derive(Clone)]
 pub struct FakeDEntry;
-impl DEntryRef for FakeDEntry {
+impl ConcreteDEntryRef for FakeDEntry {
     type FileT = Disk;
     fn name(&self) -> alloc::string::String {
         panic!("Should never use DirEntry for Disk")

@@ -2,7 +2,7 @@ use super::disk::BLOCK_SIZE;
 use super::new_vfs::dentry_cache::DEntryCacheDir;
 use super::new_vfs::sync_attr_cache::SyncAttrCacheFile;
 use super::new_vfs::top::{VfsFS, VfsFileRef};
-use super::new_vfs::underlying::{ConcreteFile, DEntryRef};
+use super::new_vfs::underlying::{ConcreteDEntryRef, ConcreteFile};
 use super::new_vfs::{VfsFileAttr, VfsFileKind};
 use super::partition::Partition;
 use crate::tools::errors::{dyn_future, ASysResult, SysError};
@@ -175,7 +175,7 @@ impl Clone for FatConcreteGenericFile {
 #[derive(Debug, Clone)]
 pub struct FatConcreteDirEntry(FatDEntry);
 
-impl DEntryRef for FatConcreteDirEntry {
+impl ConcreteDEntryRef for FatConcreteDirEntry {
     type FileT = FatConcreteGenericFile;
     fn name(&self) -> String {
         self.0.file_name()

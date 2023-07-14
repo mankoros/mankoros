@@ -77,6 +77,10 @@ impl<H: Hal + 'static, T: Transport + 'static> Device for VirtIoBlkDev<H, T> {
     fn as_char(self: Arc<Self>) -> Option<Arc<dyn crate::drivers::CharDevice>> {
         None
     }
+
+    fn as_async_blk(self: Arc<Self>) -> Option<Arc<dyn crate::drivers::AsyncBlockDevice>> {
+        Some(self)
+    }
 }
 
 impl<H: Hal + 'static, T: Transport + 'static> BlockDevice for VirtIoBlkDev<H, T> {
