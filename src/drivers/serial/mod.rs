@@ -131,6 +131,10 @@ impl Device for Serial {
     fn as_blk(self: alloc::sync::Arc<Self>) -> Option<alloc::sync::Arc<dyn super::BlockDevice>> {
         None
     }
+
+    fn as_async_blk(self: alloc::sync::Arc<Self>) -> Option<alloc::sync::Arc<dyn super::AsyncBlockDevice>> {
+        None
+    }
 }
 
 pub struct SerialReadFuture<'a> {

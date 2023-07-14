@@ -4,7 +4,7 @@ use super::{
     underlying::ConcreteFile,
 };
 use crate::alloc::string::ToString;
-use crate::fs::new_vfs::underlying::DEntryRef;
+use crate::fs::new_vfs::underlying::ConcreteDEntryRef;
 use crate::{
     fs::new_vfs::{page_cache::SyncPageCacheFile, VfsFileKind},
     here, impl_vfs_default_non_file,

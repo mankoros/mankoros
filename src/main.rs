@@ -18,6 +18,7 @@
 #![feature(negative_impls)]
 #![feature(pointer_byte_offsets)]
 #![feature(box_into_inner)]
+#![feature(async_iterator)]
 extern crate alloc;
 
 use alloc::boxed::Box;

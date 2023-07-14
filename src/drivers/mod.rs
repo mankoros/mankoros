@@ -15,6 +15,7 @@ pub use serial::EarlyConsole;
 
 pub use transport::mmio::MmioTransport;
 use virtio_drivers::transport;
+use crate::tools::errors::dyn_future;
 
 pub type VirtIoBlockDev =
     blk::VirtIoBlkDev<blk::VirtIoHalImpl, virtio_drivers::transport::mmio::MmioTransport>;
@@ -90,6 +91,7 @@ pub trait Device: Send + Sync {
     // Trait convertion
     fn as_blk(self: Arc<Self>) -> Option<Arc<dyn BlockDevice>>;
     fn as_char(self: Arc<Self>) -> Option<Arc<dyn CharDevice>>;
+    fn as_async_blk(self: Arc<Self>) -> Option<Arc<dyn AsyncBlockDevice>>;
 }
 
 pub trait BlockDevice: Device + Debug {
@@ -104,4 +106,37 @@ pub trait BlockDevice: Device + Debug {
 pub trait CharDevice: Device + Debug {
     fn read<'a>(&'a self, buf: Pin<&'a mut [u8]>) -> ADevResult<usize>;
     fn write(&self, buf: &[u8]) -> DevResult;
+}
+
+pub trait AsyncBlockDevice: Device + Debug {
+    fn num_blocks(&self) -> u64;
+    fn block_size(&self) -> usize;
+
+    #[must_use = "futures do nothing unless polled"]
+    fn read_block(&self, block_id: u64, buf: &mut [u8]) -> ADevResult;
+    #[must_use = "futures do nothing unless polled"]
+    fn write_block(&self, block_id: u64, buf: &[u8]) -> ADevResult;
+    #[must_use = "futures do nothing unless polled"]
+    fn flush(&self) -> ADevResult;
+}
+
+impl<T: BlockDevice> AsyncBlockDevice for T {
+    fn num_blocks(&self) -> u64 {
+        self.num_blocks()
+    }
+    fn block_size(&self) -> usize {
+        self.block_size()
+    }
+    fn read_block(&self, block_id: u64, buf: &mut [u8]) -> ADevResult {
+        let result = self.read_block(block_id, buf);
+        dyn_future(async move { result })
+    }
+    fn write_block(&self, block_id: u64, buf: &[u8]) -> ADevResult {
+        let result = self.write_block(block_id, buf);
+        dyn_future(async move { result })
+    }
+    fn flush(&self) -> ADevResult {
+        let result = self.flush();
+        dyn_future(async move { result })
+    }
 }

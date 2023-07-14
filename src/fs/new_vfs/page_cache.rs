@@ -143,7 +143,9 @@ impl<F: ConcreteFile> PageManager<F> {
         let page_addr = PhysAddr::from(offset).round_down().bits();
         self.perpare_range(file, page_addr, 1).await?;
         let page = self.cached_pages.get(&page_addr).unwrap();
-        Ok(page.addr())
+        let new_page = alloc_frame().ok_or(SysError::ENOMEM)?;
+        unsafe { new_page.as_mut_page_slice().copy_from_slice(page.as_slice()) }
+        Ok(new_page)
     }
 
     /// 从缓存中读取数据, 返回读取的长度.
