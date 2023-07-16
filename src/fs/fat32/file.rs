@@ -1,6 +1,9 @@
 use super::{ClusterID, DEntryIter, FATDentry, Fat32FS};
 use crate::{
-    fs::new_vfs::{underlying::ConcreteFile, VfsFileAttr, VfsFileKind},
+    fs::new_vfs::{
+        underlying::{ConcreteDEntryRefModification, ConcreteFile},
+        VfsFileAttr, VfsFileKind,
+    },
     tools::errors::{dyn_future, SysError, SysResult},
 };
 use alloc::{boxed::Box, vec::Vec};
@@ -31,7 +34,7 @@ impl ConcreteFile for FATFile {
         offset: usize,
         buf: &'a mut [u8],
     ) -> crate::tools::errors::ASysResult<usize> {
-        let cls_size_byte = self.fs.cluster_size_byte;
+        let cls_size_byte = self.fs.cluster_size_byte as usize;
         dyn_future(async move {
             // assume that all read from VFS to FAT32 is aligned to a whole page
             let (skip_cls, offset) = self.fs.offset_cls(offset);
@@ -62,7 +65,7 @@ impl ConcreteFile for FATFile {
         offset: usize,
         buf: &'a [u8],
     ) -> crate::tools::errors::ASysResult<usize> {
-        let cls_size_byte = self.fs.cluster_size_byte;
+        let cls_size_byte = self.fs.cluster_size_byte as usize;
         dyn_future(async move {
             let (skip_cls, offset) = self.fs.offset_cls(offset);
             // assume that all write from VFS to FAT32 is a whole page
@@ -118,5 +121,22 @@ impl ConcreteFile for FATFile {
 
     fn detach(&self, _dentry_ref: Self::DEntryRefT) -> crate::tools::errors::ASysResult<Self> {
         todo!()
+    }
+
+    fn sync_batch<'a, Iter>(&'a self, mod_iter: Iter) -> crate::tools::errors::ASysResult
+    where
+        Iter: IntoIterator<
+                Item = crate::fs::new_vfs::underlying::ConcreteDEntryRefModification<
+                    Self::DEntryRefT,
+                >,
+            > + Send
+            + 'a,
+    {
+        dyn_future(async move {
+            let mods: Vec<ConcreteDEntryRefModification<Self::DEntryRefT>> =
+                mod_iter.into_iter().collect();
+            // 先排序 Truncate 和 Rename
+            Ok(())
+        })
     }
 }

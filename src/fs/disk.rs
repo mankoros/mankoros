@@ -260,4 +260,13 @@ impl ConcreteFile for Disk {
     fn detach(&self, _dentry_ref: Self::DEntryRefT) -> ASysResult<Self> {
         unimplemented!("Should never use dir-op for Disk")
     }
+    fn sync_batch<'a, Iter>(&'a self, modifications: Iter) -> ASysResult
+    where
+        Iter: IntoIterator<
+                Item = super::new_vfs::underlying::ConcreteDEntryRefModification<Self::DEntryRefT>,
+            > + Send
+            + 'a,
+    {
+        unimplemented!("Should never use dir-op for Disk")
+    }
 }
