@@ -19,8 +19,10 @@ pub struct Fat32FS {
 
     // FS Info
     device_id: usize,
-    pub(super) cluster_size_byte: usize,
-    pub(super) cluster_size_sct: usize,
+    pub(super) cluster_size_byte: u32,
+    pub(super) cluster_size_sct: u32,
+    /// log2(cluster_size_sct), 用于便利地计算 SID -> CID
+    pub(super) log_cls_size_sct: u8,
     pub(super) data_begin_sct: SectorID,
     pub(super) root_id_cls: ClusterID,
 }
@@ -35,6 +37,20 @@ fn cvt_err(dev_err: DevError) -> SysError {
         DevError::NoMemory => SysError::ENOMEM,
         DevError::ResourceBusy => SysError::EBUSY,
         DevError::Unsupported => SysError::EINVAL,
+    }
+}
+
+fn int_log2(x: u8) -> u8 {
+    match x {
+        0x01 => 0,
+        0x02 => 1,
+        0x04 => 2,
+        0x08 => 3,
+        0x10 => 4,
+        0x20 => 5,
+        0x40 => 6,
+        0x80 => 7,
+        _ => unreachable!("int_log2: invalid input"),
     }
 }
 
@@ -54,6 +70,9 @@ impl Fat32FS {
         if cluster_size_byte as usize > PAGE_SIZE {
             panic!("FAT32: cluster size is too large (> PAGE_SIZE)");
         }
+
+        // 用于便利地计算 SID -> CID
+        let log_cls_size_sct = int_log2(cluster_size_sct);
 
         log::debug!("FAT BPB: sector_size: {} (byte)", sector_size_byte);
         log::debug!("FAT BPB: cluster_size: {} (byte)", cluster_size_byte);
@@ -137,8 +156,9 @@ impl Fat32FS {
 
             // FS Info
             device_id: 0, // TODO: get device id
-            cluster_size_sct: cluster_size_sct as usize,
-            cluster_size_byte: cluster_size_byte as usize,
+            cluster_size_sct: cluster_size_sct as u32,
+            log_cls_size_sct,
+            cluster_size_byte: cluster_size_byte as u32,
             data_begin_sct,
             root_id_cls,
         })
@@ -162,14 +182,40 @@ impl Fat32FS {
     }
 
     pub(super) fn offset_cls(&self, offset_byte: usize) -> (usize, ClsOffsetT) {
-        let cluster_size_byte = self.cluster_size_byte;
+        let cluster_size_byte = self.cluster_size_byte as usize;
         let cluster_offset = offset_byte % cluster_size_byte;
         let cluster_id = offset_byte / cluster_size_byte;
         (cluster_id, cluster_offset as ClsOffsetT)
     }
 
     pub(super) fn first_sector(&self, cluster_id: ClusterID) -> SectorID {
+        // this formula can be cross verified with Self::next_sector,
+        // and it's copied from https://wiki.osdev.org/FAT
         self.data_begin_sct + (cluster_id as SectorID - 2) * (self.cluster_size_sct as SectorID)
+    }
+
+    pub(super) fn next_sector(&self, sid: SectorID) -> Option<SectorID> {
+        let lscc = self.log_cls_size_sct as u32;
+        let relative_sid = sid - self.data_begin_sct;
+        // this formula can be cross verified with Self::first_sector
+        let cluster_id = ((relative_sid >> lscc) + 2) as ClusterID;
+
+        let offset = relative_sid & !(!0 << lscc);
+        if offset == (1 << lscc) - 1 {
+            self.with_fat(|fat| fat.next(cluster_id)).map(|ncid| self.first_sector(ncid))
+        } else {
+            Some(sid + 1)
+        }
+    }
+
+    pub(super) async fn read_sector(&self, sid: SectorID, buf: &mut [u8]) -> SysResult<()> {
+        let blkdev = self.block_dev.lock().await;
+        blkdev.read_block(sid, buf).await.map_err(cvt_err)
+    }
+
+    pub(super) async fn write_sector(&self, sid: SectorID, buf: &[u8]) -> SysResult<()> {
+        let blkdev = self.block_dev.lock().await;
+        blkdev.write_block(sid, buf).await.map_err(cvt_err)
     }
 
     pub(super) async fn read_cluster(&self, cid: ClusterID, mut buf: &mut [u8]) -> SysResult<()> {
