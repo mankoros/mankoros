@@ -319,4 +319,14 @@ impl ConcreteFile for FatConcreteGenericFile {
     fn detach(&self, _dentry_ref: Self::DEntryRefT) -> ASysResult<Self> {
         todo!("detach")
     }
+
+    fn sync_batch<'a, Iter>(&'a self, _modifications: Iter) -> ASysResult
+    where
+        Iter: IntoIterator<
+                Item = super::new_vfs::underlying::ConcreteDEntryRefModification<Self::DEntryRefT>,
+            > + Send
+            + 'a,
+    {
+        unimplemented!("sync_batch")
+    }
 }
