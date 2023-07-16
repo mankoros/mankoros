@@ -344,65 +344,14 @@ impl<'a> AtomDEntryView<'a> {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
-pub struct VolumePos {
-    pub(super) cluster: ClusterID,
-    pub(super) offset: ClsOffsetT,
-}
-
-impl core::fmt::Debug for VolumePos {
-    fn fmt(&self, f: &mut alloc::fmt::Formatter<'_>) -> alloc::fmt::Result {
-        write!(f, "VolPos({:?}, {:?})", self.cluster, self.offset)
-    }
-}
-
-impl VolumePos {
-    pub const fn zero() -> Self {
-        Self {
-            cluster: 0,
-            offset: 0,
-        }
-    }
-
-    pub fn try_to_next(&mut self, cls_size: ClsOffsetT) -> bool {
-        if self.offset >= cls_size {
-            self.offset -= cls_size;
-            self.cluster += 1;
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn add(&mut self, offset: ClsOffsetT) {
-        self.offset += offset;
-    }
-}
-
 /// 一个 AtomDE 在目录中的位置
 type AtomDEPos = u32;
+/// 一个 GroupDE 在目录中的位置
+type GroupDEPos = u32;
 
 pub struct GroupDEntryIter {
     fs: &'static Fat32FS,
-    // TODO: 看看改为以 sector 而不是 cluster 为单位是否会更好
-    bufs: Vec<Box<[u8]>>,
-    last: VolumePos,
-    curr: VolumePos,
-    is_end: bool,
-    /// 延迟清理标志
-    /// 在删除了一个 GroupDEntry 之后, 往往会紧接着对它进行写入.
-    /// 所以我们不在删除后立即清零, 而是等待所有的写入都完成之后,
-    /// 再清空剩余的 AtomDEntries.
-    delay_clear: bool,
-    /// 所有的 cluster 都 dirty 了
-    /// 这是一般删除文件或者创建新文件的情况
-    dirty: bool,
-    /// 仅仅只是最后一个 cluster dirty 了,
-    /// 一般出现于甚长文件名但是只修改了 8.3 部分 (比如 size 的情况)
-    last_cls_dirty: bool,
-    // 反正要放个 bool, 后边的位置空着也是空着,
-    // 不如拿来缓存一下 cluster 大小
-    cls_size_byte: ClsOffsetT,
+    window: AtomDEntryWindow,
 }
 
 impl GroupDEntryIter {
@@ -410,110 +359,27 @@ impl GroupDEntryIter {
 }
 
 impl AsyncIterator for GroupDEntryIter {
-    type Item = SysResult<VolumePos>;
+    type Item = SysResult<GroupDEPos>;
 
     fn poll_next(
         self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
     ) -> Poll<Option<Self::Item>> {
         let this = unsafe { self.get_unchecked_mut() };
-        let cls_size = this.cls_size_byte;
-        macro_rules! read_new_cls {
-            ($cid:expr, $buf:expr) => {
-                match pin!(this.fs.read_cluster($cid, $buf)).poll(cx) {
-                    Poll::Pending => return Poll::Pending,
-                    Poll::Ready(Err(e)) => return Poll::Ready(Some(Err(e))),
-                    _ => {}
-                }
-            };
-        }
-
-        if this.is_end {
-            return Poll::Ready(None);
-        }
-
-        // the first time we call this iter
-        if this.curr == this.last {
-            // alloc the first buf and keep it (never free it)
-            debug_assert!(this.bufs.is_empty());
-            let mut first_buf =
-                unsafe { Box::new_uninit_slice(this.cls_size_byte as usize).assume_init() };
-            read_new_cls!(this.curr.cluster, &mut first_buf);
-            this.bufs.push(first_buf);
-        }
-
-        loop {
-            log::trace!("GroupDEntryIter::poll_next: curr = {:?}", this.curr);
-
-            if this.curr.try_to_next(cls_size) {
-                // we have read all the entries in this cluster
-                // so we should read the next cluster
-                let next_cls =
-                    this.fs.with_fat(|fat_table_mgr| fat_table_mgr.next(this.curr.cluster));
-                let next_cls = match next_cls {
-                    Some(next_cls) => next_cls,
-                    None => {
-                        this.is_end = true;
-                        return Poll::Ready(None);
-                    }
-                };
-                // alloc a new buf
-                let mut new_buf =
-                    unsafe { Box::new_uninit_slice(this.cls_size_byte as usize).assume_init() };
-                read_new_cls!(next_cls, &mut new_buf);
-            }
-        }
-
         todo!()
     }
 }
 
-type RelativeVolumePos = VolumePos;
-struct AtomDEntryIterInGroupIter<'a> {
-    this: &'a GroupDEntryIter,
-    // TODO: 直接保存 &Box<[u8]> 避免每次通过 vec 访问
-    /// 为了避免每次都要减去 this.beg, 这里的 cluster 保存相对位置
-    /// 即 0 代表 this.beg, 1 代表 this.beg + 1, ...
-    curr: RelativeVolumePos,
-}
-
-impl<'a> Iterator for AtomDEntryIterInGroupIter<'a> {
-    type Item = AtomDEntryView<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let cluster = self.this.bufs.get(self.curr.cluster as usize)?;
-        let entry = cluster
-            .get(self.curr.offset as usize..(self.curr.offset + DENTRY_SIZE) as usize)
-            .unwrap();
-        let entry = AtomDEntryView::new(entry);
-        self.curr.add(DENTRY_SIZE);
-        self.curr.try_to_next(self.this.cls_size_byte);
-        Some(entry)
-    }
-}
-
 impl GroupDEntryIter {
-    fn atom_iter(&self) -> AtomDEntryIterInGroupIter {
-        AtomDEntryIterInGroupIter {
-            this: self,
-            curr: VolumePos::zero(),
-        }
+    fn atom_iter(&self) -> impl Iterator<Item = AtomDEntryView> {
+        self.window.iter()
     }
-
     fn get_std_entry(&self) -> AtomDEntryView {
-        // curr 的前一个 32 byte 就是 8.3
-        let offset = self.curr.offset - DENTRY_SIZE;
-        let cluster = self.bufs.last().unwrap();
-        let entry = cluster.get(offset as usize..(offset + DENTRY_SIZE) as usize).unwrap();
-        let atom_entry = AtomDEntryView::new(entry);
-        debug_assert!(atom_entry.is_std());
-        atom_entry
+        self.window.last()
     }
-
     fn is_std_only(&self) -> bool {
         // 只有一个 AtomDEntry
-        self.curr.cluster == self.last.cluster
-            && (self.curr.offset - self.last.offset) == DENTRY_SIZE
+        self.window.len() == 1
     }
 
     pub(super) fn collect_name(&self) -> String {
@@ -554,10 +420,8 @@ impl GroupDEntryIter {
 
     pub(super) fn change_size(&mut self, new_size: u32) {
         unsafe { self.get_std_entry().as_std_mut().size = new_size }
-        self.last_cls_dirty = true;
     }
     pub(super) fn delete_entry(&mut self) {
-        self.delay_clear = true;
         todo!()
     }
     pub(super) fn create_entry(&mut self) {
@@ -714,7 +578,7 @@ impl AtomDEntryWindow {
     }
 
     /// how many ADE this windows holding now
-    pub fn windows_len(&self) -> usize {
+    pub fn len(&self) -> usize {
         (self.right_pos - self.left_pos) as usize
     }
     /// left bound of this windows, in current directory
@@ -727,7 +591,10 @@ impl AtomDEntryWindow {
     }
 
     pub fn last(&self) -> AtomDEntryView {
-        self.get_idx(self.windows_len() - 1)
+        self.get_idx(self.len() - 1)
+    }
+    pub fn iter(&self) -> AtomDEntryWindowIter {
+        AtomDEntryWindowIter { this: self, cur: 0 }
     }
 }
 
@@ -739,7 +606,7 @@ pub(super) struct AtomDEntryWindowIter<'a> {
 impl<'a> Iterator for AtomDEntryWindowIter<'a> {
     type Item = AtomDEntryView<'a>;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.cur as usize >= self.this.windows_len() {
+        if self.cur as usize >= self.this.len() {
             None
         } else {
             let res = self.this.get_relative_pos(self.cur);
