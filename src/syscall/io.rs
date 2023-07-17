@@ -33,7 +33,8 @@ impl Syscall<'_> {
         let fd = self.lproc.with_mut_fdtable(|f| f.get(fd));
         // TODO: is it safe ?
         if let Some(fd) = fd {
-            let write_len = within_sum_async(fd.file.write_at(0, buf)).await?;
+            let write_len = within_sum_async(fd.file.write_at(fd.curr(), buf)).await?;
+            fd.add_curr(write_len);
             Ok(write_len)
         } else {
             Err(SysError::EBADF)
@@ -50,7 +51,8 @@ impl Syscall<'_> {
 
         let fd = self.lproc.with_mut_fdtable(|f| f.get(fd));
         if let Some(fd) = fd {
-            let read_len = within_sum_async(fd.file.read_at(0, buf)).await?;
+            let read_len = within_sum_async(fd.file.read_at(fd.curr(), buf)).await?;
+            fd.add_curr(read_len);
             Ok(read_len)
         } else {
             Err(SysError::EBADF)
@@ -204,14 +206,17 @@ impl Syscall<'_> {
             if events & PollFd::POLLIN != 0 {
                 // 使用一个新的 Future 将 file 的所有权移动进去并保存, 以供给 poll_ready 使用
                 // TODO: 是否需要更加仔细地考虑 VfsFile 上方法对 self 的占有方式?
-                let file = fd.file.clone();
-                let future = async move { file.poll_ready(OFFSET_TAIL, 1, PollKind::Read).await };
+                let copy_fd = fd.clone();
+                let future =
+                    async move { copy_fd.file.poll_ready(copy_fd.curr(), 1, PollKind::Read).await };
                 futures.push(dyn_future(future));
                 mapping.insert(futures.len() - 1, (i, PollFd::POLLIN));
             }
             if events & PollFd::POLLOUT != 0 {
-                let file = fd.file.clone();
-                let future = async move { file.poll_ready(OFFSET_TAIL, 1, PollKind::Write).await };
+                let copy_fd = fd.clone();
+                let future = async move {
+                    copy_fd.file.poll_ready(copy_fd.curr(), 1, PollKind::Write).await
+                };
                 futures.push(dyn_future(future));
                 mapping.insert(futures.len() - 1, (i, PollFd::POLLOUT));
             }
@@ -261,7 +266,7 @@ impl Syscall<'_> {
         let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
         let file = fd.file.clone();
 
-        let mut total_len = 0;
+        let mut total_len = fd.curr();
         let mut iov_ptr = iov;
         for _ in 0..iovcnt {
             let iov = user_check.checked_read(iov_ptr.raw_ptr())?;
@@ -271,6 +276,7 @@ impl Syscall<'_> {
             iov_ptr = iov_ptr.add(1);
         }
 
+        fd.add_curr(total_len);
         Ok(total_len)
     }
 }
