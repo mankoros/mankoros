@@ -2,7 +2,7 @@ mod dir;
 mod file;
 mod fs;
 
-pub use dir::DEntryIter;
+pub type DEntryIter = dir::GroupDEntryIter;
 pub use dir::FATDentry;
 pub use file::FATFile;
 pub use fs::BlkDevRef;
