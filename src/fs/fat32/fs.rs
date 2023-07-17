@@ -172,9 +172,9 @@ impl Fat32FS {
         }
     }
 
-    pub(super) fn with_fat<T>(&self, f: impl FnOnce(&FATTableManager) -> T) -> T {
-        let fat_table_mgr = self.fat_table_mgr.lock(here!());
-        f(&fat_table_mgr)
+    pub(super) fn with_fat<T>(&self, f: impl FnOnce(&mut FATTableManager) -> T) -> T {
+        let mut fat_table_mgr = self.fat_table_mgr.lock(here!());
+        f(&mut fat_table_mgr)
     }
 
     pub(super) fn device_id(&self) -> usize {

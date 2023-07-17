@@ -32,14 +32,16 @@ bitflags::bitflags! {
 #[derive(Clone)]
 pub struct FATDentry {
     // info about the dentry itself
-    fs: &'static Fat32FS,
-    pos: GroupDEPos,
+    pub(super) fs: &'static Fat32FS,
+    /// 用 u32::MAX 表示没有 pos.
+    /// 不知道为什么用 Option<GroupDEPos> 的话结构体大小暴涨 8 byte
+    pub(super) pos: GroupDEPos,
 
     // info about the file represented by the dentry
-    attr: Fat32DEntryAttr,
-    begin_cluster: ClusterID,
-    name: String,
-    size: u32,
+    pub(super) attr: Fat32DEntryAttr,
+    pub(super) begin_cluster: ClusterID,
+    pub(super) name: String,
+    pub(super) size: u32,
 }
 
 impl FATDentry {
@@ -49,6 +51,14 @@ impl FATDentry {
             0
         } else {
             (name_len + 12) / 13
+        }
+    }
+
+    pub(super) fn pos(&self) -> Option<GroupDEPos> {
+        if self.pos == u32::MAX {
+            None
+        } else {
+            Some(self.pos)
         }
     }
 }
@@ -290,6 +300,10 @@ impl GroupDEntryIter {
         self.window.len() == 1
     }
 
+    pub(super) fn pos(&self) -> GroupDEPos {
+        self.window.left_pos()
+    }
+
     pub(super) fn collect_name(&self) -> String {
         if self.is_std_only() {
             let std = self.get_std_entry().as_std();
@@ -348,9 +362,11 @@ impl GroupDEntryIter {
             unsafe { atom_entry.as_std_mut().name[0] = 0xE5 };
         }
     }
+    pub(super) fn can_create_any(&self) -> bool {
+        self.window.get_in_buf(0).is_unused() || self.is_deleted
+    }
     pub(super) fn can_create(&self, dentry: &FATDentry) -> bool {
-        (self.window.get_in_buf(0).is_unused() || self.is_deleted)
-            && dentry.lfn_needed() + 1 <= self.window.len()
+        self.can_create_any() && dentry.lfn_needed() + 1 <= self.window.len()
     }
 
     pub(super) async fn create_entry(&mut self, dentry: &FATDentry) -> SysResult<()> {
