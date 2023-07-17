@@ -175,7 +175,7 @@ impl<'a> Syscall<'a> {
 
         self.lproc.with_mut_fdtable(|table| {
             if let Some(old_fd) = table.get(fd) {
-                let new_fd = table.alloc(old_fd.file.clone());
+                let new_fd = table.dup(None, &old_fd);
                 Ok(new_fd)
             } else {
                 Err(SysError::EBADF)
@@ -188,7 +188,7 @@ impl<'a> Syscall<'a> {
 
         self.lproc.with_mut_fdtable(|table| {
             if let Some(old_fd) = table.get(old_fd) {
-                table.insert(new_fd, old_fd.file.clone());
+                table.dup(Some(new_fd), &old_fd);
                 Ok(new_fd)
             } else {
                 Err(SysError::EBADF)

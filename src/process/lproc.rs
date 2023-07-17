@@ -24,7 +24,7 @@ use alloc::{
 };
 use core::{
     cell::SyncUnsafeCell,
-    sync::atomic::{AtomicI32, Ordering},
+    sync::atomic::{AtomicI32, AtomicUsize, Ordering},
 };
 use log::debug;
 use riscv::register::sstatus;
@@ -426,11 +426,35 @@ impl FsInfo {
 
 pub struct FileDescriptor {
     pub file: VfsFileRef,
+    /// 当前文件标识符的偏移量记录
+    pub curr: AtomicUsize,
 }
 
 impl FileDescriptor {
     pub fn new(file: VfsFileRef) -> Arc<Self> {
-        Arc::new(Self { file })
+        Arc::new(Self {
+            file,
+            curr: AtomicUsize::new(0),
+        })
+    }
+
+    pub fn curr(&self) -> usize {
+        self.curr.load(Ordering::SeqCst)
+    }
+    pub fn add_curr(&self, offset: usize) {
+        self.curr.fetch_add(offset, Ordering::SeqCst);
+    }
+    pub fn set_curr(&self, offset: usize) {
+        self.curr.store(offset, Ordering::SeqCst);
+    }
+}
+
+impl Clone for FileDescriptor {
+    fn clone(&self) -> Self {
+        Self {
+            file: self.file.clone(),
+            curr: AtomicUsize::new(self.curr()),
+        }
     }
 }
 
@@ -465,9 +489,14 @@ impl FdTable {
         self.table.insert(fd, FileDescriptor::new(file));
         fd
     }
-    // insert inserts the file descriptor into the table using specified fd
-    pub fn insert(&mut self, fd: usize, file: VfsFileRef) {
-        self.table.insert(fd, FileDescriptor::new(file));
+    pub fn dup(&mut self, new_fd: Option<usize>, old_fd: &Arc<FileDescriptor>) -> usize {
+        let fd_no = match new_fd {
+            Some(fd_no) => fd_no,
+            None => self.pool.get(),
+        };
+        let new_fd = Arc::new((**old_fd).clone());
+        self.table.insert(fd_no, new_fd);
+        fd_no
     }
 
     pub fn remove(&mut self, fd: usize) -> Option<Arc<FileDescriptor>> {
