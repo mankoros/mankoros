@@ -1,4 +1,4 @@
-use super::{ClusterID, DEntryIter, FATDentry, Fat32FS};
+use super::{dir::GroupDEntryIter, ClusterID, FATDentry, Fat32FS};
 use crate::{
     fs::new_vfs::{
         underlying::{ConcreteDEntryRefModification, ConcreteFile},
@@ -22,7 +22,7 @@ fn round_up(x: usize, y: usize) -> usize {
 
 impl FATFile {
     pub fn dentry_iter(&self) -> Pin<Box<dyn Stream<Item = SysResult<FATDentry>>>> {
-        Box::pin(DEntryIter::new(self.fs, self.begin_cluster))
+        Box::pin(GroupDEntryIter::new(self.fs, self.begin_cluster))
     }
 }
 

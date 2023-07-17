@@ -209,11 +209,13 @@ impl Fat32FS {
     }
 
     pub(super) async fn read_sector(&self, sid: SectorID, buf: &mut [u8]) -> SysResult<()> {
+        log::debug!("read sector: sid: {}", sid);
         let blkdev = self.block_dev.lock().await;
         blkdev.read_block(sid, buf).await.map_err(cvt_err)
     }
 
     pub(super) async fn write_sector(&self, sid: SectorID, buf: &[u8]) -> SysResult<()> {
+        log::debug!("write sector: sid: {}", sid);
         let blkdev = self.block_dev.lock().await;
         blkdev.write_block(sid, buf).await.map_err(cvt_err)
     }
