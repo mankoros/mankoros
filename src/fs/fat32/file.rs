@@ -1,13 +1,19 @@
-use super::{dir::GroupDEntryIter, ClusterID, FATDentry, Fat32FS};
+use super::{
+    dir::{Fat32DEntryAttr, GroupDEntryIter},
+    ClusterID, FATDentry, Fat32FS,
+};
 use crate::{
     fs::new_vfs::{
-        underlying::{ConcreteDEntryRefModification, ConcreteFile},
+        underlying::{
+            ConcreteDEntryRef, ConcreteDEntryRefModification, ConcreteDEntryRefModificationKind,
+            ConcreteFile,
+        },
         VfsFileAttr, VfsFileKind,
     },
     tools::errors::{dyn_future, SysError, SysResult},
 };
-use alloc::{boxed::Box, vec::Vec};
-use core::pin::Pin;
+use alloc::{boxed::Box, string::ToString, vec::Vec};
+use core::{cmp::Reverse, pin::Pin};
 use futures::Stream;
 
 pub struct FATFile {
@@ -91,12 +97,33 @@ impl ConcreteFile for FATFile {
         })
     }
 
-    fn lookup_batch(
-        &self,
-        _skip_n: usize,
-        _name: Option<&str>,
+    fn lookup_batch<'a>(
+        &'a self,
+        skip_n: usize,
+        name: Option<&'a str>,
     ) -> crate::tools::errors::ASysResult<(bool, Vec<Self::DEntryRefT>)> {
-        todo!()
+        dyn_future(async move {
+            let mut result = Vec::new();
+
+            let mut skip_idx = 0;
+            let mut gde_iter = GroupDEntryIter::new(self.fs, self.begin_cluster);
+            while let Some(_) = gde_iter.mark_next().await? {
+                if skip_idx < skip_n {
+                    skip_idx += 1;
+                    continue;
+                }
+
+                result.push(gde_iter.collect_dentry());
+                let gde_name = &result.last().unwrap().name;
+                if let Some(name) = name && gde_name == name {
+                    // we have found the target & we havn't conusme all the entries
+                    return Ok((false, result));
+                }
+                gde_iter.leave_next().await?;
+            }
+            // we have consumed all the entries
+            Ok((true, result))
+        })
     }
 
     fn set_attr(
@@ -107,12 +134,27 @@ impl ConcreteFile for FATFile {
         todo!()
     }
 
-    fn create(
-        &self,
-        _name: &str,
-        _kind: VfsFileKind,
+    fn create<'a>(
+        &'a self,
+        name: &'a str,
+        kind: VfsFileKind,
     ) -> crate::tools::errors::ASysResult<Self::DEntryRefT> {
-        todo!()
+        dyn_future(async move {
+            let begin_cluster = self.fs.with_fat(|f| f.alloc());
+            let attr = match kind {
+                VfsFileKind::RegularFile => Fat32DEntryAttr::from_bits(0).unwrap(),
+                VfsFileKind::Directory => Fat32DEntryAttr::DIRECTORY,
+                _ => panic!("unsupported file kind"),
+            };
+            Ok(FATDentry {
+                fs: self.fs,
+                pos: u32::MAX,
+                attr,
+                begin_cluster,
+                name: name.to_string(),
+                size: 0,
+            })
+        })
     }
 
     fn remove(&self, _dentry_ref: Self::DEntryRefT) -> crate::tools::errors::ASysResult {
@@ -133,10 +175,104 @@ impl ConcreteFile for FATFile {
             + 'a,
     {
         dyn_future(async move {
-            let mods: Vec<ConcreteDEntryRefModification<Self::DEntryRefT>> =
-                mod_iter.into_iter().collect();
             // 先排序 Truncate 和 Rename
+            let mut std_change_or_delete = Vec::new();
+            let mut creations = Vec::new();
+
+            for modi in mod_iter {
+                use ConcreteDEntryRefModificationKind::*;
+                match modi.kind {
+                    Rename(_) => {
+                        let (d, c) = modi.split_rename();
+                        std_change_or_delete.push(d);
+                        creations.push((true, c));
+                    }
+                    Truncate(_) | Detach | Delete => {
+                        std_change_or_delete.push(modi);
+                    }
+                    Create => {
+                        creations.push((true, modi));
+                    }
+                }
+            }
+
+            std_change_or_delete.sort_by_cached_key(|f| {
+                f.dentry_ref.pos().expect("DEntry ref in Truncate/Delete must have valid pos")
+            });
+            creations.sort_by_cached_key(|(_, f)| Reverse(f.dentry_ref.name().len()));
+
+            // 依次遍历 GDE, 由于 std_change_or_delete 是有序的,
+            // 所以我们可以保证只看最前面即可
+
+            let mut gde_iter = GroupDEntryIter::new(self.fs, self.begin_cluster);
+            while let Some(_) = gde_iter.mark_next().await? {
+                if let Some(first) = std_change_or_delete.first() {
+                    use ConcreteDEntryRefModificationKind::*;
+                    let first_pos = first.dentry_ref.pos().unwrap();
+                    if first_pos == gde_iter.pos() {
+                        // 该 GDE 有变化
+                        match first.kind {
+                            Truncate(new_size) => gde_iter.change_size(new_size as u32),
+                            Delete => {
+                                gde_iter.delete_entry();
+                                // TODO: delete the files
+                            }
+                            Detach => gde_iter.delete_entry(),
+                            Create | Rename(_) => unreachable!(),
+                        }
+                    }
+                    // 如果该 GDE 为 unused, 或者在上边被 delete 了,
+                    // 就可以尝试放置 creation
+                    if gde_iter.can_create_any() {
+                        // 由大到小尝试放置 creation
+                        for (valid, f) in creations.iter_mut() {
+                            debug_assert!(matches!(f.kind, Create));
+                            if gde_iter.can_create(&f.dentry_ref) {
+                                gde_iter.create_entry(&f.dentry_ref).await?;
+                            }
+                            *valid = false;
+                        }
+                        creations.retain(|(v, _)| *v);
+                    }
+                } else {
+                    // std_change_or_delete is empty
+                    if creations.is_empty() {
+                        // if creation is empty too, we have nothing to do next
+                        // just break
+                        break;
+                    }
+                }
+
+                gde_iter.leave_next().await?;
+            }
+
+            if !creations.is_empty() {
+                // append mode
+            }
+
             Ok(())
         })
+    }
+}
+
+impl ConcreteDEntryRefModification<FATDentry> {
+    pub fn split_rename(self) -> (Self, Self) {
+        let new_name = match self.kind {
+            ConcreteDEntryRefModificationKind::Rename(new_name) => new_name,
+            _ => panic!("not a rename"),
+        };
+
+        let detach = Self::new_detach(self.dentry_ref.clone());
+        let new_dentry_ref = FATDentry {
+            fs: self.dentry_ref.fs,
+            pos: u32::MAX,
+            attr: self.dentry_ref.attr,
+            begin_cluster: self.dentry_ref.begin_cluster,
+            name: new_name,
+            size: self.dentry_ref.size,
+        };
+        let create = Self::new_create(new_dentry_ref);
+
+        (detach, create)
     }
 }
