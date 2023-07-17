@@ -174,6 +174,10 @@ impl<'a> AtomDEntryView<'a> {
         unsafe { &mut *(self.0.as_ptr() as *mut LongFileNameEntryRepr) }
     }
 
+    pub unsafe fn mark_end(&self) {
+        unsafe { self.as_std_mut().name[0] = 0x00 }
+    }
+
     fn debug(&self) -> &Self {
         if self.is_end() {
             log::debug!("Type: End");
@@ -448,6 +452,31 @@ impl GroupDEntryIter {
         // TODO: 识别并记录对当前 GDE 的修改, 有时候只针对 8.3 的修改可以不用写回前边的一堆 LFN
         self.window.move_left(self.window.len(), self.is_dirty).await
     }
+
+    pub(super) fn append_enter(&mut self) {
+        self.window.in_append = true;
+    }
+    pub(super) async fn append(&mut self, dentry: &FATDentry) -> SysResult<()> {
+        let ade_needed = dentry.lfn_needed() + 1;
+        for _ in 0..ade_needed {
+            self.window.move_right_one().await?;
+        }
+        self.create_entry(dentry).await
+    }
+    pub(super) async fn append_end(&mut self) -> SysResult<()> {
+        // write an empty GDE
+        self.window.move_right_one().await?;
+        unsafe { self.window.last().mark_end() };
+
+        // sync
+        self.sync_all().await?;
+        self.window.in_append = false;
+        Ok(())
+    }
+
+    pub(super) async fn sync_all(&mut self) -> SysResult<()> {
+        self.window.move_left(self.window.len(), self.is_dirty).await
+    }
 }
 
 struct SectorBuf {
@@ -476,6 +505,7 @@ struct AtomDEntryWindow {
     /// beg   left(r)     right(r)   end
     sector_bufs: VecDeque<SectorBuf>,
     in_init: bool,
+    in_append: bool,
     last_sector: SectorID,
     buf_in_use: u32,
     /// sector_bufs[0] 中的第一个 ADE 的绝对编号
@@ -498,6 +528,7 @@ impl AtomDEntryWindow {
             fs,
             sector_bufs,
             in_init: true,
+            in_append: false,
             last_sector: fs.first_sector(begin_cluster),
             begin_pos: 0,
             left_pos: 0,
@@ -580,7 +611,21 @@ impl AtomDEntryWindow {
                 // find next sector of the last buffer
                 let next_sector = match self.fs.next_sector(self.last_sector) {
                     Some(s) => s,
-                    None => return Ok(None),
+                    None => {
+                        if self.in_append {
+                            // if in append mode, we should alloc a new cluster
+                            let last_cls = self.fs.find_cluster(self.last_sector);
+                            let new_cluster = self.fs.with_fat(|f| {
+                                let new_cls = f.alloc();
+                                f.set_next(last_cls, new_cls);
+                                new_cls
+                            });
+                            self.fs.first_sector(new_cluster)
+                        } else {
+                            // if not in append mode, we should return None
+                            return Ok(None);
+                        }
+                    }
                 };
 
                 // re-assign the new buffer and load content
@@ -596,7 +641,7 @@ impl AtomDEntryWindow {
 
         // 4. check whether the new ADE is valid.
         let last_ade = self.get_in_dir(current);
-        if last_ade.is_end() {
+        if last_ade.is_end() && !self.in_append {
             log::debug!("move_right_one: reach end ({})", current);
             return Ok(None);
         } else {

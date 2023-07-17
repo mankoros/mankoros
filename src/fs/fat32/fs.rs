@@ -194,6 +194,14 @@ impl Fat32FS {
         self.data_begin_sct + (cluster_id as SectorID - 2) * (self.cluster_size_sct as SectorID)
     }
 
+    pub(super) fn find_cluster(&self, sector_id: SectorID) -> ClusterID {
+        let lscc = self.log_cls_size_sct as u32;
+        let relative_sid = sector_id - self.data_begin_sct;
+        // this formula can be cross verified with Self::first_sector
+        let cluster_id = ((relative_sid >> lscc) + 2) as ClusterID;
+        cluster_id
+    }
+
     pub(super) fn next_sector(&self, sid: SectorID) -> Option<SectorID> {
         let lscc = self.log_cls_size_sct as u32;
         let relative_sid = sid - self.data_begin_sct;
