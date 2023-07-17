@@ -246,11 +246,17 @@ impl ConcreteFile for FATFile {
                 gde_iter.leave_next().await?;
             }
 
+            // 如果遍历完了所有已经存在的 GDE, 但是还有 creation 没有放置,
+            // 那么就需要进入追加模式新建 GDE.
             if !creations.is_empty() {
-                // append mode
+                gde_iter.append_enter();
+                for (_, f) in creations {
+                    gde_iter.append(&f.dentry_ref).await?;
+                }
+                gde_iter.append_end().await?;
             }
 
-            Ok(())
+            gde_iter.sync_all().await
         })
     }
 }
