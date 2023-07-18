@@ -1,17 +1,16 @@
-use alloc::{boxed::Box, vec::Vec};
+use super::arena::{MAtomicPtr, ObjPool, Ptr};
 use crate::sync::SpinNoIrqLock;
-use core::{pin::Pin, sync::atomic::Ordering, mem::MaybeUninit};
-use super::arena::{ObjPool, Ptr, MAtomicPtr};
-
+use alloc::{boxed::Box, vec::Vec};
+use core::{mem::MaybeUninit, pin::Pin, sync::atomic::Ordering};
 
 pub trait HashKey {
     fn hash(&self) -> usize;
-    fn equal(&self, other: &Self) -> bool;
 }
 
 pub trait HashValue {
     type Key: HashKey;
-    fn key(&self) -> &Self::Key;
+    fn hash(&self) -> usize;
+    fn equal(&self, other: &Self::Key) -> bool;
 }
 
 struct ListNode<V: HashValue> {
@@ -34,9 +33,9 @@ pub struct HashTable<const BUCKET_CNT: usize, V: HashValue> {
 }
 
 impl<const BC: usize, V: HashValue> HashTable<BC, V> {
-    fn key_to_bucket(&self, key: &V::Key) -> &MAtomicPtr<ListNode<V>> {
-        let bid = key.hash() % BC;
-        &self.buckets[bid]
+    #[inline(always)]
+    fn key_to_bucket(&self, hash: usize) -> &MAtomicPtr<ListNode<V>> {
+        &self.buckets[hash % BC]
     }
 
     pub fn new() -> Self {
@@ -47,12 +46,12 @@ impl<const BC: usize, V: HashValue> HashTable<BC, V> {
     }
 
     pub fn get<'a>(&'a self, key: &V::Key) -> Option<&'a mut V> {
-        let bucket = self.key_to_bucket(key);
+        let bucket = self.key_to_bucket(key.hash());
 
         let mut np = bucket.load(Ordering::SeqCst);
         while !np.is_null() {
             let node = np.as_mut();
-            if node.value.key().equal(key) {
+            if node.value.equal(key) {
                 return Some(&mut node.value);
             }
             np = node.next;
@@ -61,7 +60,7 @@ impl<const BC: usize, V: HashValue> HashTable<BC, V> {
     }
 
     pub fn put(&self, value: V) {
-        let bucket = self.key_to_bucket(value.key());
+        let bucket = self.key_to_bucket(value.hash());
         let node = self.nodes.lock(here!()).put(ListNode::new(value));
         node.as_mut().next = bucket.swap(node, Ordering::SeqCst);
     }
@@ -73,4 +72,3 @@ impl<const BC: usize, V: HashValue> HashTable<BC, V> {
         self.nodes.lock(here!()).free();
     }
 }
-

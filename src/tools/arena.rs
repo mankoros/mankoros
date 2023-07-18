@@ -1,10 +1,10 @@
-use core::{pin::Pin, sync::atomic::AtomicUsize, cell::SyncUnsafeCell, fmt::Debug};
 use alloc::{boxed::Box, vec::Vec};
+use core::{cell::SyncUnsafeCell, fmt::Debug, pin::Pin, sync::atomic::AtomicUsize};
 
 pub struct Ptr<T>(*mut T);
 
 impl<T> Ptr<T> {
-    fn new(ptr: *mut T) -> Self {
+    pub fn new(ptr: *mut T) -> Self {
         Self(ptr)
     }
     pub fn null() -> Self {
@@ -18,7 +18,7 @@ impl<T> Ptr<T> {
     }
     pub fn as_mut<'a>(&self) -> &'a mut T {
         unsafe { &mut *self.0 }
-    }    
+    }
 }
 
 impl Ptr<u8> {
@@ -107,9 +107,7 @@ impl<T> ObjPool<T> {
     }
     pub fn put(&self, obj: T) -> Ptr<T> {
         let mut obj = Box::pin(obj);
-        let ptr = Ptr::new(unsafe {
-            obj.as_mut().get_unchecked_mut() as *mut _
-        });
+        let ptr = Ptr::new(unsafe { obj.as_mut().get_unchecked_mut() as *mut _ });
         unsafe {
             (*self.objs.get()).push(obj);
         };
@@ -120,7 +118,7 @@ impl<T> ObjPool<T> {
             (*self.objs.get()).clear();
         }
     }
-} 
+}
 
 unsafe impl<T> Send for ObjPool<T> {}
 unsafe impl<T> Sync for ObjPool<T> {}
