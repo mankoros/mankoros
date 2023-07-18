@@ -3,8 +3,11 @@ use super::{
     top::{VfsFile, VfsFileRef},
     underlying::ConcreteFile,
 };
-use crate::alloc::string::ToString;
-use crate::fs::new_vfs::underlying::ConcreteDEntryRef;
+use crate::{
+    alloc::string::ToString,
+    tools::{arena::Ptr, hash::HashValue},
+};
+use crate::{fs::new_vfs::underlying::ConcreteDEntryRef, tools::hash::HashKey};
 use crate::{
     fs::new_vfs::{page_cache::SyncPageCacheFile, VfsFileKind},
     here, impl_vfs_default_non_file,
@@ -14,6 +17,8 @@ use crate::{
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use core::{
     cell::SyncUnsafeCell,
+    cmp,
+    marker::PhantomData,
     sync::atomic::{AtomicBool, Ordering},
 };
 
@@ -327,3 +332,92 @@ impl<F: ConcreteFile> VfsFile for DEntryCacheDir<F> {
         })
     }
 }
+
+trait FileID: HashKey + Clone + Send + Sync + Eq + PartialEq {}
+trait CdeID: Clone + Send + Sync + Eq + PartialEq {}
+
+struct DECacheEntry<D: CdeID, F: FileID> {
+    name: String,
+    inner: SpinNoIrqLock<DECacheEntryInner<D, F>>,
+}
+
+struct DECacheEntryInner<D: CdeID, F: FileID> {
+    /// None when created
+    cde_id: Option<D>,
+    status: DECacheEntryStatus<F>,
+    external: Option<VfsFileRef>,
+}
+
+enum DECacheEntryStatus<F: FileID> {
+    NotCached,
+    Normal(GenericDEntry<F>),
+    Created(GenericDEntry<F>),
+    Modified(GenericDEntry<F>),
+    Deleted,
+}
+
+struct GenericDEntry<F: FileID> {
+    assoc_file: F,
+    size: usize,
+}
+
+impl<F: FileID> DECacheEntryStatus<F> {
+    fn create(&mut self, assoc_file: F) {
+        todo!()
+    }
+    fn modify_size(&mut self, size: usize) {
+        todo!()
+    }
+    fn modify_file(&mut self, assoc_file: F) -> F {
+        todo!()
+    }
+    fn delete(&mut self) -> GenericDEntry<F> {
+        todo!()
+    }
+}
+
+struct RawStr(Ptr<String>);
+
+impl PartialEq for RawStr {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.as_ref().eq(other.0.as_ref())
+    }
+}
+impl Eq for RawStr {}
+impl PartialOrd for RawStr {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        self.0.as_ref().partial_cmp(other.0.as_ref())
+    }
+}
+impl Ord for RawStr {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.0.as_ref().cmp(other.0.as_ref())
+    }
+}
+
+impl RawStr {
+    pub fn from(s: &String) -> Self {
+        Self(Ptr::new(s.as_ptr() as *mut _))
+    }
+}
+
+// impl<F: FileID> HashKey for DECacheEntryIdent<F> {
+//     fn hash(&self) -> usize {
+//         // https://stackoverflow.com/a/7666577
+//         let mut h: usize = 5381;
+//         for b in self.name.as_bytes() {
+//             h = h.wrapping_mul(33).wrapping_add(*b as usize);
+//         }
+//         h.wrapping_mul(33).wrapping_add(self.file_id.hash())
+//     }
+// }
+
+// impl<D: CdeID, F: FileID> HashValue for DECacheEntry<D, F> {
+//     type Key = DECacheEntryIdent<F>;
+//     fn hash(&self) -> usize {
+//         self.id.hash()
+//     }
+//     fn equal(&self, other: &Self::Key) -> bool {
+//         self.id.file_id == other.file_id && self.id.name == other.name
+//     }
+// }
