@@ -1,23 +1,13 @@
 use super::tools::BlockCacheEntryRef;
-use super::{ClsOffsetT, ClusterID, FATFile, Fat32FS, SctOffsetT, SectorID};
-use crate::sync::SpinNoIrqLockGuard;
+use super::{ClsOffsetT, ClusterID, Fat32FS, SectorID};
+
 use crate::{
-    fs::{
-        disk::BLOCK_SIZE,
-        new_vfs::{VfsFileAttr, VfsFileKind},
-        nfat32::parse,
-    },
-    here,
+    fs::{disk::BLOCK_SIZE, nfat32::parse},
     tools::errors::SysResult,
 };
-use alloc::{boxed::Box, collections::VecDeque, string::String, vec::Vec};
-use bitflags::Flags;
+use alloc::{collections::VecDeque, string::String, vec::Vec};
 use core::fmt::Display;
-use core::{
-    async_iter::AsyncIterator, cell::SyncUnsafeCell, cmp::min, future::Future, pin::pin, slice,
-    task::Poll, usize,
-};
-use futures::Stream;
+use core::{cmp::min, usize};
 
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy)]
@@ -580,7 +570,7 @@ impl<'a> AtomDEntryWindow {
         // check how many sectors has been passed by
         // sync the passed by buffers and re-use them
         let buf_idx_where_new_left_in = self.buf_idx(new_left);
-        for i in 0..buf_idx_where_new_left_in {
+        for _i in 0..buf_idx_where_new_left_in {
             self.sector_bufs.pop_front();
         }
 

@@ -1,27 +1,16 @@
 use super::{
-    dir::{
-        AtomDEPos, AtomDEntryView, Fat32DEntryAttr, GroupDEPos, GroupDEntryIter,
-        Standard8p3EntryRepr,
-    },
+    dir::{Fat32DEntryAttr, GroupDEPos, GroupDEntryIter, Standard8p3EntryRepr},
     tools::{ClusterChain, WithDirty},
-    ClusterID, Fat32FS, FatDEntryData, SectorID,
+    Fat32FS, FatDEntryData, SectorID,
 };
 use crate::{
     fs::{
         disk::{BLOCK_SIZE, LOG2_BLOCK_SIZE},
-        new_vfs::{underlying::ConcreteFile, VfsFileAttr, VfsFileKind},
+        new_vfs::{underlying::ConcreteFile, VfsFileKind},
     },
-    panic,
     tools::errors::{dyn_future, ASysResult, SysError, SysResult},
 };
-use alloc::{
-    boxed::Box,
-    string::{String, ToString},
-    vec::Vec,
-};
-use core::{cmp::Reverse, pin::Pin};
-use futures::Stream;
-use ringbuffer::RingBufferExt;
+use alloc::vec::Vec;
 
 pub(super) struct StdEntryEditor {
     pub(super) sector: SectorID,

@@ -4,11 +4,11 @@
 //! Copyright (C) 2023 by ArceOS
 //! Copyright (C) 2023 by MankorOS
 
-use alloc::sync::Arc;
+
 
 use crate::lazy_init::LazyInit;
 
-use super::new_vfs::mount::MountPoint;
+
 use super::new_vfs::top::VfsFileRef;
 use super::partition::Partition;
 
@@ -18,7 +18,7 @@ pub fn get_root_dir() -> VfsFileRef {
     ROOT_DIR.clone()
 }
 
-pub fn init_rootfs(part: Partition) {
+pub fn init_rootfs(_part: Partition) {
     // static FAT_FS: LazyInit<Arc<FatFileSystem>> = LazyInit::new();
     // FAT_FS.init_by(Arc::new(FatFileSystem::new(part)));
     // FAT_FS.init();

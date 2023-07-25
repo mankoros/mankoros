@@ -11,7 +11,7 @@ use crate::{
         address::{PhysAddr, PhysAddr4K},
         frame::alloc_frame,
     },
-    sync::{SleepLock, SpinNoIrqLock},
+    sync::{SleepLock},
     tools::errors::{dyn_future, ASysResult, SysError, SysResult},
 };
 use alloc::collections::BTreeMap;

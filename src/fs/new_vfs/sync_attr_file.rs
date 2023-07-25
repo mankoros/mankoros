@@ -1,7 +1,6 @@
 use super::{underlying::ConcreteFile, VfsFileAttr};
 use crate::{
-    fs::disk::BLOCK_SIZE,
-    sync::{SleepLock, SleepLockFuture, SpinNoIrqLock},
+    sync::{SleepLock, SleepLockFuture},
 };
 
 pub struct SyncAttrFile<F: ConcreteFile> {

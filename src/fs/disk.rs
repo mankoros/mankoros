@@ -66,7 +66,7 @@ impl Disk {
     pub fn to_vfs_file(self) -> VfsFileRef {
         let block_count = self.dev.num_blocks() as usize;
         let byte_size = block_count * self.dev.block_size();
-        let attr = VfsFileAttr {
+        let _attr = VfsFileAttr {
             kind: super::new_vfs::VfsFileKind::BlockDevice,
             device_id: 0, // TODO: Device id
             self_device_id: 0,
@@ -237,11 +237,11 @@ impl ConcreteFile for Disk {
         todo!()
     }
 
-    fn truncate<'a>(&'a self, new_size: usize) -> ASysResult {
+    fn truncate<'a>(&'a self, _new_size: usize) -> ASysResult {
         todo!()
     }
 
-    fn lookup<'a>(&'a self, name: &'a str) -> ASysResult<Self> {
+    fn lookup<'a>(&'a self, _name: &'a str) -> ASysResult<Self> {
         todo!()
     }
 
@@ -249,19 +249,19 @@ impl ConcreteFile for Disk {
         todo!()
     }
 
-    fn create<'a>(&'a self, name: &'a str, kind: super::new_vfs::VfsFileKind) -> ASysResult<Self> {
+    fn create<'a>(&'a self, _name: &'a str, _kind: super::new_vfs::VfsFileKind) -> ASysResult<Self> {
         todo!()
     }
 
-    fn remove(&self, file: &Self) -> ASysResult {
+    fn remove(&self, _file: &Self) -> ASysResult {
         todo!()
     }
 
-    fn rename(&self, file: &Self, new_name: &str) -> ASysResult {
+    fn rename(&self, _file: &Self, _new_name: &str) -> ASysResult {
         todo!()
     }
 
-    fn detach(&self, file: &Self) -> ASysResult {
+    fn detach(&self, _file: &Self) -> ASysResult {
         todo!()
     }
 }

@@ -1,20 +1,14 @@
 use super::tools::CachedBlkDev;
-use super::{super::disk::BLOCK_SIZE, BlockID, ClsOffsetT, ClusterID, FATFile, SectorID};
+use super::{super::disk::BLOCK_SIZE, BlockID, ClusterID, FATFile, SectorID};
 use crate::fs::nfat32::tools::cvt_err;
-use crate::sync::SpinNoIrqLockGuard;
+
 use crate::{
-    consts::PAGE_SIZE,
-    drivers::{AsyncBlockDevice, DevError},
-    fs::nfat32::parse,
-    here,
-    sync::{SleepLock, SpinNoIrqLock},
-    tools::errors::{SysError, SysResult},
+    consts::PAGE_SIZE, drivers::AsyncBlockDevice, fs::nfat32::parse, here, sync::SpinNoIrqLock,
+    tools::errors::SysResult,
 };
-use alloc::{boxed::Box, collections::BTreeMap, sync::Arc, vec::Vec};
-use core::cell::SyncUnsafeCell;
-use core::ops::{Deref, DerefMut};
-use core::sync::atomic::{AtomicBool, AtomicUsize};
-use core::{cmp::min, slice};
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
+
+use core::slice;
 
 pub type BlkDevRef = Arc<dyn AsyncBlockDevice>;
 

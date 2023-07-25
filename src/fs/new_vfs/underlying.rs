@@ -1,4 +1,4 @@
-use super::{VfsFileAttr, VfsFileKind};
+use super::VfsFileKind;
 use crate::tools::errors::ASysResult;
 use alloc::{string::String, vec::Vec};
 
