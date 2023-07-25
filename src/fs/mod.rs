@@ -17,12 +17,13 @@ pub mod disk;
 pub mod fatfs;
 pub mod partition;
 
+pub mod fat32;
 pub mod memfs;
 pub mod new_vfs;
+pub mod nfat32;
 pub mod pipe;
 pub mod root;
 pub mod stdio;
-pub mod fat32;
 
 pub fn init_filesystems(blk_dev: Arc<dyn BlockDevice>) {
     info!("Filesystem built-in self testing (BIST)...");
