@@ -4,7 +4,7 @@ mod fs;
 mod tools;
 
 pub type DEntryIter = dir::GroupDEntryIter;
-pub use dir::FATDentry;
+pub use dir::FatDEntryData;
 pub use file::FATFile;
 pub use fs::BlkDevRef;
 pub use fs::Fat32FS;

@@ -168,13 +168,6 @@ impl Fat32FS {
         self.device_id
     }
 
-    pub(super) fn offset_cls(&self, offset_byte: usize) -> (usize, ClsOffsetT) {
-        let cluster_size_byte = self.cluster_size_byte as usize;
-        let cluster_offset = offset_byte % cluster_size_byte;
-        let cluster_id = offset_byte / cluster_size_byte;
-        (cluster_id, cluster_offset as ClsOffsetT)
-    }
-
     pub(super) fn first_sector(&self, cluster_id: ClusterID) -> SectorID {
         // this formula can be cross verified with Self::next_sector,
         // and it's copied from https://wiki.osdev.org/FAT
@@ -190,13 +183,13 @@ impl Fat32FS {
     }
 
     pub(super) fn next_sector(&self, sid: SectorID) -> Option<SectorID> {
-        let lscc = self.log_cls_size_sct as u32;
+        let lcss = self.log_cls_size_sct as u32;
         let relative_sid = sid - self.data_begin_sct;
         // this formula can be cross verified with Self::first_sector
-        let cluster_id = ((relative_sid >> lscc) + 2) as ClusterID;
+        let cluster_id = ((relative_sid >> lcss) + 2) as ClusterID;
 
-        let offset = relative_sid & !(!0 << lscc);
-        if offset == (1 << lscc) - 1 {
+        let offset = relative_sid & !(!0 << lcss);
+        if offset == (1 << lcss) - 1 {
             self.with_fat(|fat| fat.next(cluster_id)).map(|ncid| self.first_sector(ncid))
         } else {
             Some(sid + 1)

@@ -29,6 +29,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 pub const BLOCK_SIZE: usize = 512;
+pub const LOG2_BLOCK_SIZE: usize = 9;
 
 /// A disk holds a block device, and can be used to read and write data to that block device.
 pub struct Disk {
@@ -260,7 +261,7 @@ impl ConcreteFile for Disk {
         todo!()
     }
 
-    fn detach(&self, file: &Self) -> ASysResult<Self> {
+    fn detach(&self, file: &Self) -> ASysResult {
         todo!()
     }
 }

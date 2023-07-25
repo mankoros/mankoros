@@ -1,7 +1,7 @@
 use super::{BlkDevRef, BlockID, ClusterID, Fat32FS, SctOffsetT, SectorID};
 use crate::{
     drivers::DevError,
-    fs::disk::BLOCK_SIZE,
+    fs::disk::{BLOCK_SIZE, LOG2_BLOCK_SIZE},
     here,
     sync::{SleepLock, SpinNoIrqLock},
     tools::errors::{SysError, SysResult},
@@ -135,8 +135,12 @@ impl BlockCacheEntry {
 
 pub(super) struct ClusterChain(SyncUnsafeCell<Vec<ClusterID>>);
 impl ClusterChain {
-    pub fn new() -> Self {
+    pub fn new_empty() -> Self {
         Self(SyncUnsafeCell::new(Vec::new()))
+    }
+    pub fn new(fs: &'static Fat32FS, begin_cluster: ClusterID) -> Self {
+        let chain = fs.with_fat(|f| f.chain(begin_cluster));
+        Self(SyncUnsafeCell::new(chain))
     }
 
     fn inner(&self) -> &mut Vec<ClusterID> {
@@ -153,15 +157,36 @@ impl ClusterChain {
         self.inner().last().unwrap().clone()
     }
 
+    /// 向链尾添加一个 cluster
     pub fn add(&self, cluster: ClusterID) {
         self.inner().push(cluster)
     }
 
-    pub fn get_sector(&self, fs: &'static Fat32FS, byte_offset: usize) -> (SectorID, SctOffsetT) {
-        let cluster_idx = byte_offset / fs.cluster_size_byte as usize;
-        let cluster_offset = byte_offset % fs.cluster_size_byte as usize;
+    /// 根据文件内的字节偏移量, 计算出这个偏移量的位置所在的扇区号和扇区内偏移量
+    pub fn offset_sct(&self, fs: &'static Fat32FS, byte_offset: usize) -> (SectorID, SctOffsetT) {
+        // 希望再也不用碰这块逻辑, 哈人
 
-        todo!()
+        // 计算出 log2(cluster size in byte). 因为我们知道 cluster size 是 2 的幂,
+        // 而 rustc 在编译时不知道, 所以我们要手动计算
+        // 这个函数目测调用还挺频繁的, 用位运算优化掉乘除法应该能提升不少性能
+        let lcsb = fs.log_cls_size_sct as usize + LOG2_BLOCK_SIZE;
+        // 计算出 byte_offset 越过了几个 cluster
+        let cluster_idx = byte_offset >> lcsb;
+        // 然后在缓存的本文件 cluster 链中, 找到对应的 cluster 的 id
+        let cluster_id = self.inner()[cluster_idx];
+        // 然后向文件系统查询这个 cluster 的第一个 sector 的 id
+        let first_sector_id = fs.first_sector(cluster_id);
+
+        // 然后计算出在本 cluster 中的 byte offset
+        let cluster_offset = byte_offset & !(!0 << lcsb);
+        // 并计算这个偏移越过了多少个 cluster 中的 sector
+        let sector_idx = cluster_offset >> LOG2_BLOCK_SIZE;
+        // 由于同一个 cluster 内的 sector 是连续的, 所以直接相加就可以计算出 sector id
+        let sector_id = first_sector_id + sector_idx as SectorID;
+
+        // 最后计算出在 sector 中的字节偏移量并返回
+        let sector_offset = cluster_offset & !(!0 << LOG2_BLOCK_SIZE);
+        (sector_id, sector_offset as SctOffsetT)
     }
 }
 

@@ -16,11 +16,11 @@ pub trait ConcreteFile: Send + Sync + Sized + 'static {
 
     // 文件夹操作
     fn lookup<'a>(&'a self, name: &'a str) -> ASysResult<Self>;
-    fn list(&self) -> ASysResult<Vec<(String, Self)>>;
+    fn list<'a>(&'a self) -> ASysResult<Vec<(String, Self)>>;
     fn create<'a>(&'a self, name: &'a str, kind: VfsFileKind) -> ASysResult<Self>;
-    fn remove(&self, file: &Self) -> ASysResult;
-    fn rename(&self, file: &Self, new_name: &str) -> ASysResult;
-    fn detach(&self, file: &Self) -> ASysResult<Self>;
+    fn remove<'a>(&'a self, file: &'a Self) -> ASysResult;
+    fn rename<'a>(&'a self, file: &'a Self, new_name: &'a str) -> ASysResult;
+    fn detach<'a>(&'a self, file: &'a Self) -> ASysResult;
 }
 
 pub trait ConcreteFS: Sized {
