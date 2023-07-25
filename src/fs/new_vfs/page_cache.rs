@@ -120,7 +120,7 @@ impl<F: ConcreteFile> PageManager<F> {
         for page_begin in (begin..end).step_by(PAGE_SIZE) {
             if !self.cached_pages.contains_key(&{ page_begin }) {
                 let page = CachedPage::alloc()?;
-                let len = file.lock().await.read_at(page_begin, page.for_read()).await?;
+                let len = file.lock().await.read_page_at(page_begin, page.for_read()).await?;
                 page.set_len(len);
                 total_len += len;
                 self.cached_pages.insert(page_begin, page);

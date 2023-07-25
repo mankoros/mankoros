@@ -7,7 +7,10 @@ use super::{
     ClusterID, Fat32FS, FatDEntryData, SectorID,
 };
 use crate::{
-    fs::new_vfs::{underlying::ConcreteFile, VfsFileAttr, VfsFileKind},
+    fs::{
+        disk::{BLOCK_SIZE, LOG2_BLOCK_SIZE},
+        new_vfs::{underlying::ConcreteFile, VfsFileAttr, VfsFileKind},
+    },
     panic,
     tools::errors::{dyn_future, ASysResult, SysError, SysResult},
 };
@@ -56,14 +59,48 @@ fn round_up(x: usize, y: usize) -> usize {
 }
 
 impl FATFile {
-    async fn delete_self(&self) -> SysResult {
-        todo!()
+    // 真的要在具体 FS 层支持递归删除吗? 感觉似乎可以放上 VFS 做
+    fn delete_recursive(&self) -> ASysResult {
+        // 递归的 async 函数必须 Box
+        dyn_future(async {
+            match self.kind() {
+                VfsFileKind::RegularFile => self.delete_self(),
+                VfsFileKind::Directory => {
+                    let mut it = self.gde_iter();
+                    while it.mark_next().await?.is_some() {
+                        let file = self.into_file(&it);
+                        file.delete_recursive().await?;
+                        it.leave_next().await?;
+                    }
+                    self.delete_self()
+                }
+                _ => panic!("unsupported file kind"),
+            }
+        })
+    }
+    fn delete_self(&self) -> SysResult {
+        // TODO: debug mode 下给块里写满 0xdeadbeef, 用于 debug
+        self.chain.free_all(self.fs);
+        Ok(())
     }
 
     async fn attach<'a>(&'a self, data: &FatDEntryData<'a>) -> SysResult<Self> {
         // 遍历 GroupDE, 寻找 unused entry, 然后把 name 和 kind 写进去
         // 如果找不到, 就开 append mode 要求新写入
-        todo!()
+        let mut it = self.gde_iter();
+        while it.mark_next().await?.is_some() {
+            if it.can_create(data) {
+                it.create_entry(data).await?;
+                return Ok(self.into_file(&it));
+            }
+            it.leave_next().await?;
+        }
+        it.append_enter();
+        // TODO: 这对吗? 看起来不太对劲
+        it.append(data).await?;
+        let file = self.into_file(&it);
+        it.append_end().await?;
+        Ok(file)
     }
 
     async fn detach_impl<'a>(&'a self, file: &'a Self) -> SysResult<GroupDEntryIter> {
@@ -116,14 +153,60 @@ impl ConcreteFile for FATFile {
         self.fs.device_id()
     }
 
-    fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
-        // 先从 offset 找到 sector, 然后逐个 sector 去无缓存地读
-        // 读的过程中与 buf.len 取个 min, 到 0 了或者没 sector 了就结束
-        todo!()
+    fn read_page_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
+        // 假设 VFS 上层都是按页读取的, 那么这意味着 offset 一定是 sector 对齐的,
+        // 并且 buf 的长度一定是 sector 的整数.
+        debug_assert!(offset % BLOCK_SIZE == 0);
+        debug_assert!(buf.len() % BLOCK_SIZE == 0);
+
+        dyn_future(async move {
+            let (sct_id, sct_off) = self.chain.offset_sct(self.fs, offset);
+            debug_assert!(sct_off == 0);
+
+            let mut buf = buf;
+            let mut sid = sct_id;
+            let mut read_len = 0;
+            while !buf.is_empty() {
+                self.fs.read_sector(sid, buf).await?;
+                let len = core::cmp::min(buf.len(), BLOCK_SIZE);
+                buf = &mut buf[len..];
+                read_len += BLOCK_SIZE;
+                if let Some(next_sid) = self.fs.next_sector(sid) {
+                    sid = next_sid;
+                } else {
+                    break;
+                }
+            }
+
+            Ok(read_len)
+        })
     }
 
-    fn write_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> ASysResult<usize> {
-        todo!()
+    fn write_page_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> ASysResult<usize> {
+        // 大体上与 read_at 相同
+        debug_assert!(offset % BLOCK_SIZE == 0);
+        debug_assert!(buf.len() % BLOCK_SIZE == 0);
+        dyn_future(async move {
+            let (sct_id, sct_off) = self.chain.offset_sct(self.fs, offset);
+            debug_assert!(sct_off == 0);
+
+            let mut buf = buf;
+            let mut sid = sct_id;
+            let mut write_len = 0;
+            while !buf.is_empty() {
+                self.fs.write_sector(sid, buf).await?;
+                let len = core::cmp::min(buf.len(), BLOCK_SIZE);
+                buf = &buf[len..];
+                write_len += BLOCK_SIZE;
+                if let Some(next_sid) = self.fs.next_sector(sid) {
+                    sid = next_sid;
+                } else {
+                    break;
+                }
+            }
+
+            Ok(write_len)
+        })
     }
 
     fn truncate<'a>(&'a self, new_size: usize) -> ASysResult {
@@ -131,7 +214,24 @@ impl ConcreteFile for FATFile {
         // 如果是文件, 那么根据 new_size 是大是小决定
         // 如果小, 则调整 chain, 把多出来的块还给 fs
         // 如果大, 则向 fs 要新的块并更新 chain
-        todo!()
+        dyn_future(async move {
+            let new_size_cls = new_size >> (self.fs.log_cls_size_sct as usize + LOG2_BLOCK_SIZE);
+            let old_size_cls = self.chain.len();
+
+            // alloc/free cluster
+            if new_size_cls > old_size_cls {
+                self.chain.alloc_push(new_size_cls - old_size_cls, self.fs);
+            } else if new_size_cls < self.chain.len() {
+                self.chain.free_pop(old_size_cls - new_size_cls, self.fs);
+            } else {
+                debug_assert!(new_size_cls == self.chain.len());
+                // do nothing
+            }
+
+            // update the size in DEntry
+            self.editor.std_mut().size = new_size as u32;
+            Ok(())
+        })
     }
 
     fn lookup<'a>(&'a self, name: &'a str) -> ASysResult<Self> {
@@ -186,7 +286,7 @@ impl ConcreteFile for FATFile {
         // detach, 然后通知 fs 递归回收后边文件的 cluster
         dyn_future(async move {
             self.detach(file).await?;
-            file.delete_self().await
+            file.delete_self()
         })
     }
 

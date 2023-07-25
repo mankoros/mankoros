@@ -277,6 +277,9 @@ impl FATTableManager {
         self.fat[cid as usize] = 0x0FFFFFFF;
         cid
     }
+    pub fn free(&mut self, cid: ClusterID) {
+        self.fat[cid as usize] = 0;
+    }
 
     pub fn set_next(&mut self, cid: ClusterID, next_cid: ClusterID) {
         self.fat[cid as usize] = next_cid as u32;

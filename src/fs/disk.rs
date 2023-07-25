@@ -214,10 +214,10 @@ impl Disk {
 /// A disk can be a dev file
 impl ConcreteFile for Disk {
     // TODO: async dir read/write
-    fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
+    fn read_page_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
         dyn_future(async move { self.sync_read_at(offset as u64, buf) })
     }
-    fn write_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> ASysResult<usize> {
+    fn write_page_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> ASysResult<usize> {
         dyn_future(async move { self.sync_write_at(offset as u64, buf) })
     }
 

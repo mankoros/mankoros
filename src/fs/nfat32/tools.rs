@@ -162,6 +162,28 @@ impl ClusterChain {
         self.inner().push(cluster)
     }
 
+    pub fn alloc_push(&self, n: usize, fs: &'static Fat32FS) {
+        fs.with_fat(|f| {
+            for _ in 0..n {
+                self.inner().push(f.alloc());
+            }
+        })
+    }
+    pub fn free_pop(&self, n: usize, fs: &'static Fat32FS) {
+        fs.with_fat(|f| {
+            for _ in 0..n {
+                f.free(self.inner().pop().unwrap());
+            }
+        })
+    }
+    pub fn free_all(&self, fs: &'static Fat32FS) {
+        fs.with_fat(|f| {
+            for c in self.inner() {
+                f.free(*c);
+            }
+        })
+    }
+
     /// 根据文件内的字节偏移量, 计算出这个偏移量的位置所在的扇区号和扇区内偏移量
     pub fn offset_sct(&self, fs: &'static Fat32FS, byte_offset: usize) -> (SectorID, SctOffsetT) {
         // 希望再也不用碰这块逻辑, 哈人
