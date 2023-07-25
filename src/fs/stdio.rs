@@ -90,6 +90,10 @@ impl VfsFile for Stdin {
             })
         })
     }
+
+    fn as_any(&self) -> &dyn core::any::Any {
+        self
+    }
 }
 
 impl VfsFile for Stdout {
@@ -162,6 +166,10 @@ impl VfsFile for Stdout {
             })
         })
     }
+
+    fn as_any(&self) -> &dyn core::any::Any {
+        self
+    }
 }
 
 impl VfsFile for Stderr {
@@ -233,5 +241,9 @@ impl VfsFile for Stderr {
                 create_time: 0, // TODO: create time
             })
         })
+    }
+
+    fn as_any(&self) -> &dyn core::any::Any {
+        self
     }
 }

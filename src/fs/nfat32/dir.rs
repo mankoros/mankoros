@@ -1,18 +1,14 @@
-use super::{ClsOffsetT, ClusterID, FATFile, Fat32FS, SectorID};
+use super::tools::BlockCacheEntryRef;
+use super::{ClsOffsetT, ClusterID, Fat32FS, SectorID};
+
 use crate::{
-    fs::{
-        disk::BLOCK_SIZE,
-        fat32::parse,
-        new_vfs::{underlying::ConcreteDEntryRef, VfsFileAttr, VfsFileKind},
-    },
+    fs::{disk::BLOCK_SIZE, nfat32::parse},
     tools::errors::SysResult,
 };
-use alloc::{boxed::Box, collections::VecDeque, string::String, vec::Vec};
-use core::{
-    async_iter::AsyncIterator, cell::SyncUnsafeCell, cmp::min, future::Future, pin::pin, slice,
-    task::Poll,
-};
-use futures::Stream;
+use alloc::{collections::VecDeque, string::String, vec::Vec};
+use core::fmt::Display;
+use core::mem::{size_of, MaybeUninit};
+use core::{cmp::min, usize};
 
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy)]
@@ -30,73 +26,21 @@ bitflags::bitflags! {
 }
 
 #[derive(Clone)]
-pub struct FATDentry {
-    // info about the dentry itself
-    pub(super) fs: &'static Fat32FS,
-    /// 用 u32::MAX 表示没有 pos.
-    /// 不知道为什么用 Option<GroupDEPos> 的话结构体大小暴涨 8 byte
-    pub(super) pos: GroupDEPos,
-
+pub struct FatDEntryData<'a> {
     // info about the file represented by the dentry
     pub(super) attr: Fat32DEntryAttr,
     pub(super) begin_cluster: ClusterID,
-    pub(super) name: String,
+    pub(super) name: &'a str,
     pub(super) size: u32,
 }
 
-impl FATDentry {
+impl FatDEntryData<'_> {
     pub(super) fn lfn_needed(&self) -> usize {
         let name_len = self.name.len();
         if name_len <= 8 {
             0
         } else {
             (name_len + 12) / 13
-        }
-    }
-
-    pub(super) fn pos(&self) -> Option<GroupDEPos> {
-        if self.pos == u32::MAX {
-            None
-        } else {
-            Some(self.pos)
-        }
-    }
-}
-
-impl ConcreteDEntryRef for FATDentry {
-    type FileT = FATFile;
-
-    fn name(&self) -> String {
-        self.name.clone()
-    }
-
-    fn attr(&self) -> VfsFileAttr {
-        let kind = if self.attr.contains(Fat32DEntryAttr::DIRECTORY) {
-            VfsFileKind::Directory
-        } else {
-            VfsFileKind::RegularFile
-        };
-
-        let byte_size = self.size as usize;
-        let block_count = (byte_size / BLOCK_SIZE) + !(byte_size % BLOCK_SIZE == 0) as usize;
-
-        VfsFileAttr {
-            kind,
-            device_id: self.fs.device_id(),
-            self_device_id: 0,
-            byte_size,
-            block_count,
-            access_time: 0,
-            modify_time: 0,
-            create_time: 0,
-        }
-    }
-
-    fn file(&self) -> Self::FileT {
-        FATFile {
-            fs: self.fs,
-            begin_cluster: self.begin_cluster,
-            last_cluster: None,
         }
     }
 }
@@ -112,32 +56,44 @@ impl ConcreteDEntryRef for FATDentry {
 const DENTRY_SIZE: ClsOffsetT = 32;
 
 #[repr(C, packed)]
+#[derive(Clone)]
 pub(super) struct Standard8p3EntryRepr {
-    name: [u8; 8],
-    ext: [u8; 3],
-    attr: u8,
-    _reserved: u8,
-    ctime_ts: u8,
-    ctime: u16,
-    cdate: u16,
-    adate: u16,
-    cluster_high: u16,
-    mtime: u16,
-    mdate: u16,
-    cluster_low: u16,
-    size: u32,
+    pub name: [u8; 8],
+    pub ext: [u8; 3],
+    pub attr: u8,
+    pub _reserved: u8,
+    pub ctime_ts: u8,
+    pub ctime: u16,
+    pub cdate: u16,
+    pub adate: u16,
+    pub cluster_high: u16,
+    pub mtime: u16,
+    pub mdate: u16,
+    pub cluster_low: u16,
+    pub size: u32,
+}
+
+impl Standard8p3EntryRepr {
+    pub fn attr(&self) -> Fat32DEntryAttr {
+        Fat32DEntryAttr::from_bits(self.attr).unwrap()
+    }
+
+    pub fn new_empty() -> Self {
+        unsafe { MaybeUninit::zeroed().assume_init() }
+    }
 }
 
 #[repr(C, packed)]
+#[derive(Clone)]
 pub(super) struct LongFileNameEntryRepr {
-    order: u8,
-    name1: [u16; 5],
-    attr: u8,
-    _type: u8,
-    checksum: u8,
-    name2: [u16; 6],
-    _reserved: u16,
-    name3: [u16; 2],
+    pub order: u8,
+    pub name1: [u16; 5],
+    pub attr: u8,
+    pub _type: u8,
+    pub checksum: u8,
+    pub name2: [u16; 6],
+    pub _reserved: u16,
+    pub name3: [u16; 2],
 }
 
 pub(super) struct AtomDEntryView<'a>(&'a [u8]);
@@ -236,15 +192,106 @@ impl<'a> AtomDEntryView<'a> {
 }
 
 /// 一个 AtomDE 在目录中的位置
-type AtomDEPos = u32;
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct AtomDEPos(usize);
 /// 一个 GroupDE 在目录中的位置
-type GroupDEPos = u32;
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct GroupDEPos(usize);
+
+impl AtomDEPos {
+    /// 这个 AtomDE 的开始在目录中的字节偏移量
+    pub const fn new(pos: usize) -> Self {
+        Self(pos)
+    }
+    /// 不在任何一个目录中的 AtomDE
+    pub const fn null() -> Self {
+        Self(usize::MAX)
+    }
+    pub fn is_null(&self) -> bool {
+        self.0 == usize::MAX
+    }
+
+    #[inline(always)]
+    fn assume_non_null(&self) {
+        debug_assert!(!self.is_null())
+    }
+
+    pub fn as_gdp(&self) -> GroupDEPos {
+        self.assume_non_null();
+        GroupDEPos(self.0)
+    }
+
+    pub fn offset_ade(&self, n: isize) -> AtomDEPos {
+        self.offset_byte(n * DENTRY_SIZE as isize)
+    }
+    pub fn offset_byte(&self, byte: isize) -> AtomDEPos {
+        self.assume_non_null();
+        debug_assert!(byte % DENTRY_SIZE as isize == 0);
+        debug_assert!(self.0 as isize + byte >= 0);
+        AtomDEPos((self.0 as isize + byte) as usize)
+    }
+
+    pub fn as_byte_offset(&self) -> usize {
+        self.assume_non_null();
+        self.0
+    }
+    pub fn as_ade_offset(&self) -> usize {
+        self.as_byte_offset() / DENTRY_SIZE as usize
+    }
+}
+impl GroupDEPos {
+    /// 这个 GroupDE 的开始在目录中的字节偏移量
+    pub const fn new(pos: usize) -> Self {
+        Self(pos)
+    }
+    /// 不在任何一个目录中的 GroupDE
+    pub const fn null() -> Self {
+        Self(usize::MAX)
+    }
+    pub fn is_null(&self) -> bool {
+        self.0 == usize::MAX
+    }
+
+    #[inline(always)]
+    fn assume_non_null(&self) {
+        debug_assert!(!self.is_null())
+    }
+
+    pub fn begin_ade(&self) -> AtomDEPos {
+        self.assume_non_null();
+        AtomDEPos(self.0)
+    }
+    pub fn round_down_sct(&self) -> AtomDEPos {
+        self.assume_non_null();
+        AtomDEPos((self.0 / BLK_ADE_CNT) * BLK_ADE_CNT)
+    }
+
+    pub fn offset_byte(&self, byte: usize) -> GroupDEPos {
+        self.assume_non_null();
+        debug_assert!(byte % DENTRY_SIZE as usize == 0);
+        GroupDEPos(self.0 + byte)
+    }
+
+    pub fn as_byte_offset(&self) -> usize {
+        self.assume_non_null();
+        self.0
+    }
+}
+impl Display for GroupDEPos {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+impl Display for AtomDEPos {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
 
 pub struct GroupDEntryIter {
     fs: &'static Fat32FS,
     window: AtomDEntryWindow,
     is_deleted: bool,
-    is_dirty: bool,
 }
 
 impl GroupDEntryIter {
@@ -253,41 +300,15 @@ impl GroupDEntryIter {
             fs,
             window: AtomDEntryWindow::new(fs, begin_cluster),
             is_deleted: false,
-            is_dirty: false,
         }
     }
-}
 
-impl Stream for GroupDEntryIter {
-    type Item = SysResult<FATDentry>;
-
-    fn poll_next(
-        self: core::pin::Pin<&mut Self>,
-        cx: &mut core::task::Context<'_>,
-    ) -> Poll<Option<Self::Item>> {
-        let this = unsafe { self.get_unchecked_mut() };
-        macro_rules! p_await {
-            ($e:expr) => {
-                match core::pin::pin!($e).poll(cx) {
-                    Poll::Ready(v) => v,
-                    Poll::Pending => return Poll::Pending,
-                }
-            };
+    pub fn new_middle(fs: &'static Fat32FS, sector: SectorID, gde_pos: GroupDEPos) -> Self {
+        Self {
+            fs,
+            window: AtomDEntryWindow::new_middle(fs, sector, gde_pos),
+            is_deleted: false,
         }
-
-        match p_await!(this.mark_next()) {
-            Ok(Some(())) => {}
-            Ok(None) => return Poll::Ready(None),
-            Err(e) => return Poll::Ready(Some(Err(e))),
-        };
-
-        let result = this.collect_dentry();
-
-        if let Err(e) = p_await!(this.leave_next()) {
-            return Poll::Ready(Some(Err(e)));
-        }
-
-        Poll::Ready(Some(Ok(result)))
     }
 }
 
@@ -304,8 +325,14 @@ impl GroupDEntryIter {
         self.window.len() == 1
     }
 
-    pub(super) fn pos(&self) -> GroupDEPos {
-        self.window.left_pos()
+    pub(super) fn gde_pos(&self) -> GroupDEPos {
+        self.window.left_pos().as_gdp()
+    }
+    pub(super) fn std_pos(&self) -> AtomDEPos {
+        self.window.right_pos().offset_ade(-1)
+    }
+    pub(super) fn std_clone(&self) -> Standard8p3EntryRepr {
+        self.get_std_entry().as_std().clone()
     }
 
     pub(super) fn collect_name(&self) -> String {
@@ -343,43 +370,39 @@ impl GroupDEntryIter {
     pub(super) fn get_size(&self) -> u32 {
         self.get_std_entry().as_std().size
     }
-    pub(super) fn collect_dentry(&self) -> FATDentry {
-        FATDentry {
-            fs: self.fs,
-            pos: self.window.left_pos(),
-            name: self.collect_name(),
-            attr: self.get_attr(),
-            begin_cluster: self.get_begin_cluster(),
-            size: self.get_size(),
-        }
-    }
 
     pub(super) fn change_size(&mut self, new_size: u32) {
-        self.is_dirty = true;
         unsafe { self.get_std_entry().as_std_mut().size = new_size }
     }
     pub(super) fn delete_entry(&mut self) {
         // 要将所有的 ADE 的第一个字节设置为 0xE5, 并且标记全部 dirty
         self.is_deleted = true;
-        self.is_dirty = true;
         for atom_entry in self.atom_iter() {
             unsafe { atom_entry.as_std_mut().name[0] = 0xE5 };
         }
     }
+    /// 是否代表一个有效的 GDE.
+    /// 只有在它返回 true 时, collect_* 和 get_* 方法才能使用
+    pub(super) fn is_valid(&self) -> bool {
+        !self.can_create_any()
+    }
+    /// 是否代表一个能放东西的空缺
     pub(super) fn can_create_any(&self) -> bool {
         self.window.get_in_buf(0).is_unused() || self.is_deleted
     }
-    pub(super) fn can_create(&self, dentry: &FATDentry) -> bool {
+    pub(super) fn can_create(&self, dentry: &FatDEntryData) -> bool {
         self.can_create_any() && dentry.lfn_needed() + 1 <= self.window.len()
     }
 
-    pub(super) async fn create_entry(&mut self, dentry: &FATDentry) -> SysResult<()> {
+    pub(super) async fn create_entry<'a>(
+        &'a mut self,
+        dentry: &FatDEntryData<'a>,
+    ) -> SysResult<()> {
         // 从当前窗口切一块出来存放新的 GDE
         debug_assert!(self.can_create(dentry));
-        self.is_dirty = true;
 
         // 写入名字
-        let name = dentry.name.as_str();
+        let name = dentry.name;
         let lfn_needed = dentry.lfn_needed();
         for i in 0..lfn_needed {
             let mut lfn_buf: [u16; 13] = [0; 13];
@@ -429,7 +452,7 @@ impl GroupDEntryIter {
         std.size = dentry.size;
 
         // 更新窗口
-        self.window.move_left(lfn_needed + 1, true).await
+        self.window.move_left(lfn_needed + 1).await
     }
 
     /// 从当前位置开始，向后查找直到找到一个完整的 GroupDE.
@@ -450,13 +473,13 @@ impl GroupDEntryIter {
     /// 通知已完成了对当前 GroupDE 的需求, 可以准备开始寻找下一个 GDE 了
     pub(super) async fn leave_next(&mut self) -> SysResult<()> {
         // TODO: 识别并记录对当前 GDE 的修改, 有时候只针对 8.3 的修改可以不用写回前边的一堆 LFN
-        self.window.move_left(self.window.len(), self.is_dirty).await
+        self.window.move_left(self.window.len()).await
     }
 
     pub(super) fn append_enter(&mut self) {
         self.window.in_append = true;
     }
-    pub(super) async fn append(&mut self, dentry: &FATDentry) -> SysResult<()> {
+    pub(super) async fn append<'a>(&'a mut self, dentry: &FatDEntryData<'a>) -> SysResult<()> {
         let ade_needed = dentry.lfn_needed() + 1;
         for _ in 0..ade_needed {
             self.window.move_right_one().await?;
@@ -475,27 +498,18 @@ impl GroupDEntryIter {
     }
 
     pub(super) async fn sync_all(&mut self) -> SysResult<()> {
-        self.window.move_left(self.window.len(), self.is_dirty).await
+        self.window.move_left(self.window.len()).await
     }
 }
 
 struct SectorBuf {
-    pub(super) data: Box<[u8]>,
+    data: Option<BlockCacheEntryRef>,
     pub(super) id: SectorID,
-    pub(super) dirty: bool,
 }
 
 impl SectorBuf {
-    pub fn alloc() -> SectorBuf {
-        SectorBuf {
-            data: unsafe { Box::new_uninit_slice(BLOCK_SIZE).assume_init() },
-            id: 0,
-            dirty: false,
-        }
-    }
-    pub fn reassign(&mut self, id: SectorID) {
-        self.id = id;
-        self.dirty = false;
+    pub fn new(id: SectorID) -> Self {
+        SectorBuf { data: None, id }
     }
 }
 
@@ -504,11 +518,9 @@ struct AtomDEntryWindow {
     ///  |----|++++++++++++++++++|----|
     /// beg   left(r)     right(r)   end
     sector_bufs: VecDeque<SectorBuf>,
-    in_init: bool,
     in_append: bool,
-    last_sector: SectorID,
-    buf_in_use: u32,
-    /// sector_bufs[0] 中的第一个 ADE 的绝对编号
+    next_sector: Option<SectorID>,
+    /// `sector_bufs[0]` 中的第一个 ADE 的绝对编号
     begin_pos: AtomDEPos,
     left_pos: AtomDEPos,
     right_pos: AtomDEPos,
@@ -516,158 +528,120 @@ struct AtomDEntryWindow {
 
 const BLK_ADE_CNT: usize = BLOCK_SIZE / DENTRY_SIZE as usize;
 
-impl AtomDEntryWindow {
+impl<'a> AtomDEntryWindow {
     const INIT_BUF_CNT: usize = 2;
-    pub fn new(fs: &'static Fat32FS, begin_cluster: ClusterID) -> AtomDEntryWindow {
-        let mut sector_bufs = VecDeque::with_capacity(4);
-        for _ in 0..Self::INIT_BUF_CNT {
-            sector_bufs.push_back(SectorBuf::alloc());
-        }
-
+    pub fn new(fs: &'static Fat32FS, begin_cluster: ClusterID) -> Self {
         AtomDEntryWindow {
             fs,
-            sector_bufs,
-            in_init: true,
+            sector_bufs: VecDeque::with_capacity(4),
             in_append: false,
-            last_sector: fs.first_sector(begin_cluster),
-            begin_pos: 0,
-            left_pos: 0,
-            right_pos: 0,
-            buf_in_use: 0,
+            next_sector: Some(fs.first_sector(begin_cluster)),
+            begin_pos: AtomDEPos::new(0),
+            left_pos: AtomDEPos::new(0),
+            right_pos: AtomDEPos::new(0),
         }
     }
-    async fn load(&mut self, buf_idx: usize) -> SysResult<()> {
-        let sc = &mut self.sector_bufs[buf_idx];
-        self.fs.read_sector(sc.id, &mut sc.data).await
-    }
-    async fn sync(&mut self, buf_idx: usize) -> SysResult<()> {
-        let sc = &mut self.sector_bufs[buf_idx];
-        if sc.dirty {
-            sc.dirty = false;
-            self.fs.write_sector(sc.id, &sc.data).await
-        } else {
-            Ok(())
+    pub fn new_middle(fs: &'static Fat32FS, sector: SectorID, gde_pos: GroupDEPos) -> Self {
+        AtomDEntryWindow {
+            fs,
+            sector_bufs: VecDeque::with_capacity(3),
+            in_append: false,
+            next_sector: Some(sector),
+            begin_pos: gde_pos.round_down_sct(),
+            left_pos: gde_pos.begin_ade(),
+            right_pos: gde_pos.begin_ade(),
         }
+    }
+    async fn load(&mut self, sc: &mut SectorBuf) -> SysResult<()> {
+        if sc.data.is_none() {
+            let block_cache = self.fs.block_dev().get(sc.id).await?;
+            sc.data = Some(block_cache);
+        }
+        Ok(())
+    }
+    fn buf_idx(&self, pos: AtomDEPos) -> usize {
+        (pos.as_byte_offset() - self.begin_pos.as_byte_offset()) / BLOCK_SIZE
     }
 
     /// move the left bound of current windows by N ADEs,
     /// if write_back is true, the passed by buffers and
     /// the buffer where the new left in will be marked as dirty.
-    pub async fn move_left(&mut self, n: usize, write_back: bool) -> SysResult<()> {
-        let n = n as AtomDEPos;
-        if self.left_pos + n > self.right_pos {
+    pub async fn move_left(&mut self, n: usize) -> SysResult<()> {
+        let new_left = self.left_pos.offset_ade(n as isize);
+        if new_left > self.right_pos {
             panic!("move_left: out of range");
         }
 
-        // check how many buffers has been passed by
-        let new_left = self.left_pos + n;
-
+        // check how many sectors has been passed by
         // sync the passed by buffers and re-use them
-        let buf_idx_where_new_left_in = new_left / DENTRY_SIZE as AtomDEPos;
-        for i in 0..buf_idx_where_new_left_in {
-            let mut sc = self.sector_bufs.pop_front().unwrap();
-            sc.dirty |= write_back;
-            self.sync(i as usize).await?;
-            self.sector_bufs.push_back(sc);
+        let buf_idx_where_new_left_in = self.buf_idx(new_left);
+        for _i in 0..buf_idx_where_new_left_in {
+            self.sector_bufs.pop_front();
         }
-
-        // mark current buffer with respect to write_back
-        self.sector_bufs[buf_idx_where_new_left_in as usize].dirty |= write_back;
 
         log::trace!("move_left: {} -> {}", self.left_pos, new_left);
         self.left_pos = new_left;
-        self.begin_pos += buf_idx_where_new_left_in * BLK_ADE_CNT as AtomDEPos;
+        self.begin_pos =
+            self.begin_pos.offset_byte((buf_idx_where_new_left_in * BLOCK_SIZE) as isize);
         Ok(())
     }
 
     pub async fn move_right_one(&mut self) -> SysResult<Option<AtomDEntryView>> {
         let current = self.right_pos;
         log::trace!(
-            "move_right_one enter: (right_pos: {}, in_init: {}, buf_in_use: {})",
+            "move_right_one enter: (right_pos: {}, buf_in_use: {})",
             self.right_pos,
-            self.in_init,
-            self.buf_in_use
+            self.sector_bufs.len()
         );
 
-        // 1. check if the next ADE pass the capacity
-        // if so, alloc a new buffer
-        let cur_buf_idx = (current as usize) / BLK_ADE_CNT;
+        // 1. 检查是否需要加载新的 sector
+        let cur_buf_idx = self.buf_idx(self.right_pos);
         if cur_buf_idx >= self.sector_bufs.len() {
-            self.sector_bufs.push_back(SectorBuf::alloc());
-        }
-
-        // 2. check if the next ADE pass last buffer
-        // if so, load the new buffer & update the buf_in_use
-        //      2.1 check for init
-        if self.in_init {
-            self.sector_bufs[0].reassign(self.last_sector as SectorID);
-            self.load(0).await?;
-            self.buf_in_use += 1;
-            self.in_init = false;
-        } else {
-            let end_idx = self.buf_in_use as usize;
-            if cur_buf_idx >= end_idx {
-                debug_assert!(cur_buf_idx == end_idx);
-                // find next sector of the last buffer
-                let next_sector = match self.fs.next_sector(self.last_sector) {
-                    Some(s) => s,
-                    None => {
-                        if self.in_append {
-                            // if in append mode, we should alloc a new cluster
-                            let last_cls = self.fs.find_cluster(self.last_sector);
-                            let new_cluster = self.fs.with_fat(|f| {
-                                let new_cls = f.alloc();
-                                f.set_next(last_cls, new_cls);
-                                new_cls
-                            });
-                            self.fs.first_sector(new_cluster)
-                        } else {
-                            // if not in append mode, we should return None
-                            return Ok(None);
-                        }
-                    }
-                };
-
-                // re-assign the new buffer and load content
-                let new_buf = &mut self.sector_bufs[end_idx];
-                new_buf.reassign(next_sector);
-                self.load(cur_buf_idx).await?;
-                self.buf_in_use += 1;
+            debug_assert!(cur_buf_idx == self.sector_bufs.len());
+            // 要载入新的 sector
+            if let Some(next_sct) = self.next_sector {
+                let mut new_buf = SectorBuf::new(next_sct);
+                self.load(&mut new_buf).await?;
+                self.sector_bufs.push_back(new_buf);
+                // 更新 next_sector
+                self.next_sector = self.fs.next_sector(next_sct);
+            } else {
+                // 不存在新的 sector 了
+                return Ok(None);
             }
         }
+        debug_assert!(cur_buf_idx < self.sector_bufs.len());
 
-        // 3. update the right_pos
-        self.right_pos += 1;
+        // 2. update the right_pos
+        self.right_pos.offset_ade(1);
 
-        // 4. check whether the new ADE is valid.
+        // 3. check whether the new ADE is valid.
         let last_ade = self.get_in_dir(current);
         if last_ade.is_end() && !self.in_append {
             log::debug!("move_right_one: reach end ({})", current);
             return Ok(None);
         } else {
-            log::debug!(
-                "move_right_one: reach {} ({})",
-                (if last_ade.is_lfn() {
-                    "lfn"
-                } else if last_ade.is_std() {
-                    "std"
-                } else {
-                    "unused"
-                }),
-                current
-            );
+            let ade_kind = if last_ade.is_lfn() {
+                "lfn"
+            } else if last_ade.is_std() {
+                "std"
+            } else {
+                "unused"
+            };
+            log::debug!("move_right_one: reach {} ({})", ade_kind, current);
             Ok(Some(last_ade))
         }
     }
 
     /// get the ADE with its relative AtomDEPos in this window
     pub fn get_in_window(&self, idx: usize) -> AtomDEntryView {
-        self.get_in_dir(self.left_pos + idx as AtomDEPos)
+        self.get_in_dir(self.left_pos.offset_ade(idx as isize))
     }
 
     /// get the ADE with its AtomDEPos in current directory
     pub fn get_in_dir(&self, pos: AtomDEPos) -> AtomDEntryView {
-        self.get_in_buf((pos - self.begin_pos) as usize)
+        let delta_ade = pos.as_ade_offset() - self.begin_pos.as_ade_offset();
+        self.get_in_buf(delta_ade)
     }
 
     /// get the ADE with its index in curr buffer
@@ -677,18 +651,21 @@ impl AtomDEntryWindow {
 
         let buf = &self.sector_bufs[buf_idx];
         let buf_off_byte = buf_off * DENTRY_SIZE as usize;
-        let slice = &buf.data[buf_off_byte..(buf_off_byte + DENTRY_SIZE as usize)];
-        let entry = AtomDEntryView::new(slice);
+        let bc_ref = buf.data.as_ref().unwrap();
+        // TODO: 想办法在这里合并一些锁的使用, 比如说在准备大量解析同一个块时只给它上一个锁
+        let block_slice = bc_ref.as_slice();
+        let entry_slice = &block_slice[buf_off_byte..(buf_off_byte + DENTRY_SIZE as usize)];
+        let entry = AtomDEntryView::new(entry_slice);
 
         // log::debug!("get_idx: {}", buf_ade_idx);
         // entry.debug();
-
         entry
     }
 
     /// how many ADE this windows holding now
     pub fn len(&self) -> usize {
-        (self.right_pos - self.left_pos) as usize
+        let delta_byte = self.right_pos.as_byte_offset() - self.left_pos.as_byte_offset();
+        (delta_byte as usize) / (DENTRY_SIZE as usize)
     }
     /// left bound of this windows, in current directory
     pub fn left_pos(&self) -> AtomDEPos {
@@ -700,7 +677,7 @@ impl AtomDEntryWindow {
     }
 
     pub fn last(&self) -> AtomDEntryView {
-        self.get_in_dir(self.right_pos - 1)
+        self.get_in_dir(self.right_pos.offset_ade(-1))
     }
     pub fn iter(&self) -> AtomDEntryWindowIter {
         AtomDEntryWindowIter {
@@ -719,11 +696,11 @@ impl<'a> Iterator for AtomDEntryWindowIter<'a> {
     type Item = AtomDEntryView<'a>;
     fn next(&mut self) -> Option<Self::Item> {
         log::trace!("AtomDEntryWindowIter::cur: {}", self.cur);
-        if self.cur as usize >= self.this.len() {
+        if self.cur.as_ade_offset() >= self.this.len() {
             None
         } else {
             let res = self.this.get_in_dir(self.cur);
-            self.cur += 1;
+            self.cur.offset_ade(1);
             Some(res)
         }
     }

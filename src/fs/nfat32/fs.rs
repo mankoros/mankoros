@@ -1,20 +1,24 @@
-use super::{super::disk::BLOCK_SIZE, BlockID, ClsOffsetT, ClusterID, FATFile, SectorID};
+use super::tools::CachedBlkDev;
+use super::{super::disk::BLOCK_SIZE, BlockID, ClusterID, FATFile, SectorID};
+use crate::fs::nfat32::tools::cvt_err;
+
 use crate::{
-    consts::PAGE_SIZE,
-    drivers::{AsyncBlockDevice, DevError},
-    fs::fat32::parse,
-    here,
-    sync::{SleepLock, SpinNoIrqLock},
-    tools::errors::{SysError, SysResult},
+    consts::PAGE_SIZE, drivers::AsyncBlockDevice, fs::nfat32::parse, here, sync::SpinNoIrqLock,
+    tools::errors::SysResult,
 };
-use alloc::{boxed::Box, collections::BTreeMap, sync::Arc, vec::Vec};
-use core::{cmp::min, slice};
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
+
+use crate::fs::new_vfs::underlying::ConcreteFS;
+use core::slice;
+use crate::fs::new_vfs::top::{VfsFileRef, VfsFS};
+use crate::fs::new_vfs::path_cache::PathCacheDir;
+use crate::fs::new_vfs::sync_attr_file::SyncAttrFile;
+use core::pin::Pin;
 
 pub type BlkDevRef = Arc<dyn AsyncBlockDevice>;
 
 pub struct Fat32FS {
-    dir_blocks: SpinNoIrqLock<BTreeMap<BlockID, [u8; BLOCK_SIZE]>>,
-    block_dev: SleepLock<BlkDevRef>,
+    block_dev: CachedBlkDev,
     fat_table_mgr: SpinNoIrqLock<FATTableManager>,
 
     // FS Info
@@ -25,19 +29,6 @@ pub struct Fat32FS {
     pub(super) log_cls_size_sct: u8,
     pub(super) data_begin_sct: SectorID,
     pub(super) root_id_cls: ClusterID,
-}
-
-fn cvt_err(dev_err: DevError) -> SysError {
-    match dev_err {
-        DevError::AlreadyExists => SysError::EEXIST,
-        DevError::Again => SysError::EAGAIN,
-        DevError::BadState => SysError::EIO,
-        DevError::InvalidParam => SysError::EINVAL,
-        DevError::IO => SysError::EIO,
-        DevError::NoMemory => SysError::ENOMEM,
-        DevError::ResourceBusy => SysError::EBUSY,
-        DevError::Unsupported => SysError::EINVAL,
-    }
 }
 
 fn int_log2(x: u8) -> u8 {
@@ -150,8 +141,7 @@ impl Fat32FS {
         log::debug!("FAT32 Info: Data begin sector: {}", data_begin_sct);
 
         Ok(Fat32FS {
-            dir_blocks: SpinNoIrqLock::new(BTreeMap::new()),
-            block_dev: SleepLock::new(blk_dev),
+            block_dev: CachedBlkDev::new(blk_dev),
             fat_table_mgr: SpinNoIrqLock::new(fat_table_mgr),
 
             // FS Info
@@ -164,14 +154,6 @@ impl Fat32FS {
         })
     }
 
-    pub fn root(&'static self) -> FATFile {
-        FATFile {
-            fs: self,
-            begin_cluster: self.root_id_cls,
-            last_cluster: None,
-        }
-    }
-
     pub(super) fn with_fat<T>(&self, f: impl FnOnce(&mut FATTableManager) -> T) -> T {
         let mut fat_table_mgr = self.fat_table_mgr.lock(here!());
         f(&mut fat_table_mgr)
@@ -179,13 +161,6 @@ impl Fat32FS {
 
     pub(super) fn device_id(&self) -> usize {
         self.device_id
-    }
-
-    pub(super) fn offset_cls(&self, offset_byte: usize) -> (usize, ClsOffsetT) {
-        let cluster_size_byte = self.cluster_size_byte as usize;
-        let cluster_offset = offset_byte % cluster_size_byte;
-        let cluster_id = offset_byte / cluster_size_byte;
-        (cluster_id, cluster_offset as ClsOffsetT)
     }
 
     pub(super) fn first_sector(&self, cluster_id: ClusterID) -> SectorID {
@@ -203,13 +178,13 @@ impl Fat32FS {
     }
 
     pub(super) fn next_sector(&self, sid: SectorID) -> Option<SectorID> {
-        let lscc = self.log_cls_size_sct as u32;
+        let lcss = self.log_cls_size_sct as u32;
         let relative_sid = sid - self.data_begin_sct;
         // this formula can be cross verified with Self::first_sector
-        let cluster_id = ((relative_sid >> lscc) + 2) as ClusterID;
+        let cluster_id = ((relative_sid >> lcss) + 2) as ClusterID;
 
-        let offset = relative_sid & !(!0 << lscc);
-        if offset == (1 << lscc) - 1 {
+        let offset = relative_sid & !(!0 << lcss);
+        if offset == (1 << lcss) - 1 {
             self.with_fat(|fat| fat.next(cluster_id)).map(|ncid| self.first_sector(ncid))
         } else {
             Some(sid + 1)
@@ -218,46 +193,30 @@ impl Fat32FS {
 
     pub(super) async fn read_sector(&self, sid: SectorID, buf: &mut [u8]) -> SysResult<()> {
         log::debug!("read sector: sid: {}", sid);
-        let blkdev = self.block_dev.lock().await;
-        blkdev.read_block(sid, buf).await.map_err(cvt_err)
+        self.block_dev.read_noc(sid, buf).await
     }
-
     pub(super) async fn write_sector(&self, sid: SectorID, buf: &[u8]) -> SysResult<()> {
         log::debug!("write sector: sid: {}", sid);
-        let blkdev = self.block_dev.lock().await;
-        blkdev.write_block(sid, buf).await.map_err(cvt_err)
+        self.block_dev.write_noc(sid, buf).await
     }
 
-    pub(super) async fn read_cluster(&self, cid: ClusterID, mut buf: &mut [u8]) -> SysResult<()> {
-        let blkdev = self.block_dev.lock().await;
-        let sct = self.first_sector(cid);
-        for i in 0..self.cluster_size_sct {
-            let slice_len = min(buf.len(), BLOCK_SIZE);
-            let blk_id = sct + i as SectorID;
-            log::debug!("read block: blk_id: {}", blk_id);
-            blkdev.read_block(blk_id, &mut buf[..slice_len]).await.map_err(cvt_err)?;
-
-            buf = &mut buf[slice_len..];
-            if buf.is_empty() {
-                break;
-            }
-        }
+    pub(super) async fn read_cluster(&self, cid: ClusterID, buf: &mut [u8]) -> SysResult<()> {
+        let begin_sct = self.first_sector(cid);
+        self.block_dev
+            .read_noc_multi(begin_sct, self.cluster_size_sct as usize, buf)
+            .await?;
+        Ok(())
+    }
+    pub(super) async fn write_cluster(&self, cid: ClusterID, buf: &[u8]) -> SysResult<()> {
+        let begin_sct = self.first_sector(cid);
+        self.block_dev
+            .write_noc_multi(begin_sct, self.cluster_size_sct as usize, buf)
+            .await?;
         Ok(())
     }
 
-    pub(super) async fn write_cluster(&self, cid: ClusterID, mut buf: &[u8]) -> SysResult<()> {
-        let blkdev = self.block_dev.lock().await;
-        for _ in 0..self.cluster_size_sct {
-            let sct = self.first_sector(cid);
-            let slice_len = min(buf.len(), BLOCK_SIZE);
-            blkdev.write_block(sct, &buf[..slice_len]).await.map_err(cvt_err)?;
-
-            buf = &buf[slice_len..];
-            if buf.is_empty() {
-                break;
-            }
-        }
-        Ok(())
+    pub(super) fn block_dev(&self) -> &CachedBlkDev {
+        &self.block_dev
     }
 }
 
@@ -313,6 +272,9 @@ impl FATTableManager {
         self.fat[cid as usize] = 0x0FFFFFFF;
         cid
     }
+    pub fn free(&mut self, cid: ClusterID) {
+        self.fat[cid as usize] = 0;
+    }
 
     pub fn set_next(&mut self, cid: ClusterID, next_cid: ClusterID) {
         self.fat[cid as usize] = next_cid as u32;
@@ -344,5 +306,26 @@ impl FATTableManager {
                 log::debug!("FAT: cluster {} is used", i);
             }
         });
+    }
+}
+
+pub struct FatFSWrapper {
+    fs: Pin<Box<Fat32FS>>,
+}
+
+impl FatFSWrapper {
+    pub async fn new(blk_dev: BlkDevRef) -> SysResult<Self> {
+        Fat32FS::new(blk_dev).await.map(Box::pin).map(|fs| Self {fs})
+    }
+
+    pub fn get(&self) -> &'static Fat32FS {
+        unsafe { &*(&*self.fs as *const Fat32FS) }
+    }
+}
+
+impl VfsFS for FatFSWrapper {
+    fn root(&self) -> VfsFileRef {
+        let cf = FATFile::new_free(self.get(), self.get().root_id_cls);
+        VfsFileRef::new(PathCacheDir::new_root(SyncAttrFile::new(cf)))
     }
 }

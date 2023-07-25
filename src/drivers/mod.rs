@@ -101,6 +101,8 @@ pub trait BlockDevice: Device + Debug {
     fn read_block(&self, block_id: u64, buf: &mut [u8]) -> DevResult;
     fn write_block(&self, block_id: u64, buf: &[u8]) -> DevResult;
     fn flush(&self) -> DevResult;
+
+    fn use_as_async(self: Arc<Self>) -> Arc<dyn AsyncBlockDevice>;
 }
 
 pub trait CharDevice: Device + Debug {

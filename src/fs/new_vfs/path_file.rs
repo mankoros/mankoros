@@ -55,6 +55,10 @@ impl VfsFile for VfsPathFile {
         self.file().attr()
     }
 
+    fn as_any(&self) -> &dyn core::any::Any {
+        self
+    }
+
     impl_vfs_forward_dir!(file());
     impl_vfs_forward_file!(file());
 }

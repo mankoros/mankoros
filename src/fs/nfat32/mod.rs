@@ -1,12 +1,15 @@
 mod dir;
 mod file;
 mod fs;
+mod tools;
+
+use fs::Fat32FS;
 
 pub type DEntryIter = dir::GroupDEntryIter;
-pub use dir::FATDentry;
+pub use dir::FatDEntryData;
 pub use file::FATFile;
 pub use fs::BlkDevRef;
-pub use fs::Fat32FS;
+pub use fs::FatFSWrapper;
 
 // https://wiki.osdev.org/FAT
 
@@ -16,7 +19,7 @@ type SectorID = u64;
 type ClusterID = u32;
 // byte offset within a cluster
 type ClsOffsetT = u16;
-
+type SctOffsetT = u16;
 macro_rules! parse {
     (u8, $buf:expr, $beg_idx:expr) => {
         $buf[$beg_idx]

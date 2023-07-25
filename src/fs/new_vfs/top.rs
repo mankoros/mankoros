@@ -4,7 +4,10 @@ use crate::{
     tools::errors::{ASysResult, SysResult},
 };
 use alloc::{string::String, sync::Arc, vec::Vec};
-use core::ops::{Deref, DerefMut};
+use core::{
+    any::Any,
+    ops::{Deref, DerefMut},
+};
 
 pub trait VfsFS {
     fn root(&self) -> VfsFileRef;
@@ -62,6 +65,9 @@ pub trait VfsFile: Send + Sync {
     /// 尝试将一个可能并不属于当前文件系统的文件 "贴" 到当前文件夹中.
     /// 可用于实现 mount
     fn attach<'a>(&'a self, name: &'a str, file: VfsFileRef) -> ASysResult;
+
+    // 通用操作
+    fn as_any(&self) -> &dyn Any;
 }
 
 #[derive(Clone)]
