@@ -1,10 +1,10 @@
+use super::tools::BlockCacheEntryRef;
 use super::{ClsOffsetT, ClusterID, FATFile, Fat32FS, SectorID};
-use crate::fs::nfat32::fs::BlockCacheEntryRef;
 use crate::sync::SpinNoIrqLockGuard;
 use crate::{
     fs::{
         disk::BLOCK_SIZE,
-        new_vfs::{underlying::ConcreteDEntryRef, VfsFileAttr, VfsFileKind},
+        new_vfs::{VfsFileAttr, VfsFileKind},
         nfat32::parse,
     },
     here,
@@ -68,44 +68,6 @@ impl FATDentry {
     }
 }
 
-impl ConcreteDEntryRef for FATDentry {
-    type FileT = FATFile;
-
-    fn name(&self) -> String {
-        self.name.clone()
-    }
-
-    fn attr(&self) -> VfsFileAttr {
-        let kind = if self.attr.contains(Fat32DEntryAttr::DIRECTORY) {
-            VfsFileKind::Directory
-        } else {
-            VfsFileKind::RegularFile
-        };
-
-        let byte_size = self.size as usize;
-        let block_count = (byte_size / BLOCK_SIZE) + !(byte_size % BLOCK_SIZE == 0) as usize;
-
-        VfsFileAttr {
-            kind,
-            device_id: self.fs.device_id(),
-            self_device_id: 0,
-            byte_size,
-            block_count,
-            access_time: 0,
-            modify_time: 0,
-            create_time: 0,
-        }
-    }
-
-    fn file(&self) -> Self::FileT {
-        FATFile {
-            fs: self.fs,
-            begin_cluster: self.begin_cluster,
-            last_cluster: None,
-        }
-    }
-}
-
 // 命名约定:
 // 1. AtomDEntry 指 fat32 中的一个 32 byte 长的 DEntry,
 //    它可以是一个 LFN Entry, 或是一个 Standard 8.3 DEntry.
@@ -117,6 +79,7 @@ impl ConcreteDEntryRef for FATDentry {
 const DENTRY_SIZE: ClsOffsetT = 32;
 
 #[repr(C, packed)]
+#[derive(Clone)]
 pub(super) struct Standard8p3EntryRepr {
     name: [u8; 8],
     ext: [u8; 3],
@@ -134,6 +97,7 @@ pub(super) struct Standard8p3EntryRepr {
 }
 
 #[repr(C, packed)]
+#[derive(Clone)]
 pub(super) struct LongFileNameEntryRepr {
     order: u8,
     name1: [u16; 5],
@@ -373,7 +337,8 @@ impl Stream for GroupDEntryIter {
             Err(e) => return Poll::Ready(Some(Err(e))),
         };
 
-        let result = this.collect_dentry();
+        // let result = this.collect_dentry();
+        let result = todo!();
 
         if let Err(e) = p_await!(this.leave_next()) {
             return Poll::Ready(Some(Err(e)));
@@ -434,16 +399,6 @@ impl GroupDEntryIter {
     }
     pub(super) fn get_size(&self) -> u32 {
         self.get_std_entry().as_std().size
-    }
-    pub(super) fn collect_dentry(&self) -> FATDentry {
-        FATDentry {
-            fs: self.fs,
-            pos: self.window.left_pos().as_gdp(),
-            name: self.collect_name(),
-            attr: self.get_attr(),
-            begin_cluster: self.get_begin_cluster(),
-            size: self.get_size(),
-        }
     }
 
     pub(super) fn change_size(&mut self, new_size: u32) {

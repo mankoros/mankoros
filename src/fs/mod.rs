@@ -14,10 +14,8 @@ use crate::{
 };
 
 pub mod disk;
-pub mod fatfs;
 pub mod partition;
 
-pub mod fat32;
 pub mod memfs;
 pub mod new_vfs;
 pub mod nfat32;

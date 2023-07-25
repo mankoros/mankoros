@@ -1,4 +1,6 @@
+use super::tools::CachedBlkDev;
 use super::{super::disk::BLOCK_SIZE, BlockID, ClsOffsetT, ClusterID, FATFile, SectorID};
+use crate::fs::nfat32::tools::cvt_err;
 use crate::sync::SpinNoIrqLockGuard;
 use crate::{
     consts::PAGE_SIZE,
@@ -28,19 +30,6 @@ pub struct Fat32FS {
     pub(super) log_cls_size_sct: u8,
     pub(super) data_begin_sct: SectorID,
     pub(super) root_id_cls: ClusterID,
-}
-
-fn cvt_err(dev_err: DevError) -> SysError {
-    match dev_err {
-        DevError::AlreadyExists => SysError::EEXIST,
-        DevError::Again => SysError::EAGAIN,
-        DevError::BadState => SysError::EIO,
-        DevError::InvalidParam => SysError::EINVAL,
-        DevError::IO => SysError::EIO,
-        DevError::NoMemory => SysError::ENOMEM,
-        DevError::ResourceBusy => SysError::EBUSY,
-        DevError::Unsupported => SysError::EINVAL,
-    }
 }
 
 fn int_log2(x: u8) -> u8 {
@@ -167,11 +156,7 @@ impl Fat32FS {
     }
 
     pub fn root(&'static self) -> FATFile {
-        FATFile {
-            fs: self,
-            begin_cluster: self.root_id_cls,
-            last_cluster: None,
-        }
+        todo!()
     }
 
     pub(super) fn with_fat<T>(&self, f: impl FnOnce(&mut FATTableManager) -> T) -> T {
@@ -330,113 +315,5 @@ impl FATTableManager {
                 log::debug!("FAT: cluster {} is used", i);
             }
         });
-    }
-}
-
-pub(super) type BlockCacheEntryRef = Arc<BlockCacheEntry>;
-pub(super) struct CachedBlkDev {
-    blk_dev: SleepLock<BlkDevRef>,
-    cache: SpinNoIrqLock<BTreeMap<BlockID, BlockCacheEntryRef>>,
-}
-
-impl CachedBlkDev {
-    pub fn new(blk_dev: BlkDevRef) -> Self {
-        CachedBlkDev {
-            blk_dev: SleepLock::new(blk_dev),
-            cache: SpinNoIrqLock::new(BTreeMap::new()),
-        }
-    }
-
-    pub async fn get(&self, id: BlockID) -> SysResult<BlockCacheEntryRef> {
-        match { self.cache.lock(here!()).get(&id) } {
-            Some(entry) => Ok(entry.clone()),
-            None => {
-                let entry = BlockCacheEntry::new();
-                self.read_noc(id, entry.just_mut()).await?;
-                let entry = Arc::new(entry);
-                self.cache.lock(here!()).insert(id, entry.clone());
-                Ok(entry)
-            }
-        }
-    }
-
-    pub async fn read(&self, id: BlockID, buf: &mut [u8]) -> SysResult {
-        let entry = self.get(id).await?;
-        buf.copy_from_slice(entry.as_slice());
-        Ok(())
-    }
-
-    pub async fn write(&self, id: BlockID, buf: &[u8]) -> SysResult {
-        let entry = self.get(id).await?;
-        entry.as_mut_slice().copy_from_slice(buf);
-        // TODO: if too many blocks & too less use_cnt, write back the block
-        Ok(())
-    }
-
-    pub async fn read_noc(&self, id: BlockID, buf: &mut [u8]) -> SysResult {
-        let blk_dev = self.blk_dev.lock().await;
-        blk_dev.read_block(id, buf).await.map_err(cvt_err)
-    }
-    pub async fn write_noc(&self, id: BlockID, buf: &[u8]) -> SysResult {
-        let blk_dev = self.blk_dev.lock().await;
-        blk_dev.write_block(id, buf).await.map_err(cvt_err)
-    }
-
-    pub async fn read_noc_multi(&self, id: BlockID, n: usize, buf: &mut [u8]) -> SysResult {
-        let blk_dev = self.blk_dev.lock().await;
-        for i in 0..n {
-            let buf = &mut buf[i * BLOCK_SIZE..(i + 1) * BLOCK_SIZE];
-            blk_dev.read_block(id + i as BlockID, buf).await.map_err(cvt_err)?;
-        }
-        Ok(())
-    }
-    pub async fn write_noc_multi(&self, id: BlockID, n: usize, buf: &[u8]) -> SysResult {
-        let blk_dev = self.blk_dev.lock().await;
-        for i in 0..n {
-            let buf = &buf[i * BLOCK_SIZE..(i + 1) * BLOCK_SIZE];
-            blk_dev.write_block(id + i as BlockID, buf).await.map_err(cvt_err)?;
-        }
-        Ok(())
-    }
-}
-
-pub(super) struct BlockCacheEntry {
-    data: [u8; BLOCK_SIZE],
-    dirty: AtomicBool,
-    use_cnt: AtomicUsize,
-}
-
-impl BlockCacheEntry {
-    pub fn new() -> Self {
-        Self {
-            data: [0; BLOCK_SIZE],
-            dirty: AtomicBool::new(false),
-            use_cnt: AtomicUsize::new(0),
-        }
-    }
-    fn add_use_cnt(&self, offset: usize) {
-        self.use_cnt.fetch_add(offset, core::sync::atomic::Ordering::Relaxed);
-    }
-
-    pub fn as_slice(&self) -> &[u8] {
-        self.add_use_cnt(1);
-        &self.data
-    }
-
-    pub fn as_mut_slice(&self) -> &mut [u8] {
-        self.add_use_cnt(1);
-        self.dirty.store(true, core::sync::atomic::Ordering::Relaxed);
-        self.just_mut()
-    }
-
-    fn just_mut(&self) -> &mut [u8] {
-        unsafe { &mut *(self.data.as_slice() as *const _ as *mut _) }
-    }
-
-    pub fn is_dirty(&self) -> bool {
-        self.dirty.load(core::sync::atomic::Ordering::Relaxed)
-    }
-    pub fn use_cnt(&self) -> usize {
-        self.use_cnt.load(core::sync::atomic::Ordering::Relaxed)
     }
 }

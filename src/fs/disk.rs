@@ -14,7 +14,6 @@ use super::BlockDevice;
 
 use crate::drivers::DevResult;
 
-use super::new_vfs::underlying::ConcreteDEntryRef;
 use super::new_vfs::underlying::ConcreteFile;
 use super::new_vfs::DeviceIDCollection;
 use super::new_vfs::VfsFileAttr;
@@ -23,9 +22,11 @@ use crate::tools::errors::ASysResult;
 use crate::tools::errors::SysError;
 use crate::tools::errors::SysResult;
 
-use super::new_vfs::page_cache::SyncPageCacheFile;
-use super::new_vfs::sync_attr_cache::SyncAttrCacheFile;
+use super::new_vfs::page_cache::PageCacheFile;
+use super::new_vfs::sync_attr_file::SyncAttrFile;
 use super::new_vfs::top::VfsFileRef;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 pub const BLOCK_SIZE: usize = 512;
 
@@ -74,7 +75,7 @@ impl Disk {
             modify_time: 0,
             create_time: 0,
         };
-        let file = SyncPageCacheFile::new(SyncAttrCacheFile::new_direct(self, attr));
+        let file = PageCacheFile::new(SyncAttrFile::new(self));
         VfsFileRef::new(file)
     }
 
@@ -209,64 +210,57 @@ impl Disk {
     }
 }
 
-#[derive(Clone)]
-pub struct FakeDEntry;
-impl ConcreteDEntryRef for FakeDEntry {
-    type FileT = Disk;
-    fn name(&self) -> alloc::string::String {
-        panic!("Should never use DirEntry for Disk")
-    }
-    fn attr(&self) -> VfsFileAttr {
-        panic!("Should never use DirEntry for Disk")
-    }
-    fn file(&self) -> Self::FileT {
-        panic!("Should never use DirEntry for Disk")
-    }
-}
-
 /// A disk can be a dev file
 impl ConcreteFile for Disk {
-    type DEntryRefT = FakeDEntry;
-
     // TODO: async dir read/write
     fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
         dyn_future(async move { self.sync_read_at(offset as u64, buf) })
     }
-
     fn write_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> ASysResult<usize> {
         dyn_future(async move { self.sync_write_at(offset as u64, buf) })
     }
 
-    fn lookup_batch(
-        &self,
-        _skip_n: usize,
-        _name: Option<&str>,
-    ) -> ASysResult<(bool, alloc::vec::Vec<Self::DEntryRefT>)> {
-        unimplemented!("Should never use dir-op for Disk")
+    fn kind(&self) -> super::new_vfs::VfsFileKind {
+        todo!()
     }
-    fn set_attr(&self, _dentry_ref: Self::DEntryRefT, _attr: VfsFileAttr) -> ASysResult {
-        unimplemented!("Should never use dir-op for Disk")
+
+    fn size(&self) -> usize {
+        todo!()
     }
-    fn create(
-        &self,
-        _name: &str,
-        _kind: super::new_vfs::VfsFileKind,
-    ) -> ASysResult<Self::DEntryRefT> {
-        unimplemented!("Should never use dir-op for Disk")
+
+    fn block_count(&self) -> usize {
+        todo!()
     }
-    fn remove(&self, _dentry_ref: Self::DEntryRefT) -> ASysResult {
-        unimplemented!("Should never use dir-op for Disk")
+
+    fn device_id(&self) -> usize {
+        todo!()
     }
-    fn detach(&self, _dentry_ref: Self::DEntryRefT) -> ASysResult<Self> {
-        unimplemented!("Should never use dir-op for Disk")
+
+    fn truncate<'a>(&'a self, new_size: usize) -> ASysResult {
+        todo!()
     }
-    fn sync_batch<'a, Iter>(&'a self, modifications: Iter) -> ASysResult
-    where
-        Iter: IntoIterator<
-                Item = super::new_vfs::underlying::ConcreteDEntryRefModification<Self::DEntryRefT>,
-            > + Send
-            + 'a,
-    {
-        unimplemented!("Should never use dir-op for Disk")
+
+    fn lookup<'a>(&'a self, name: &'a str) -> ASysResult<Self> {
+        todo!()
+    }
+
+    fn list(&self) -> ASysResult<Vec<(String, Self)>> {
+        todo!()
+    }
+
+    fn create<'a>(&'a self, name: &'a str, kind: super::new_vfs::VfsFileKind) -> ASysResult<Self> {
+        todo!()
+    }
+
+    fn remove(&self, file: &Self) -> ASysResult {
+        todo!()
+    }
+
+    fn rename(&self, file: &Self, new_name: &str) -> ASysResult {
+        todo!()
+    }
+
+    fn detach(&self, file: &Self) -> ASysResult<Self> {
+        todo!()
     }
 }

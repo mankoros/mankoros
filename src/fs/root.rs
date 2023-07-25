@@ -8,7 +8,6 @@ use alloc::sync::Arc;
 
 use crate::lazy_init::LazyInit;
 
-use super::fatfs::FatFileSystem;
 use super::new_vfs::mount::MountPoint;
 use super::new_vfs::top::VfsFileRef;
 use super::partition::Partition;
@@ -20,11 +19,11 @@ pub fn get_root_dir() -> VfsFileRef {
 }
 
 pub fn init_rootfs(part: Partition) {
-    static FAT_FS: LazyInit<Arc<FatFileSystem>> = LazyInit::new();
-    FAT_FS.init_by(Arc::new(FatFileSystem::new(part)));
-    FAT_FS.init();
-    let main_fs = FAT_FS.clone();
+    // static FAT_FS: LazyInit<Arc<FatFileSystem>> = LazyInit::new();
+    // FAT_FS.init_by(Arc::new(FatFileSystem::new(part)));
+    // FAT_FS.init();
+    // let main_fs = FAT_FS.clone();
 
-    let root_dir = MountPoint::new(main_fs);
-    ROOT_DIR.init_by(VfsFileRef::new(root_dir));
+    // let root_dir = MountPoint::new(main_fs);
+    // ROOT_DIR.init_by(VfsFileRef::new(root_dir));
 }

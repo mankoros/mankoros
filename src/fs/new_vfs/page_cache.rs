@@ -1,5 +1,5 @@
 use super::{
-    sync_attr_cache::SyncAttrCacheFile,
+    sync_attr_file::SyncAttrFile,
     top::{MmapKind, VfsFile},
     underlying::ConcreteFile,
 };
@@ -11,7 +11,7 @@ use crate::{
         address::{PhysAddr, PhysAddr4K},
         frame::alloc_frame,
     },
-    sync::SleepLock,
+    sync::{SleepLock, SpinNoIrqLock},
     tools::errors::{dyn_future, ASysResult, SysError, SysResult},
 };
 use alloc::collections::BTreeMap;
@@ -20,13 +20,13 @@ use core::{
     sync::atomic::{AtomicBool, AtomicU32},
 };
 
-pub struct SyncPageCacheFile<F: ConcreteFile> {
+pub struct PageCacheFile<F: ConcreteFile> {
     mgr: SleepLock<PageManager<F>>,
-    file: SyncAttrCacheFile<F>,
+    file: SyncAttrFile<F>,
 }
 
-impl<F: ConcreteFile> SyncPageCacheFile<F> {
-    pub fn new(file: SyncAttrCacheFile<F>) -> Self {
+impl<F: ConcreteFile> PageCacheFile<F> {
+    pub fn new(file: SyncAttrFile<F>) -> Self {
         Self {
             mgr: SleepLock::new(PageManager::new()),
             file,
@@ -34,9 +34,9 @@ impl<F: ConcreteFile> SyncPageCacheFile<F> {
     }
 }
 
-impl<F: ConcreteFile> VfsFile for SyncPageCacheFile<F> {
+impl<F: ConcreteFile> VfsFile for PageCacheFile<F> {
     fn attr(&self) -> ASysResult<super::VfsFileAttr> {
-        dyn_future(async { Ok(self.file.with_attr_read(|attr| attr.clone())) })
+        dyn_future(async { Ok(self.file.attr().await) })
     }
 
     fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
@@ -109,7 +109,7 @@ impl<F: ConcreteFile> PageManager<F> {
 
     pub async fn perpare_range(
         &mut self,
-        file: &SyncAttrCacheFile<F>,
+        file: &SyncAttrFile<F>,
         offset: usize,
         len: usize,
     ) -> SysResult<usize> {
@@ -137,7 +137,7 @@ impl<F: ConcreteFile> PageManager<F> {
 
     pub async fn get_page(
         &mut self,
-        file: &SyncAttrCacheFile<F>,
+        file: &SyncAttrFile<F>,
         offset: usize,
     ) -> SysResult<PhysAddr4K> {
         let page_addr = PhysAddr::from(offset).round_down().bits();

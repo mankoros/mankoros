@@ -1,6 +1,7 @@
 mod dir;
 mod file;
 mod fs;
+mod tools;
 
 pub type DEntryIter = dir::GroupDEntryIter;
 pub use dir::FATDentry;
@@ -16,7 +17,7 @@ type SectorID = u64;
 type ClusterID = u32;
 // byte offset within a cluster
 type ClsOffsetT = u16;
-
+type SctOffsetT = u16;
 macro_rules! parse {
     (u8, $buf:expr, $beg_idx:expr) => {
         $buf[$beg_idx]
