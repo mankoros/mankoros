@@ -1,9 +1,10 @@
 use super::{
     dir::{Fat32DEntryAttr, GroupDEPos, GroupDEntryIter, Standard8p3EntryRepr},
     tools::{ClusterChain, WithDirty},
-    Fat32FS, FatDEntryData, SectorID,
+    ClusterID, Fat32FS, FatDEntryData, SectorID,
 };
 use crate::{
+    executor::block_on,
     fs::{
         disk::{BLOCK_SIZE, LOG2_BLOCK_SIZE},
         new_vfs::{underlying::ConcreteFile, VfsFileKind},
@@ -11,14 +12,65 @@ use crate::{
     tools::errors::{dyn_future, ASysResult, SysError, SysResult},
 };
 use alloc::vec::Vec;
+use core::cell::SyncUnsafeCell;
+
+pub(super) struct DEntryPosInfo {
+    /// 整个 GroupDE 的位置
+    gde_pos: GroupDEPos,
+    /// Standard Entry 的位置
+    sector: SectorID,
+    /// Standard Entry 的偏移
+    offset: u16,
+}
 
 pub(super) struct StdEntryEditor {
-    pub(super) sector: SectorID,
-    pub(super) offset: u16,
+    pub(super) pos: SyncUnsafeCell<DEntryPosInfo>,
     pub(super) std: WithDirty<Standard8p3EntryRepr>,
 }
 
 impl StdEntryEditor {
+    pub fn new_normal(pos: DEntryPosInfo, std: Standard8p3EntryRepr) -> Self {
+        Self {
+            pos: SyncUnsafeCell::new(pos),
+            std: WithDirty::new(std),
+        }
+    }
+
+    pub fn new_free() -> Self {
+        Self {
+            pos: SyncUnsafeCell::new(DEntryPosInfo {
+                gde_pos: GroupDEPos::null(),
+                sector: 0,
+                offset: 0,
+            }),
+            std: WithDirty::new(Standard8p3EntryRepr::new_empty()),
+        }
+    }
+
+    fn pos(&self) -> &mut DEntryPosInfo {
+        unsafe { &mut *self.pos.get() }
+    }
+
+    pub fn is_free(&self) -> bool {
+        self.pos().gde_pos == GroupDEPos::null()
+    }
+    pub fn set_free(&self) {
+        self.pos().gde_pos = GroupDEPos::null();
+    }
+    pub fn set_pos(&self, pos: DEntryPosInfo) {
+        *(self.pos()) = pos;
+    }
+
+    pub fn gde_pos(&self) -> GroupDEPos {
+        self.pos().gde_pos
+    }
+    pub fn sector(&self) -> SectorID {
+        self.pos().sector
+    }
+    pub fn offset(&self) -> u16 {
+        self.pos().offset
+    }
+
     pub fn std(&self) -> &Standard8p3EntryRepr {
         self.std.as_ref()
     }
@@ -27,20 +79,21 @@ impl StdEntryEditor {
     }
 
     pub async fn sync(&self, fs: &'static Fat32FS) -> SysResult<()> {
-        let bc = fs.block_dev().get(self.sector).await?;
-        let ptr = &bc.as_mut_slice()[self.offset as usize..][..32] as *const _ as *mut [u8]
-            as *mut Standard8p3EntryRepr;
-        unsafe { *ptr = self.std().clone() };
-        self.std.clear();
+        if self.std.dirty() && !self.is_free() {
+            let bc = fs.block_dev().get(self.sector()).await?;
+            let ptr = &bc.as_mut_slice()[self.offset() as usize..][..32] as *const _ as *mut [u8]
+                as *mut Standard8p3EntryRepr;
+            unsafe { *ptr = self.std().clone() };
+            self.std.clear();
+        }
         Ok(())
     }
 }
 
 pub struct FATFile {
-    fs: &'static Fat32FS,
-    editor: StdEntryEditor,
-    chain: ClusterChain,
-    gde_pos: GroupDEPos,
+    pub(super) fs: &'static Fat32FS,
+    pub(super) editor: StdEntryEditor,
+    pub(super) chain: ClusterChain,
 }
 
 fn round_up(x: usize, y: usize) -> usize {
@@ -48,6 +101,14 @@ fn round_up(x: usize, y: usize) -> usize {
 }
 
 impl FATFile {
+    pub fn new_free(fs: &'static Fat32FS, begin_cluster: ClusterID) -> Self {
+        Self {
+            fs,
+            editor: StdEntryEditor::new_free(),
+            chain: ClusterChain::new(fs, begin_cluster),
+        }
+    }
+
     // 真的要在具体 FS 层支持递归删除吗? 感觉似乎可以放上 VFS 做
     fn delete_recursive(&self) -> ASysResult {
         // 递归的 async 函数必须 Box
@@ -73,29 +134,32 @@ impl FATFile {
         Ok(())
     }
 
-    async fn attach<'a>(&'a self, data: &FatDEntryData<'a>) -> SysResult<Self> {
+    async fn attach_impl<'a>(&'a self, data: &FatDEntryData<'a>, file: &FATFile) -> SysResult {
+        debug_assert!(file.editor.is_free());
         // 遍历 GroupDE, 寻找 unused entry, 然后把 name 和 kind 写进去
         // 如果找不到, 就开 append mode 要求新写入
         let mut it = self.gde_iter();
         while it.mark_next().await?.is_some() {
             if it.can_create(data) {
                 it.create_entry(data).await?;
-                return Ok(self.into_file(&it));
+                file.editor.set_pos(self.into_de_pos(&it));
             }
             it.leave_next().await?;
         }
         it.append_enter();
         // TODO: 这对吗? 看起来不太对劲
         it.append(data).await?;
-        let file = self.into_file(&it);
+        file.editor.set_pos(self.into_de_pos(&it));
         it.append_end().await?;
-        Ok(file)
+        Ok(())
     }
 
     async fn detach_impl<'a>(&'a self, file: &'a Self) -> SysResult<GroupDEntryIter> {
-        let mut it = GroupDEntryIter::new_middle(self.fs, file.editor.sector, file.gde_pos);
+        let mut it =
+            GroupDEntryIter::new_middle(self.fs, file.editor.sector(), file.editor.gde_pos());
         it.mark_next().await?;
         it.delete_entry();
+        file.editor.set_free();
         Ok(it)
     }
 
@@ -103,23 +167,32 @@ impl FATFile {
         GroupDEntryIter::new(self.fs, self.chain.first())
     }
 
+    fn into_de_pos(&self, it: &GroupDEntryIter) -> DEntryPosInfo {
+        let (sector, offset) = self.chain.offset_sct(self.fs, it.std_pos().as_byte_offset());
+        DEntryPosInfo {
+            gde_pos: it.gde_pos(),
+            sector,
+            offset,
+        }
+    }
+
+    fn into_de_editor(&self, it: &GroupDEntryIter) -> StdEntryEditor {
+        StdEntryEditor::new_normal(self.into_de_pos(it), it.std_clone())
+    }
+
     fn into_file(&self, it: &GroupDEntryIter) -> Self {
-        let std_pos = it.std_pos();
-        let (sct_id, sct_off) = self.chain.offset_sct(self.fs, std_pos.as_byte_offset());
-        let editor = StdEntryEditor {
-            sector: sct_id,
-            offset: sct_off,
-            std: WithDirty::new(it.std_clone()),
-        };
+        let editor = self.into_de_editor(it);
         let begin_cluster = it.get_begin_cluster();
         let chain = ClusterChain::new(self.fs, begin_cluster);
-        let gde_pos = it.gde_pos();
         Self {
             fs: self.fs,
             editor,
             chain,
-            gde_pos,
         }
+    }
+
+    async fn sync_metadata(&self) {
+        self.editor.sync(self.fs).await.unwrap();
     }
 }
 
@@ -140,6 +213,12 @@ impl ConcreteFile for FATFile {
     }
     fn device_id(&self) -> usize {
         self.fs.device_id()
+    }
+    fn delete(&self) -> ASysResult {
+        dyn_future(async move {
+            self.delete_self()?;
+            Ok(())
+        })
     }
 
     fn read_page_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
@@ -267,15 +346,13 @@ impl ConcreteFile for FATFile {
                 begin_cluster,
                 size: 0,
             };
-            self.attach(&data).await
-        })
-    }
-
-    fn remove<'a>(&'a self, file: &'a Self) -> ASysResult {
-        // detach, 然后通知 fs 递归回收后边文件的 cluster
-        dyn_future(async move {
-            self.detach(file).await?;
-            file.delete_self()
+            let file = FATFile {
+                fs: self.fs,
+                editor: StdEntryEditor::new_free(),
+                chain: ClusterChain::new(self.fs, begin_cluster),
+            };
+            self.attach_impl(&data, &file).await?;
+            Ok(file)
         })
     }
 
@@ -292,10 +369,24 @@ impl ConcreteFile for FATFile {
             if it.can_create(&data) {
                 // 如果这个名字足够小, 则可以直接写回原来的地方
                 it.create_entry(&data).await?;
+                file.editor.set_pos(self.into_de_pos(&it));
             } else {
                 // 从头开始重新查找空闲位置, 或者在最末尾写入
-                self.attach(&data).await?;
+                self.attach_impl(&data, file).await?;
             }
+            Ok(())
+        })
+    }
+
+    fn attach<'a>(&'a self, file: &'a Self, name: &'a str) -> ASysResult {
+        dyn_future(async move {
+            let data = FatDEntryData {
+                attr: file.editor.std().attr(),
+                begin_cluster: file.chain.first(),
+                size: file.editor.std().size,
+                name,
+            };
+            self.attach_impl(&data, file).await?;
             Ok(())
         })
     }
@@ -307,5 +398,12 @@ impl ConcreteFile for FATFile {
             it.leave_next().await?;
             Ok(())
         })
+    }
+}
+
+impl Drop for FATFile {
+    fn drop(&mut self) {
+        // TODO: 也许可以用 spawn 直接把它加入到调度器就完事了?
+        block_on(self.sync_metadata());
     }
 }

@@ -91,4 +91,8 @@ impl VfsFile for TmpDir {
             Ok(ret)
         })
     }
+
+    fn as_any(&self) -> &dyn core::any::Any {
+        self
+    }
 }

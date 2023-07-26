@@ -8,6 +8,7 @@ pub trait ConcreteFile: Send + Sync + Sized + 'static {
     fn size(&self) -> usize;
     fn block_count(&self) -> usize;
     fn device_id(&self) -> usize;
+    fn delete(&self) -> ASysResult;
 
     // 文件操作
     fn read_page_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize>;
@@ -18,9 +19,9 @@ pub trait ConcreteFile: Send + Sync + Sized + 'static {
     fn lookup<'a>(&'a self, name: &'a str) -> ASysResult<Self>;
     fn list<'a>(&'a self) -> ASysResult<Vec<(String, Self)>>;
     fn create<'a>(&'a self, name: &'a str, kind: VfsFileKind) -> ASysResult<Self>;
-    fn remove<'a>(&'a self, file: &'a Self) -> ASysResult;
     fn rename<'a>(&'a self, file: &'a Self, new_name: &'a str) -> ASysResult;
     fn detach<'a>(&'a self, file: &'a Self) -> ASysResult;
+    fn attach<'a>(&'a self, file: &'a Self, name: &'a str) -> ASysResult;
 }
 
 pub trait ConcreteFS: Sized {

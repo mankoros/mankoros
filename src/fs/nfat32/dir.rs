@@ -7,6 +7,7 @@ use crate::{
 };
 use alloc::{collections::VecDeque, string::String, vec::Vec};
 use core::fmt::Display;
+use core::mem::{size_of, MaybeUninit};
 use core::{cmp::min, usize};
 
 bitflags::bitflags! {
@@ -75,6 +76,10 @@ pub(super) struct Standard8p3EntryRepr {
 impl Standard8p3EntryRepr {
     pub fn attr(&self) -> Fat32DEntryAttr {
         Fat32DEntryAttr::from_bits(self.attr).unwrap()
+    }
+
+    pub fn new_empty() -> Self {
+        unsafe { MaybeUninit::zeroed().assume_init() }
     }
 }
 

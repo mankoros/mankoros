@@ -26,6 +26,10 @@ impl VfsFile for MountPoint {
         self.root.attr()
     }
 
+    fn as_any(&self) -> &dyn core::any::Any {
+        self
+    }
+
     impl_vfs_forward_dir!(root);
     impl_vfs_default_non_file!(MountPoint);
 }

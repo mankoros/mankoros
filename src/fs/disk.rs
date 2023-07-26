@@ -222,18 +222,22 @@ impl ConcreteFile for Disk {
     }
 
     fn kind(&self) -> super::new_vfs::VfsFileKind {
-        todo!()
+        super::new_vfs::VfsFileKind::BlockDevice
     }
 
     fn size(&self) -> usize {
-        todo!()
+        self.size() as usize
     }
 
     fn block_count(&self) -> usize {
-        todo!()
+        self.dev.num_blocks() as usize
     }
 
     fn device_id(&self) -> usize {
+        todo!()
+    }
+
+    fn delete(&self) -> ASysResult {
         todo!()
     }
 
@@ -249,11 +253,11 @@ impl ConcreteFile for Disk {
         todo!()
     }
 
-    fn create<'a>(&'a self, _name: &'a str, _kind: super::new_vfs::VfsFileKind) -> ASysResult<Self> {
-        todo!()
-    }
-
-    fn remove(&self, _file: &Self) -> ASysResult {
+    fn create<'a>(
+        &'a self,
+        _name: &'a str,
+        _kind: super::new_vfs::VfsFileKind,
+    ) -> ASysResult<Self> {
         todo!()
     }
 
@@ -262,6 +266,10 @@ impl ConcreteFile for Disk {
     }
 
     fn detach(&self, _file: &Self) -> ASysResult {
+        todo!()
+    }
+
+    fn attach<'a>(&'a self, _file: &'a Self, _name: &'a str) -> ASysResult {
         todo!()
     }
 }

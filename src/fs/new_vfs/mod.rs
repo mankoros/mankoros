@@ -2,6 +2,7 @@
 pub mod mount;
 pub mod page_cache;
 pub mod path;
+pub mod path_cache;
 pub mod path_file;
 pub mod sync_attr_file;
 pub mod top;

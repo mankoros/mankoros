@@ -51,4 +51,8 @@ impl VfsFile for TTY {
     fn poll_write(&self, offset: usize, buf: &[u8]) -> usize {
         Stdout.poll_write(offset, buf)
     }
+
+    fn as_any(&self) -> &dyn core::any::Any {
+        self
+    }
 }

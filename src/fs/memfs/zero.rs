@@ -57,4 +57,8 @@ impl VfsFile for ZeroDev {
     fn poll_write(&self, _offset: usize, buf: &[u8]) -> usize {
         buf.len()
     }
+
+    fn as_any(&self) -> &dyn core::any::Any {
+        self
+    }
 }

@@ -11,7 +11,7 @@ use crate::{
         address::{PhysAddr, PhysAddr4K},
         frame::alloc_frame,
     },
-    sync::{SleepLock},
+    sync::SleepLock,
     tools::errors::{dyn_future, ASysResult, SysError, SysResult},
 };
 use alloc::collections::BTreeMap;
@@ -22,7 +22,7 @@ use core::{
 
 pub struct PageCacheFile<F: ConcreteFile> {
     mgr: SleepLock<PageManager<F>>,
-    file: SyncAttrFile<F>,
+    pub(super) file: SyncAttrFile<F>,
 }
 
 impl<F: ConcreteFile> PageCacheFile<F> {
@@ -90,6 +90,9 @@ impl<F: ConcreteFile> VfsFile for PageCacheFile<F> {
     }
 
     impl_vfs_default_non_dir!(SyncPageCacheFile);
+    fn as_any(&self) -> &dyn core::any::Any {
+        self
+    }
 }
 
 // 直接在最外层上大锁好了

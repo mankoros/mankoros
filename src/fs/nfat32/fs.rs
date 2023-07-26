@@ -8,6 +8,7 @@ use crate::{
 };
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 
+use crate::fs::new_vfs::underlying::ConcreteFS;
 use core::slice;
 
 pub type BlkDevRef = Arc<dyn AsyncBlockDevice>;
@@ -305,5 +306,14 @@ impl FATTableManager {
                 log::debug!("FAT: cluster {} is used", i);
             }
         });
+    }
+}
+
+impl ConcreteFS for Fat32FS {
+    type FileT = FATFile;
+
+    fn root(&self) -> Self::FileT {
+        // FATFile::new_free(self, self.root_id_cls)
+        todo!()
     }
 }
