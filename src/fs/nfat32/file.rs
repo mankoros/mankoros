@@ -235,8 +235,8 @@ impl ConcreteFile for FATFile {
             let mut sid = sct_id;
             let mut read_len = 0;
             while !buf.is_empty() {
-                self.fs.read_sector(sid, buf).await?;
                 let len = core::cmp::min(buf.len(), BLOCK_SIZE);
+                self.fs.read_sector(sid, &mut buf[..len]).await?;
                 buf = &mut buf[len..];
                 read_len += BLOCK_SIZE;
                 if let Some(next_sid) = self.fs.next_sector(sid) {
@@ -262,8 +262,8 @@ impl ConcreteFile for FATFile {
             let mut sid = sct_id;
             let mut write_len = 0;
             while !buf.is_empty() {
-                self.fs.write_sector(sid, buf).await?;
                 let len = core::cmp::min(buf.len(), BLOCK_SIZE);
+                self.fs.write_sector(sid, &buf[..len]).await?;
                 buf = &buf[len..];
                 write_len += BLOCK_SIZE;
                 if let Some(next_sid) = self.fs.next_sector(sid) {

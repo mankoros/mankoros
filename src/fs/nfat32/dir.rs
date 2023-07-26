@@ -96,6 +96,22 @@ pub(super) struct LongFileNameEntryRepr {
     pub name3: [u16; 2],
 }
 
+impl LongFileNameEntryRepr {
+    pub fn collect_chars(&self) -> [u16; 13] {
+        let mut name: [u16; 13] = [0; 13];
+        for i in 0..5 {
+            name[i] = self.name1[i];
+        }
+        for i in 0..6 {
+            name[i + 5] = self.name2[i];
+        }
+        for i in 0..2 {
+            name[i + 11] = self.name3[i];
+        }
+        name
+    }
+}
+
 pub(super) struct AtomDEntryView<'a>(&'a [u8]);
 impl<'a> AtomDEntryView<'a> {
     pub fn new(raw: &'a [u8]) -> Self {
@@ -346,19 +362,28 @@ impl GroupDEntryIter {
             }
             String::from_utf8(name).unwrap()
         } else {
-            let mut name = Vec::<u16>::new();
+            // TODO: 优化逻辑使其只复制一遍, 需要增加一个逆序访问的 atom_iter
+            let mut lfn_char_blocks = Vec::<[u16; 13]>::new();
             for atom_entry in self.atom_iter() {
                 if atom_entry.is_std() {
                     break;
                 }
                 let lfn = atom_entry.as_lfn();
-                name.extend(lfn.name1);
-                name.extend(lfn.name2);
-                name.extend(lfn.name3);
+                lfn_char_blocks.push(lfn.collect_chars());
             }
-            log::debug!("GDE iter: collect name 1: {}", name.len());
-            name.retain(|&x| x != 0xFFFF);
-            log::debug!("GDE iter: collect name 2: {}", name.len());
+
+            let mut name = Vec::<u16>::with_capacity(lfn_char_blocks.len() * 13);
+            'outer: for lfn_blk in lfn_char_blocks.into_iter().rev() {
+                for c in lfn_blk {
+                    if c == 0 {
+                        break 'outer;
+                    }
+                    if c != 0xFFFF {
+                        name.push(c);
+                    }
+                }
+            }
+
             String::from_utf16(&name).unwrap()
         }
     }
@@ -698,7 +723,7 @@ impl<'a> Iterator for AtomDEntryWindowIter<'a> {
     type Item = AtomDEntryView<'a>;
     fn next(&mut self) -> Option<Self::Item> {
         log::trace!("AtomDEntryWindowIter::cur: {}", self.cur);
-        if self.cur >= self.this.right_pos() {
+        if self.cur == self.this.right_pos() {
             None
         } else {
             let res = self.this.get_in_dir(self.cur);

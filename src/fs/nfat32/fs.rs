@@ -8,12 +8,12 @@ use crate::{
 };
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 
-use crate::fs::new_vfs::underlying::ConcreteFS;
-use core::slice;
-use crate::fs::new_vfs::top::{VfsFileRef, VfsFS};
 use crate::fs::new_vfs::path_cache::PathCacheDir;
 use crate::fs::new_vfs::sync_attr_file::SyncAttrFile;
+use crate::fs::new_vfs::top::{VfsFS, VfsFileRef};
+use crate::fs::new_vfs::underlying::ConcreteFS;
 use core::pin::Pin;
+use core::slice;
 
 pub type BlkDevRef = Arc<dyn AsyncBlockDevice>;
 
@@ -193,26 +193,25 @@ impl Fat32FS {
 
     pub(super) async fn read_sector(&self, sid: SectorID, buf: &mut [u8]) -> SysResult<()> {
         log::debug!("read sector: sid: {}", sid);
-        self.block_dev.read_noc(sid, buf).await
+        if buf.len() == BLOCK_SIZE {
+            self.block_dev.read_noc(sid, buf).await
+        } else {
+            let mut blk_buf = [0; BLOCK_SIZE];
+            self.block_dev.read_noc(sid, &mut blk_buf).await?;
+            buf.copy_from_slice(blk_buf[0..buf.len()].as_ref());
+            Ok(())
+        }
     }
     pub(super) async fn write_sector(&self, sid: SectorID, buf: &[u8]) -> SysResult<()> {
         log::debug!("write sector: sid: {}", sid);
-        self.block_dev.write_noc(sid, buf).await
-    }
-
-    pub(super) async fn read_cluster(&self, cid: ClusterID, buf: &mut [u8]) -> SysResult<()> {
-        let begin_sct = self.first_sector(cid);
-        self.block_dev
-            .read_noc_multi(begin_sct, self.cluster_size_sct as usize, buf)
-            .await?;
-        Ok(())
-    }
-    pub(super) async fn write_cluster(&self, cid: ClusterID, buf: &[u8]) -> SysResult<()> {
-        let begin_sct = self.first_sector(cid);
-        self.block_dev
-            .write_noc_multi(begin_sct, self.cluster_size_sct as usize, buf)
-            .await?;
-        Ok(())
+        if buf.len() == BLOCK_SIZE {
+            self.block_dev.write_noc(sid, buf).await
+        } else {
+            let mut blk_buf = [0; BLOCK_SIZE];
+            self.block_dev.read_noc(sid, &mut blk_buf).await?;
+            blk_buf[0..buf.len()].copy_from_slice(buf);
+            self.block_dev.write_noc(sid, &blk_buf).await
+        }
     }
 
     pub(super) fn block_dev(&self) -> &CachedBlkDev {
@@ -315,7 +314,7 @@ pub struct FatFSWrapper {
 
 impl FatFSWrapper {
     pub async fn new(blk_dev: BlkDevRef) -> SysResult<Self> {
-        Fat32FS::new(blk_dev).await.map(Box::pin).map(|fs| Self {fs})
+        Fat32FS::new(blk_dev).await.map(Box::pin).map(|fs| Self { fs })
     }
 
     pub fn get(&self) -> &'static Fat32FS {
