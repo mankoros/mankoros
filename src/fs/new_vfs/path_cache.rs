@@ -18,7 +18,7 @@ use alloc::{
 };
 use futures::FutureExt;
 
-struct PathCacheDir<F: ConcreteFile> {
+pub struct PathCacheDir<F: ConcreteFile> {
     file: SyncAttrFile<F>,
     name: String,
     subdirs: SpinNoIrqLock<SubdirMap>,
@@ -62,6 +62,14 @@ impl SubdirMap {
 }
 
 impl<F: ConcreteFile> PathCacheDir<F> {
+    pub fn new_root(file: SyncAttrFile<F>) -> Self {
+        Self {
+            file,
+            name: String::from(""),
+            subdirs: SpinNoIrqLock::new(SubdirMap::new()),
+        }
+    }
+
     fn new_sub(name: &str, file: SyncAttrFile<F>) -> Self {
         Self {
             file,

@@ -24,7 +24,7 @@ pub trait ConcreteFile: Send + Sync + Sized + 'static {
     fn attach<'a>(&'a self, file: &'a Self, name: &'a str) -> ASysResult;
 }
 
-pub trait ConcreteFS: Sized {
+pub trait ConcreteFS: Sized + 'static {
     type FileT: ConcreteFile;
-    fn root(&self) -> Self::FileT;
+    fn root(&'static self) -> Self::FileT;
 }

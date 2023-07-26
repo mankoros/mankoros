@@ -4,3 +4,4 @@ pub mod sync_ptr;
 pub mod user_check;
 pub mod hash;
 pub mod arena;
+pub mod pointers;

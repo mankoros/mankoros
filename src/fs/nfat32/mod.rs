@@ -3,11 +3,13 @@ mod file;
 mod fs;
 mod tools;
 
+use fs::Fat32FS;
+
 pub type DEntryIter = dir::GroupDEntryIter;
 pub use dir::FatDEntryData;
 pub use file::FATFile;
 pub use fs::BlkDevRef;
-pub use fs::Fat32FS;
+pub use fs::FatFSWrapper;
 
 // https://wiki.osdev.org/FAT
 

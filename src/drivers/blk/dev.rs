@@ -109,6 +109,10 @@ impl<H: Hal + 'static, T: Transport + 'static> BlockDevice for VirtIoBlkDev<H, T
     fn flush(&self) -> DevResult {
         Ok(())
     }
+
+    fn use_as_async(self: Arc<Self>) -> Arc<dyn crate::drivers::AsyncBlockDevice> {
+        self
+    }
 }
 
 /// VirtIO Error mappings

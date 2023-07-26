@@ -10,6 +10,10 @@ use alloc::{boxed::Box, sync::Arc, vec::Vec};
 
 use crate::fs::new_vfs::underlying::ConcreteFS;
 use core::slice;
+use crate::fs::new_vfs::top::{VfsFileRef, VfsFS};
+use crate::fs::new_vfs::path_cache::PathCacheDir;
+use crate::fs::new_vfs::sync_attr_file::SyncAttrFile;
+use core::pin::Pin;
 
 pub type BlkDevRef = Arc<dyn AsyncBlockDevice>;
 
@@ -148,10 +152,6 @@ impl Fat32FS {
             data_begin_sct,
             root_id_cls,
         })
-    }
-
-    pub fn root(&'static self) -> FATFile {
-        todo!()
     }
 
     pub(super) fn with_fat<T>(&self, f: impl FnOnce(&mut FATTableManager) -> T) -> T {
@@ -309,11 +309,23 @@ impl FATTableManager {
     }
 }
 
-impl ConcreteFS for Fat32FS {
-    type FileT = FATFile;
+pub struct FatFSWrapper {
+    fs: Pin<Box<Fat32FS>>,
+}
 
-    fn root(&self) -> Self::FileT {
-        // FATFile::new_free(self, self.root_id_cls)
-        todo!()
+impl FatFSWrapper {
+    pub async fn new(blk_dev: BlkDevRef) -> SysResult<Self> {
+        Fat32FS::new(blk_dev).await.map(Box::pin).map(|fs| Self {fs})
+    }
+
+    pub fn get(&self) -> &'static Fat32FS {
+        unsafe { &*(&*self.fs as *const Fat32FS) }
+    }
+}
+
+impl VfsFS for FatFSWrapper {
+    fn root(&self) -> VfsFileRef {
+        let cf = FATFile::new_free(self.get(), self.get().root_id_cls);
+        VfsFileRef::new(PathCacheDir::new_root(SyncAttrFile::new(cf)))
     }
 }
