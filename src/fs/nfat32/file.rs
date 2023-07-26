@@ -322,11 +322,13 @@ impl ConcreteFile for FATFile {
             let mut it = self.gde_iter();
             let mut res = Vec::new();
             while it.mark_next().await?.is_some() {
+                log::debug!("list: {:?}", it.gde_pos());
                 let name = it.collect_name();
                 let file = self.into_file(&it);
                 res.push((name, file));
                 it.leave_next().await?;
             }
+            log::debug!("list: result size: {:?}", res.len());
             Ok(res)
         })
     }

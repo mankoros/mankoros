@@ -40,8 +40,12 @@ impl CachedBlkDev {
     }
 
     pub async fn get(&self, id: BlockID) -> SysResult<BlockCacheEntryRef> {
-        match { self.cache.lock(here!()).get(&id) } {
-            Some(entry) => Ok(entry.clone()),
+        let result = {
+            let cache = self.cache.lock(here!());
+            cache.get(&id).map(|entry| entry.clone())
+        };
+        match result {
+            Some(entry) => Ok(entry),
             None => {
                 let entry = BlockCacheEntry::new();
                 self.read_noc(id, entry.just_mut()).await?;

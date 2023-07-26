@@ -356,7 +356,9 @@ impl GroupDEntryIter {
                 name.extend(lfn.name2);
                 name.extend(lfn.name3);
             }
+            log::debug!("GDE iter: collect name 1: {}", name.len());
             name.retain(|&x| x != 0xFFFF);
+            log::debug!("GDE iter: collect name 2: {}", name.len());
             String::from_utf16(&name).unwrap()
         }
     }
@@ -613,12 +615,12 @@ impl<'a> AtomDEntryWindow {
         debug_assert!(cur_buf_idx < self.sector_bufs.len());
 
         // 2. update the right_pos
-        self.right_pos.offset_ade(1);
+        self.right_pos = self.right_pos.offset_ade(1);
 
         // 3. check whether the new ADE is valid.
         let last_ade = self.get_in_dir(current);
         if last_ade.is_end() && !self.in_append {
-            log::debug!("move_right_one: reach end ({})", current);
+            log::trace!("move_right_one: reach end ({})", current);
             return Ok(None);
         } else {
             let ade_kind = if last_ade.is_lfn() {
@@ -628,7 +630,7 @@ impl<'a> AtomDEntryWindow {
             } else {
                 "unused"
             };
-            log::debug!("move_right_one: reach {} ({})", ade_kind, current);
+            log::trace!("move_right_one: reach {} ({})", ade_kind, current);
             Ok(Some(last_ade))
         }
     }
@@ -696,11 +698,11 @@ impl<'a> Iterator for AtomDEntryWindowIter<'a> {
     type Item = AtomDEntryView<'a>;
     fn next(&mut self) -> Option<Self::Item> {
         log::trace!("AtomDEntryWindowIter::cur: {}", self.cur);
-        if self.cur.as_ade_offset() >= self.this.len() {
+        if self.cur >= self.this.right_pos() {
             None
         } else {
             let res = self.this.get_in_dir(self.cur);
-            self.cur.offset_ade(1);
+            self.cur = self.cur.offset_ade(1);
             Some(res)
         }
     }

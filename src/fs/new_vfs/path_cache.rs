@@ -104,6 +104,7 @@ impl<F: ConcreteFile> PathCacheDir<F> {
             let kind = file.attr().await.ok()?.kind;
             match kind {
                 VfsFileKind::Directory => {
+                    log::debug!("file_dev_id, self_dev_id: {}, {}", file_dev_id, self_dev_id);
                     let file = file.as_any().downcast_ref::<Self>().unwrap();
                     Some(&file.file)
                 }
@@ -131,11 +132,16 @@ impl<F: ConcreteFile> VfsFile for PathCacheDir<F> {
             let mut subdirs = self.subdirs.lock(here!());
             if !subdirs.is_all() {
                 let l = self.file.lock().await.list().await?;
+                log::debug!("VFS list: CFS result size: {}", l.len());
                 for (name, file) in l {
+                    // TODO: 优化一下这里的字符串复制
+                    log::debug!("VFS list: add file {} to cache", name);
                     subdirs.put(name.clone(), self.pack_concrete_file(&name, file));
                 }
                 subdirs.set_all();
             }
+            let v = subdirs.all();
+            log::debug!("VFS list: VFS result size: {}", v.len());
             Ok(subdirs.all())
         })
     }

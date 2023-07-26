@@ -125,7 +125,7 @@ impl Fat32FS {
             fat_begins,
             fat: main_fat,
         };
-        fat_table_mgr.debug_print_all_used_cluster();
+        // fat_table_mgr.debug_print_all_used_cluster();
 
         let data_begin_sct =
             first_fat_begin_sct + (fat_cnt as SectorID) * (fat_size_sct as SectorID);
@@ -145,7 +145,7 @@ impl Fat32FS {
             fat_table_mgr: SpinNoIrqLock::new(fat_table_mgr),
 
             // FS Info
-            device_id: 0, // TODO: get device id
+            device_id: 114514, // TODO: get device id
             cluster_size_sct: cluster_size_sct as u32,
             log_cls_size_sct,
             cluster_size_byte: cluster_size_byte as u32,
