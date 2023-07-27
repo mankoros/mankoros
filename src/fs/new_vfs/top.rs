@@ -101,15 +101,6 @@ impl VfsFileRef {
 }
 
 #[macro_export]
-macro_rules! ensure_offset_is_tail {
-    ($offset:expr) => {
-        if $offset != $crate::fs::new_vfs::top::OFFSET_TAIL {
-            panic!("offset must be OFFSET_TAIL, but: {}", $offset);
-        }
-    };
-}
-
-#[macro_export]
 macro_rules! impl_vfs_default_non_dir {
     ($ty:ident) => {
         fn list(

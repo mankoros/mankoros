@@ -40,6 +40,7 @@ fn fatal_exception_error(_a0: usize) -> ! {
     let sepc = sepc::read();
 
     error!("current page table: {:x}", get_curr_page_table_addr());
+    error!("is SUM mode on: {}", riscv::register::sstatus::read().sum());
     error!(
         "kernel fatal_exception_error! {:?} bad addr = {:#x}, sepc = {:#x}, hart = {} sp = {:#x}",
         scause::read().cause(),

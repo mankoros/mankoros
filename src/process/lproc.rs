@@ -486,6 +486,12 @@ pub struct FdTable {
     table: BTreeMap<usize, Arc<FileDescriptor>>,
 }
 
+pub enum NewFdRequirement {
+    Exactly(usize),
+    GreaterThan(usize),
+    None,
+}
+
 impl FdTable {
     pub fn new_empty() -> Self {
         Self {
@@ -511,10 +517,23 @@ impl FdTable {
         self.table.insert(fd, FileDescriptor::new(file));
         fd
     }
-    pub fn dup(&mut self, new_fd: Option<usize>, old_fd: &Arc<FileDescriptor>) -> usize {
-        let fd_no = match new_fd {
-            Some(fd_no) => fd_no,
-            None => self.pool.get(),
+    pub fn dup(&mut self, new_fd_req: NewFdRequirement, old_fd: &Arc<FileDescriptor>) -> usize {
+        let fd_no = match new_fd_req {
+            NewFdRequirement::Exactly(new_fd) => new_fd,
+            NewFdRequirement::GreaterThan(lower_bound) => {
+                let mut skipped_fds = Vec::new();
+                let new_fd = loop {
+                    let fd = self.pool.get();
+                    if fd >= lower_bound {
+                        break fd;
+                    } else {
+                        skipped_fds.push(fd);
+                    }
+                };
+                skipped_fds.into_iter().for_each(|fd| self.pool.release(fd));
+                new_fd
+            }
+            NewFdRequirement::None => self.pool.get(),
         };
         let new_fd = Arc::new((**old_fd).clone());
         self.table.insert(fd_no, new_fd);

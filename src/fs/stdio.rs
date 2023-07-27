@@ -8,7 +8,7 @@ use core::pin::Pin;
 
 use super::new_vfs::{top::VfsFile, DeviceIDCollection, VfsFileAttr};
 use crate::{
-    drivers, ensure_offset_is_tail, impl_vfs_default_non_dir,
+    drivers, impl_vfs_default_non_dir,
     tools::errors::{dyn_future, ASysResult, LinuxError, SysError},
 };
 
@@ -67,8 +67,7 @@ impl VfsFile for Stdin {
             }
         })
     }
-    fn poll_read(&self, offset: usize, _buf: &mut [u8]) -> usize {
-        ensure_offset_is_tail!(offset);
+    fn poll_read(&self, _offset: usize, _buf: &mut [u8]) -> usize {
         // TODO: implement read
         1
     }

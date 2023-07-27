@@ -13,6 +13,7 @@ use crate::{
         new_vfs::{path::Path, top::VfsFileRef, VfsFileKind},
     },
     memory::{UserReadPtr, UserWritePtr},
+    process::lproc::NewFdRequirement,
     tools::{
         errors::{SysError, SysResult},
         user_check::UserCheck,
@@ -196,7 +197,7 @@ impl<'a> Syscall<'a> {
 
         self.lproc.with_mut_fdtable(|table| {
             if let Some(old_fd) = table.get(fd) {
-                let new_fd = table.dup(None, &old_fd);
+                let new_fd = table.dup(NewFdRequirement::None, &old_fd);
                 Ok(new_fd)
             } else {
                 Err(SysError::EBADF)
@@ -209,7 +210,7 @@ impl<'a> Syscall<'a> {
 
         self.lproc.with_mut_fdtable(|table| {
             if let Some(old_fd) = table.get(old_fd) {
-                table.dup(Some(new_fd), &old_fd);
+                table.dup(NewFdRequirement::Exactly(new_fd), &old_fd);
                 Ok(new_fd)
             } else {
                 Err(SysError::EBADF)
@@ -397,14 +398,30 @@ impl<'a> Syscall<'a> {
     }
 
     pub fn sys_fcntl(&mut self) -> SyscallResult {
+        const F_DUPFD_CLOEXEC: usize = 1030;
+
         let args = self.cx.syscall_args();
         let (fd, cmd, arg) = (args[0], args[1], args[2]);
         info!(
             "Syscall: fcntl (fd: {:?}, cmd: {:?}, arg: {:?})",
             fd, cmd, arg
         );
-        warn!("Syscall: fcntl is not implemented yet");
-        Ok(0)
+
+        match cmd {
+            F_DUPFD_CLOEXEC => {
+                log::warn!("syscall fcntl F_DUPFD_CLOEXEC will not be closed after exec");
+                let fd_lower_bound = arg;
+                let new_fd = self.lproc.with_mut_fdtable(|f| {
+                    let old_fd = f.get(fd).unwrap();
+                    f.dup(NewFdRequirement::GreaterThan(fd_lower_bound), &old_fd)
+                });
+                Ok(new_fd)
+            }
+            _ => {
+                log::warn!("fcntl cmd: {} not implemented, returning 0 as default", cmd);
+                Ok(0)
+            }
+        }
     }
 
     pub async fn sys_mount(&mut self) -> SyscallResult {
