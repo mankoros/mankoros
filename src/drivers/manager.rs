@@ -9,7 +9,7 @@ use crate::{
     memory::{self, address::VirtAddr, kernel_phys_dev_to_virt, pagetable::pte::PTEFlags},
 };
 
-use super::{cpu, plic, BlockDevice, CharDevice, Device};
+use super::{cpu, plic, AsyncBlockDevice, CharDevice, Device};
 
 pub struct DeviceManager {
     cpus: Vec<cpu::CPU>,
@@ -24,12 +24,12 @@ impl DeviceManager {
             devices: Vec::new(),
             interrupt_map: BTreeMap::new(),
             cpus: Vec::new(),
-            plic: plic::PLIC::new(0, 0),
+            plic: plic::PLIC::new(0, 0x1000), // TODO: parse from device tree
         }
     }
 
-    pub fn disks(&self) -> Vec<Arc<dyn BlockDevice>> {
-        self.devices.iter().filter_map(|d| d.clone().as_blk()).collect::<Vec<_>>()
+    pub fn disks(&self) -> Vec<Arc<dyn AsyncBlockDevice>> {
+        self.devices.iter().filter_map(|d| d.clone().as_async_blk()).collect::<Vec<_>>()
     }
     pub fn serials(&self) -> Vec<Arc<dyn CharDevice>> {
         self.devices.iter().filter_map(|d| d.clone().as_char()).collect::<Vec<_>>()

@@ -15,6 +15,7 @@ use crate::arch;
 use crate::drivers::AsyncBlockDevice;
 use crate::drivers::Device;
 use crate::memory::frame::alloc_frame;
+use crate::memory::kernel_phys_dev_to_virt;
 use crate::memory::kernel_phys_to_virt;
 
 use super::dma::Descriptor;
@@ -41,19 +42,24 @@ use super::wait_for;
 pub struct MMC {
     base_address: usize,
     fifo_offset: UnsafeCell<usize>,
+    size: usize, // MMIO region size
+    interrupt_number: usize,
 }
 
 unsafe impl Send for MMC {}
 unsafe impl Sync for MMC {}
 
 impl MMC {
-    pub fn new(base_address: usize) -> MMC {
+    pub fn new(base_address: usize, size: usize, interrupt_number: usize) -> MMC {
         MMC {
             base_address,
-            fifo_offset: UnsafeCell::new(0x600), // See snps manual
+            fifo_offset: UnsafeCell::new(0x600),
+            size,
+            interrupt_number, // See snps manual
         }
     }
     pub fn card_init(&self) {
+        return;
         info!("====================== SDIO Init START ========================");
 
         info!("Card detect: {:b}", self.card_detect());
@@ -73,7 +79,7 @@ impl MMC {
 
         // Read clock divider
         info!("Read clock divider");
-        let base = self.base_address as *mut CLKDIV;
+        let base = self.virt_base_address() as *mut CLKDIV;
         let clkdiv = unsafe { base.byte_add(CLKDIV::offset()).read_volatile() };
         info!("Clock divider: {:?}", clkdiv.clks());
 
@@ -238,7 +244,7 @@ impl MMC {
 
     /// Internal function to send a command to the card
     fn send_cmd(&self, cmd: CMD, arg: CMDARG, buffer: Option<&mut [usize]>) -> Option<RESP> {
-        let base = self.base_address as *mut u32;
+        let base = self.virt_base_address() as *mut u32;
 
         // Sanity check
         if cmd.data_expected() && !self.dma_enabled() {
@@ -308,7 +314,7 @@ impl MMC {
         }
 
         // Check response
-        let base = self.base_address as *mut RESP;
+        let base = self.virt_base_address() as *mut RESP;
         let resp = unsafe { base.byte_add(RESP::offset()).read_volatile() };
         if rinsts.no_error() && !rinsts.command_conflict() {
             // No return for clock command
@@ -333,7 +339,7 @@ impl MMC {
 
     /// Read data from FIFO
     fn read_fifo<T>(&self) -> T {
-        let base = self.base_address as *mut T;
+        let base = self.virt_base_address() as *mut T;
         let result = unsafe { base.byte_add(*self.fifo_offset.get()).read_volatile() };
         unsafe { *self.fifo_offset.get() += size_of::<T>() };
         result
@@ -341,7 +347,7 @@ impl MMC {
 
     /// Reset FIFO
     fn reset_fifo(&self) {
-        let base = self.base_address as *mut CTRL;
+        let base = self.virt_base_address() as *mut CTRL;
         let ctrl = self.control_reg().with_fifo_reset(true);
         unsafe { base.byte_add(*self.fifo_offset.get()).write_volatile(ctrl) }
     }
@@ -353,20 +359,20 @@ impl MMC {
     fn set_size(&self, block_size: usize, byte_cnt: usize) {
         let blksiz = BLKSIZ::new().with_block_size(block_size);
         let bytcnt = BYTCNT::new().with_byte_count(byte_cnt);
-        let base = self.base_address as *mut BLKSIZ;
+        let base = self.virt_base_address() as *mut BLKSIZ;
         unsafe { base.byte_add(BLKSIZ::offset()).write_volatile(blksiz.into()) };
-        let base = self.base_address as *mut BYTCNT;
+        let base = self.virt_base_address() as *mut BYTCNT;
         unsafe { base.byte_add(BYTCNT::offset()).write_volatile(bytcnt.into()) };
     }
 
     fn set_controller_bus_width(&self, card_index: usize, width: CtypeCardWidth) {
         let ctype = CTYPE::set_card_width(card_index, width);
-        let base = self.base_address as *mut CTYPE;
+        let base = self.virt_base_address() as *mut CTYPE;
         unsafe { base.byte_add(CTYPE::offset()).write_volatile(ctype) }
     }
 
     fn last_response_command_index(&self) -> usize {
-        let base = self.base_address as *mut STATUS;
+        let base = self.virt_base_address() as *mut STATUS;
         let status = unsafe { base.byte_add(STATUS::offset()).read_volatile() };
         status.response_index()
     }
@@ -375,76 +381,76 @@ impl MMC {
         self.status().fifo_count()
     }
     fn status(&self) -> STATUS {
-        let base = self.base_address as *mut STATUS;
+        let base = self.virt_base_address() as *mut STATUS;
         let status = unsafe { base.byte_add(STATUS::offset()).read_volatile() };
         status
     }
 
     fn card_detect(&self) -> usize {
-        let base = self.base_address as *mut CDETECT;
+        let base = self.virt_base_address() as *mut CDETECT;
         let cdetect = unsafe { base.byte_add(CDETECT::offset()).read_volatile() };
         !cdetect.card_detect_n() & 0xFFFF
     }
 
     fn power_enable(&self) -> PWREN {
-        let base = self.base_address as *mut PWREN;
+        let base = self.virt_base_address() as *mut PWREN;
         let pwren = unsafe { base.byte_add(PWREN::offset()).read_volatile() };
         pwren
     }
 
     fn clock_enable(&self) -> CLKENA {
-        let base = self.base_address as *mut CLKENA;
+        let base = self.virt_base_address() as *mut CLKENA;
         let clkena = unsafe { base.byte_add(CLKENA::offset()).read_volatile() };
         clkena
     }
 
     fn set_dma(&self, enable: bool) {
-        let base = self.base_address as *mut BMOD;
+        let base = self.virt_base_address() as *mut BMOD;
         let bmod = unsafe { base.byte_add(BMOD::offset()).read_volatile() };
         let bmod = bmod.with_idmac_enable(enable).with_software_reset(true);
         unsafe { base.byte_add(BMOD::offset()).write_volatile(bmod) };
 
         // Also reset the dma controller
-        let base = self.base_address as *mut CTRL;
+        let base = self.virt_base_address() as *mut CTRL;
         let ctrl = unsafe { base.byte_add(CTRL::offset()).read_volatile() };
         let ctrl = ctrl.with_dma_reset(true).with_use_internal_dmac(enable);
         unsafe { base.byte_add(CTRL::offset()).write_volatile(ctrl) };
     }
 
     fn dma_enabled(&self) -> bool {
-        let base = self.base_address as *mut BMOD;
+        let base = self.virt_base_address() as *mut BMOD;
         let bmod = unsafe { base.byte_add(BMOD::offset()).read_volatile() };
         bmod.idmac_enable()
     }
 
     fn dma_status(&self) -> IDSTS {
-        let base = self.base_address as *mut IDSTS;
+        let base = self.virt_base_address() as *mut IDSTS;
         let idsts = unsafe { base.byte_add(IDSTS::offset()).read_volatile() };
         idsts
     }
 
     fn card_width(&self, index: usize) -> CtypeCardWidth {
-        let base = self.base_address as *mut CTYPE;
+        let base = self.virt_base_address() as *mut CTYPE;
         let ctype = unsafe { base.byte_add(CTYPE::offset()).read_volatile() };
         ctype.card_width(index)
     }
 
     fn control_reg(&self) -> CTRL {
-        let base = self.base_address as *mut CTRL;
+        let base = self.virt_base_address() as *mut CTRL;
         let ctrl = unsafe { base.byte_add(CTRL::offset()).read_volatile() };
         ctrl
     }
 
     fn descriptor_base_address(&self) -> usize {
-        let base = self.base_address as *mut DBADDRL;
+        let base = self.virt_base_address() as *mut DBADDRL;
         let dbaddrl = unsafe { base.byte_add(DBADDRL::offset()).read_volatile() };
-        let base = self.base_address as *mut DBADDRU;
+        let base = self.virt_base_address() as *mut DBADDRU;
         let dbaddru = unsafe { base.byte_add(DBADDRU::offset()).read_volatile() };
         usize::from(dbaddru.addr()) << 32 | usize::from(dbaddrl.addr())
     }
 
     fn set_descript_base_address(&self, addr: usize) {
-        let base = self.base_address as *mut u32;
+        let base = self.virt_base_address() as *mut u32;
         unsafe { base.byte_add(DBADDRL::offset()).write_volatile(addr as u32) };
         unsafe { base.byte_add(DBADDRU::offset()).write_volatile((addr >> 32) as u32) };
     }
@@ -452,7 +458,7 @@ impl MMC {
     fn reset_clock(&self) {
         // Disable clock
         info!("Disable clock");
-        let base = self.base_address as *mut CLKENA;
+        let base = self.virt_base_address() as *mut CLKENA;
         let clkena = CLKENA::new().with_cclk_enable(0);
         unsafe { base.byte_add(CLKENA::offset()).write_volatile(clkena) };
         let cmd = CMD::clock_cmd();
@@ -460,18 +466,21 @@ impl MMC {
 
         // Set clock divider
         info!("Set clock divider");
-        let base = self.base_address as *mut CLKDIV;
+        let base = self.virt_base_address() as *mut CLKDIV;
         let clkdiv = CLKDIV::new().with_clk_divider0(4); // Magic, supposedly set to 400KHz
         unsafe { base.byte_add(CLKDIV::offset()).write_volatile(clkdiv) };
 
         // Re enable clock
         info!("Renable clock");
-        let base = self.base_address as *mut CLKENA;
+        let base = self.virt_base_address() as *mut CLKENA;
         let clkena = CLKENA::new().with_cclk_enable(1);
         unsafe { base.byte_add(CLKENA::offset()).write_volatile(clkena) };
 
         let cmd = CMD::clock_cmd();
         self.send_cmd(cmd, CMDARG::empty(), None);
+    }
+    fn virt_base_address(&self) -> usize {
+        kernel_phys_dev_to_virt(self.base_address)
     }
 }
 
@@ -485,7 +494,7 @@ impl Device for MMC {
     }
 
     fn mmio_size(&self) -> usize {
-        0x1000 // TODO: Hard coded for now
+        self.size
     }
 
     fn device_type(&self) -> crate::drivers::DeviceType {
@@ -493,7 +502,7 @@ impl Device for MMC {
     }
 
     fn interrupt_number(&self) -> Option<usize> {
-        todo!()
+        Some(self.interrupt_number)
     }
 
     fn interrupt_handler(&self) {
