@@ -4,7 +4,7 @@ use crate::{
     process::{
         lproc::LightProcess,
         user_space::user_area::{PageFaultAccessType, UserAreaPerm},
-    },
+    }, arch::{sum_mode_push, sum_mode_pop},
 };
 use alloc::{string::String, vec::Vec};
 use log::trace;
@@ -19,7 +19,7 @@ unsafe impl Sync for UserCheck<'_> {}
 impl<'a> UserCheck<'a> {
     /// 创建一个用户态指针检查器，同时设置 SUM 模式，直到检查器被 drop 时关闭
     pub fn new_with_sum(lproc: &'a LightProcess) -> Self {
-        unsafe { riscv::register::sstatus::set_sum() };
+        sum_mode_push();
         Self { lproc }
     }
 
@@ -120,6 +120,6 @@ impl<'a> UserCheck<'a> {
 
 impl<'a> Drop for UserCheck<'a> {
     fn drop(&mut self) {
-        unsafe { riscv::register::sstatus::clear_sum() };
+        sum_mode_pop();
     }
 }

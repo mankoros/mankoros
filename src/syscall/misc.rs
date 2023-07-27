@@ -9,7 +9,7 @@ use crate::{
     here,
     memory::{UserReadPtr, UserWritePtr},
     timer::{get_time_f64, Rusage, TimeSpec, TimeVal, Tms},
-    tools::errors::SysError,
+    tools::{errors::SysError, user_check::{self, UserCheck}},
 };
 
 use super::{Syscall, SyscallResult};
@@ -57,11 +57,9 @@ impl<'a> Syscall<'a> {
         let args = self.cx.syscall_args();
         let uts = args[0] as *mut UtsName;
 
-        unsafe {
-            riscv::register::sstatus::set_sum();
-            (*uts) = UtsName::default();
-            riscv::register::sstatus::clear_sum();
-        }
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+        user_check.checked_write(uts, UtsName::default())?;
+        
         Ok(0)
     }
 

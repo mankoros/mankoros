@@ -2,6 +2,11 @@ use log::debug;
 
 use crate::consts;
 
+mod hart_local;
+pub use hart_local::init_hart_local_info;
+pub use hart_local::sum_mode_push;
+pub use hart_local::sum_mode_pop;
+
 /// Returns the current frame pointer or stack base pointer
 #[inline(always)]
 pub fn fp() -> usize {
@@ -66,8 +71,8 @@ pub fn get_curr_page_table_addr() -> usize {
 #[inline(always)]
 pub fn within_sum<T>(f: impl FnOnce() -> T) -> T {
     // Allow acessing user vaddr
-    unsafe { riscv::register::sstatus::set_sum() };
+    sum_mode_push();
     let ret = f();
-    unsafe { riscv::register::sstatus::clear_sum() };
+    sum_mode_pop();
     ret
 }

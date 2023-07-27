@@ -19,6 +19,7 @@
 #![feature(pointer_byte_offsets)]
 #![feature(box_into_inner)]
 #![feature(async_iterator)]
+#![feature(const_maybe_uninit_zeroed)]
 extern crate alloc;
 
 use alloc::boxed::Box;
@@ -63,6 +64,7 @@ use crate::utils::SerialWrapper;
 use crate::executor::block_on;
 use crate::memory::address::kernel_virt_text_to_phys;
 use crate::memory::pagetable;
+use crate::arch::init_hart_local_info;
 
 // use trap::ticks;
 
@@ -182,6 +184,9 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
         "Hart frequency: {:?} MHz",
         hart_freq.iter().map(|f| f / 1000000).collect::<Vec<_>>()
     );
+
+    // Init hart local info
+    init_hart_local_info();
 
     // Remove low memory mappings
     pagetable::pagetable::unmap_boot_seg();
