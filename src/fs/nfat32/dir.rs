@@ -1,6 +1,7 @@
 use super::tools::BlockCacheEntryRef;
 use super::{ClsOffsetT, ClusterID, Fat32FS, SectorID};
 
+use crate::fs::new_vfs::{VfsFileAttr, VfsFileKind};
 use crate::{
     fs::{disk::BLOCK_SIZE, nfat32::parse},
     tools::errors::SysResult,
@@ -22,6 +23,26 @@ bitflags::bitflags! {
         const LFN =
             Self::READ_ONLY.bits() | Self::HIDDEN.bits() |
             Self::SYSTEM.bits() | Self::VOLUME_ID.bits();
+    }
+}
+
+impl From<VfsFileKind> for Fat32DEntryAttr {
+    fn from(kind: VfsFileKind) -> Self {
+        match kind {
+            VfsFileKind::RegularFile => Fat32DEntryAttr::ARCHIVE,
+            VfsFileKind::Directory => Fat32DEntryAttr::DIRECTORY,
+            _ => panic!("Unsupported VfsFileKind"),
+        }
+    }
+}
+
+impl Into<VfsFileKind> for Fat32DEntryAttr {
+    fn into(self) -> VfsFileKind {
+        if self.contains(Fat32DEntryAttr::DIRECTORY) {
+            VfsFileKind::Directory
+        } else {
+            VfsFileKind::RegularFile
+        }
     }
 }
 
@@ -78,8 +99,10 @@ impl Standard8p3EntryRepr {
         Fat32DEntryAttr::from_bits(self.attr).unwrap()
     }
 
-    pub fn new_empty() -> Self {
-        unsafe { MaybeUninit::zeroed().assume_init() }
+    pub fn new_empty(kind: VfsFileKind) -> Self {
+        let mut std: Standard8p3EntryRepr = unsafe { MaybeUninit::zeroed().assume_init() };
+        std.attr = Fat32DEntryAttr::from(kind).bits();
+        std
     }
 }
 

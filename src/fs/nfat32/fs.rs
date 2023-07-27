@@ -324,7 +324,11 @@ impl FatFSWrapper {
 
 impl VfsFS for FatFSWrapper {
     fn root(&self) -> VfsFileRef {
-        let cf = FATFile::new_free(self.get(), self.get().root_id_cls);
+        let cf = FATFile::new_free(
+            self.get(),
+            self.get().root_id_cls,
+            crate::fs::new_vfs::VfsFileKind::Directory,
+        );
         VfsFileRef::new(PathCacheDir::new_root(SyncAttrFile::new(cf)))
     }
 }

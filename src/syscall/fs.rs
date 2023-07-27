@@ -271,10 +271,10 @@ impl<'a> Syscall<'a> {
 
         let files = file.list().await?;
         let total_files = files.len();
-        let mut progress = fd_obj.get_dents_progress.load(core::sync::atomic::Ordering::Relaxed);
+        let mut progress = fd_obj.get_dents_progress();
         let end_of_dir = total_files == progress;
         if end_of_dir {
-            fd_obj.get_dents_progress.store(0, core::sync::atomic::Ordering::Relaxed);
+            fd_obj.clear_dents_progress();
             // On end of directory, 0 is returned.
             return Ok(0);
         }
@@ -313,7 +313,7 @@ impl<'a> Syscall<'a> {
         }
 
         // Store progress back into fd
-        fd_obj.get_dents_progress.store(progress, core::sync::atomic::Ordering::Relaxed);
+        fd_obj.set_dents_progress(progress);
 
         Ok(wroten_len)
     }

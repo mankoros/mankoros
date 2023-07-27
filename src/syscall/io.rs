@@ -266,13 +266,22 @@ impl Syscall<'_> {
         let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
         let file = fd.file.clone();
 
-        let mut total_len = fd.curr();
+        let mut offset = fd.curr();
+        let mut total_len = 0;
         let mut iov_ptr = iov;
-        for _ in 0..iovcnt {
+        for i in 0..iovcnt {
             let iov = user_check.checked_read(iov_ptr.raw_ptr())?;
+            log::debug!(
+                "syscall writev: iov #{}: iov_ptr: 0x{:x}, len: {}",
+                i,
+                iov_ptr.as_usize(),
+                iov.len
+            );
             // TODO: 检查用户给的指针是不是合法的
             let buf = unsafe { VirtAddr::from(iov.base).as_slice(iov.len) };
-            total_len += file.write_at(total_len, buf).await?;
+            let write_len = file.write_at(offset, buf).await?;
+            total_len += write_len;
+            offset += write_len;
             iov_ptr = iov_ptr.add(1);
         }
 

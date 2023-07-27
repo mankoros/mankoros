@@ -452,6 +452,12 @@ impl FileDescriptor {
     pub fn get_dents_progress(&self) -> usize {
         self.get_dents_progress.load(Ordering::SeqCst)
     }
+    pub fn clear_dents_progress(&self) {
+        self.set_dents_progress(0);
+    }
+    pub fn set_dents_progress(&self, offset: usize) {
+        self.get_dents_progress.store(offset, Ordering::SeqCst);
+    }
 
     pub fn curr(&self) -> usize {
         self.curr.load(Ordering::SeqCst)

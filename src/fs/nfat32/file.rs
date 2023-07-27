@@ -36,14 +36,14 @@ impl StdEntryEditor {
         }
     }
 
-    pub fn new_free() -> Self {
+    pub fn new_free(kind: VfsFileKind) -> Self {
         Self {
             pos: SyncUnsafeCell::new(DEntryPosInfo {
                 gde_pos: GroupDEPos::null(),
                 sector: 0,
                 offset: 0,
             }),
-            std: WithDirty::new(Standard8p3EntryRepr::new_empty()),
+            std: WithDirty::new(Standard8p3EntryRepr::new_empty(kind)),
         }
     }
 
@@ -101,10 +101,10 @@ fn round_up(x: usize, y: usize) -> usize {
 }
 
 impl FATFile {
-    pub fn new_free(fs: &'static Fat32FS, begin_cluster: ClusterID) -> Self {
+    pub fn new_free(fs: &'static Fat32FS, begin_cluster: ClusterID, kind: VfsFileKind) -> Self {
         Self {
             fs,
-            editor: StdEntryEditor::new_free(),
+            editor: StdEntryEditor::new_free(kind),
             chain: ClusterChain::new(fs, begin_cluster),
         }
     }
@@ -337,20 +337,15 @@ impl ConcreteFile for FATFile {
         // 先向 fs 申请新创文件, 然后 attach 上去
         dyn_future(async move {
             let begin_cluster = self.fs.with_fat(|f| f.alloc());
-            let attr = match kind {
-                VfsFileKind::Directory => Fat32DEntryAttr::DIRECTORY,
-                VfsFileKind::RegularFile => Fat32DEntryAttr::ARCHIVE,
-                _ => panic!("unsupported file kind"),
-            };
             let data = FatDEntryData {
                 name,
-                attr,
+                attr: kind.into(),
                 begin_cluster,
                 size: 0,
             };
             let file = FATFile {
                 fs: self.fs,
-                editor: StdEntryEditor::new_free(),
+                editor: StdEntryEditor::new_free(kind),
                 chain: ClusterChain::new(self.fs, begin_cluster),
             };
             self.attach_impl(&data, &file).await?;
