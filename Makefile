@@ -114,7 +114,8 @@ uImage: build
 zImage: build
 	gzip -f $(BIN_FILE)
 	mkimage -A riscv -O linux -C gzip -T kernel -a 0x40400000 -e 0x40400000 -n MankorOS -d $(BIN_FILE).gz zImage
-	cp zImage /srv/tftp/
+	@#cp zImage /srv/tftp/
+	scp zImage 100.72.223.46:/private/tftpboot/zImage
 
 clean:
 	@cargo clean

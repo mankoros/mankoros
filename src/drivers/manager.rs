@@ -43,7 +43,7 @@ impl DeviceManager {
         self.plic = plic::probe();
 
         // Probe Devices
-        if let Some(dev) = super::blk::probe() {
+        if let Some(dev) = super::blk::probe_virtio_blk() {
             self.devices.push(Arc::new(dev));
         }
         if let Some(dev) = super::serial::probe() {

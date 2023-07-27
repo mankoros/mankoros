@@ -63,6 +63,13 @@ pub fn get_curr_page_table_addr() -> usize {
     riscv::register::satp::read().ppn() << consts::PAGE_SIZE_BITS
 }
 
+#[inline(never)]
+pub fn spin(cycle: usize) {
+    for _ in 0..cycle {
+        core::hint::spin_loop();
+    }
+}
+
 #[inline(always)]
 pub fn within_sum<T>(f: impl FnOnce() -> T) -> T {
     // Allow acessing user vaddr

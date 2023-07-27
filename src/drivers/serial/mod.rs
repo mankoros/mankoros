@@ -1,6 +1,6 @@
 mod sifive;
 mod uart8250;
-
+use super::wait_for;
 use alloc::{boxed::Box, collections::VecDeque};
 use log::{info, warn};
 use ringbuffer::{RingBufferExt, RingBufferRead, RingBufferWrite};
@@ -12,15 +12,6 @@ use core::{
     pin::Pin,
     task::{Poll, Waker},
 };
-
-macro_rules! wait_for {
-    ($cond:expr) => {
-        while !$cond {
-            core::hint::spin_loop();
-        }
-    };
-}
-pub(crate) use wait_for;
 
 use crate::{
     consts::address_space::K_SEG_DTB, here, memory::kernel_phys_dev_to_virt, println,
@@ -132,7 +123,9 @@ impl Device for Serial {
         None
     }
 
-    fn as_async_blk(self: alloc::sync::Arc<Self>) -> Option<alloc::sync::Arc<dyn super::AsyncBlockDevice>> {
+    fn as_async_blk(
+        self: alloc::sync::Arc<Self>,
+    ) -> Option<alloc::sync::Arc<dyn super::AsyncBlockDevice>> {
         None
     }
 }

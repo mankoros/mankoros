@@ -13,9 +13,9 @@ use alloc::sync::Arc;
 pub use manager::DeviceManager;
 pub use serial::EarlyConsole;
 
+use crate::tools::errors::dyn_future;
 pub use transport::mmio::MmioTransport;
 use virtio_drivers::transport;
-use crate::tools::errors::dyn_future;
 
 pub type VirtIoBlockDev =
     blk::VirtIoBlkDev<blk::VirtIoHalImpl, virtio_drivers::transport::mmio::MmioTransport>;
@@ -34,6 +34,15 @@ pub fn init_device_manager() {
         DEVICE_MANAGER = Some(DeviceManager::new());
     }
 }
+
+macro_rules! wait_for {
+    ($cond:expr) => {
+        while !$cond {
+            core::hint::spin_loop();
+        }
+    };
+}
+pub(crate) use wait_for;
 
 /// General Device Operations
 /// Adapted from ArceOS
