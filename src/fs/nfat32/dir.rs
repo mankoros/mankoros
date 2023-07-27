@@ -438,7 +438,7 @@ impl GroupDEntryIter {
     }
     /// 是否代表一个能放东西的空缺
     pub(super) fn can_create_any(&self) -> bool {
-        self.window.get_in_buf(0).is_unused() || self.is_deleted
+        self.window.get_in_buf(0).is_unused() || self.is_deleted || self.window.in_append
     }
     pub(super) fn can_create(&self, dentry: &FatDEntryData) -> bool {
         self.can_create_any() && dentry.lfn_needed() + 1 <= self.window.len()

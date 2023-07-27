@@ -38,14 +38,19 @@ pub fn spawn_init() {
 
     // Some necessary environment variables.
     let mut envp = Vec::new();
-    envp.push(String::from("LD_LIBRARY_PATH=/"));
+    envp.push(String::from("LD_LIBRARY_PATH=."));
     envp.push(String::from("SHELL=/busybox"));
     envp.push(String::from("PWD=/"));
     envp.push(String::from("USER=root"));
     envp.push(String::from("MOTD_SHOWN=pam"));
     envp.push(String::from("LANG=C.UTF-8"));
+    envp.push(String::from(
+        "INVOCATION_ID=e9500a871cf044d9886a157f53826684",
+    ));
     envp.push(String::from("TERM=vt220"));
-    envp.push(String::from("SHLVL=1"));
+    envp.push(String::from("SHLVL=2"));
+    envp.push(String::from("JOURNAL_STREAM=8:9265"));
+    envp.push(String::from("OLDPWD=/root"));
     envp.push(String::from("_=busybox"));
     envp.push(String::from("LOGNAME=root"));
     envp.push(String::from("HOME=/"));

@@ -82,7 +82,7 @@ impl<'a> Syscall<'a> {
     pub fn sys_brk(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
         let brk = args[0];
-        info!("Syscall brk: brk {}", brk);
+        info!("Syscall brk: brk {:x}", brk);
 
         if brk == 0 {
             let cur_brk = self.lproc.with_memory(|m| m.areas().get_heap_break());

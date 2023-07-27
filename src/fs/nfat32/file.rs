@@ -228,6 +228,10 @@ impl ConcreteFile for FATFile {
         debug_assert!(buf.len() % BLOCK_SIZE == 0);
 
         dyn_future(async move {
+            if offset >= self.size() {
+                return Ok(0);
+            }
+
             let (sct_id, sct_off) = self.chain.offset_sct(self.fs, offset);
             debug_assert!(sct_off == 0);
 
@@ -261,6 +265,10 @@ impl ConcreteFile for FATFile {
         debug_assert!(offset % BLOCK_SIZE == 0);
         debug_assert!(buf.len() % BLOCK_SIZE == 0);
         dyn_future(async move {
+            if offset >= self.size() {
+                return Ok(0);
+            }
+
             let (sct_id, sct_off) = self.chain.offset_sct(self.fs, offset);
             debug_assert!(sct_off == 0);
 

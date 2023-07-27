@@ -1,6 +1,7 @@
 use log::{debug, info};
 
 use crate::{
+    arch::within_sum,
     executor::util_futures::{within_sum_async, AnyFuture},
     fs::{
         self,
@@ -57,6 +58,15 @@ impl Syscall<'_> {
         let fd = self.lproc.with_mut_fdtable(|f| f.get(fd));
         if let Some(fd) = fd {
             let read_len = within_sum_async(fd.file.read_at(fd.curr(), buf)).await?;
+            if args[0] == 0 && read_len == 1 {
+                within_sum(|| {
+                    // '\r' -> '\n'
+                    if buf[0] == 0xd {
+                        buf[0] = 0xa;
+                        log::warn!("replace \\r -> \\n")
+                    }
+                })
+            }
             fd.add_curr(read_len);
             Ok(read_len)
         } else {

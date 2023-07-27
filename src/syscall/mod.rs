@@ -1,4 +1,4 @@
-use crate::process::lproc::LightProcess;
+use crate::{process::lproc::LightProcess, tools::errors::SysError};
 
 use crate::trap::context::UKContext;
 
@@ -94,9 +94,15 @@ impl<'a> Syscall<'a> {
             SYSCALL_GETTIMEOFDAY => self.sys_gettimeofday(),
             SYSCALL_NANOSLEEP => self.sys_nanosleep().await,
             SYSCALL_GETUID => self.sys_getuid(),
+
+            // unimplemented
+            129 => self.sys_do_nothing("delete_module"),
+            155 => self.sys_do_nothing("sched_getparam"),
+            154 => self.sys_do_nothing("sched_setparam"),
+
             _ => {
                 warn!("Unknown syscall_id: {}", syscall_no);
-                Ok(0)
+                Err(SysError::EINVAL)
             }
         };
 
@@ -111,6 +117,15 @@ impl<'a> Syscall<'a> {
 
         self.cx.set_user_a0(ret);
         self.do_exit
+    }
+
+    fn sys_do_nothing(&self, name: &str) -> SyscallResult {
+        log::warn!(
+            "Not implemented syscall that specified to do nothing (#{}, {})",
+            self.cx.syscall_no(),
+            name
+        );
+        Ok(0)
     }
 }
 
