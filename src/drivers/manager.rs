@@ -46,6 +46,9 @@ impl DeviceManager {
         if let Some(dev) = super::blk::probe_virtio_blk() {
             self.devices.push(Arc::new(dev));
         }
+        if let Some(dev) = super::blk::probe_sdio_blk() {
+            self.devices.push(Arc::new(dev));
+        }
         if let Some(dev) = super::serial::probe() {
             self.devices.push(Arc::new(dev));
         }

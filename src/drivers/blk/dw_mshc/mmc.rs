@@ -3,6 +3,7 @@
 //! driver for Synopsys DesignWare Mobile Storage Host Controller
 //!
 
+use core::cell::UnsafeCell;
 use core::mem::size_of;
 
 use byte_slice_cast::*;
@@ -11,6 +12,8 @@ use log::info;
 use log::warn;
 
 use crate::arch;
+use crate::drivers::AsyncBlockDevice;
+use crate::drivers::Device;
 use crate::memory::frame::alloc_frame;
 use crate::memory::kernel_phys_to_virt;
 
@@ -34,19 +37,23 @@ use super::registers::{CMD, RINSTS};
 use super::registers::{CMDARG, RESP};
 use super::wait_for;
 
+#[derive(Debug)]
 pub struct MMC {
     base_address: usize,
-    fifo_offset: usize,
+    fifo_offset: UnsafeCell<usize>,
 }
+
+unsafe impl Send for MMC {}
+unsafe impl Sync for MMC {}
 
 impl MMC {
     pub fn new(base_address: usize) -> MMC {
         MMC {
             base_address,
-            fifo_offset: 0x600, // See snps manual
+            fifo_offset: UnsafeCell::new(0x600), // See snps manual
         }
     }
-    pub fn init(&mut self) {
+    pub fn card_init(&self) {
         info!("====================== SDIO Init START ========================");
 
         info!("Card detect: {:b}", self.card_detect());
@@ -230,7 +237,7 @@ impl MMC {
     }
 
     /// Internal function to send a command to the card
-    fn send_cmd(&mut self, cmd: CMD, arg: CMDARG, buffer: Option<&mut [usize]>) -> Option<RESP> {
+    fn send_cmd(&self, cmd: CMD, arg: CMDARG, buffer: Option<&mut [usize]>) -> Option<RESP> {
         let base = self.base_address as *mut u32;
 
         // Sanity check
@@ -325,25 +332,25 @@ impl MMC {
     }
 
     /// Read data from FIFO
-    fn read_fifo<T>(&mut self) -> T {
+    fn read_fifo<T>(&self) -> T {
         let base = self.base_address as *mut T;
-        let result = unsafe { base.byte_add(self.fifo_offset).read_volatile() };
-        self.fifo_offset += size_of::<T>();
+        let result = unsafe { base.byte_add(*self.fifo_offset.get()).read_volatile() };
+        unsafe { *self.fifo_offset.get() += size_of::<T>() };
         result
     }
 
     /// Reset FIFO
-    fn reset_fifo(&mut self) {
+    fn reset_fifo(&self) {
         let base = self.base_address as *mut CTRL;
         let ctrl = self.control_reg().with_fifo_reset(true);
-        unsafe { base.byte_add(self.fifo_offset).write_volatile(ctrl) }
+        unsafe { base.byte_add(*self.fifo_offset.get()).write_volatile(ctrl) }
     }
 
     /// Set transaction size
     ///
     /// block_size: size of transfer
     /// byte_cnt: number of bytes to transfer
-    fn set_size(&mut self, block_size: usize, byte_cnt: usize) {
+    fn set_size(&self, block_size: usize, byte_cnt: usize) {
         let blksiz = BLKSIZ::new().with_block_size(block_size);
         let bytcnt = BYTCNT::new().with_byte_count(byte_cnt);
         let base = self.base_address as *mut BLKSIZ;
@@ -352,7 +359,7 @@ impl MMC {
         unsafe { base.byte_add(BYTCNT::offset()).write_volatile(bytcnt.into()) };
     }
 
-    fn set_controller_bus_width(&mut self, card_index: usize, width: CtypeCardWidth) {
+    fn set_controller_bus_width(&self, card_index: usize, width: CtypeCardWidth) {
         let ctype = CTYPE::set_card_width(card_index, width);
         let base = self.base_address as *mut CTYPE;
         unsafe { base.byte_add(CTYPE::offset()).write_volatile(ctype) }
@@ -442,7 +449,7 @@ impl MMC {
         unsafe { base.byte_add(DBADDRU::offset()).write_volatile((addr >> 32) as u32) };
     }
 
-    fn reset_clock(&mut self) {
+    fn reset_clock(&self) {
         // Disable clock
         info!("Disable clock");
         let base = self.base_address as *mut CLKENA;
@@ -465,5 +472,75 @@ impl MMC {
 
         let cmd = CMD::clock_cmd();
         self.send_cmd(cmd, CMDARG::empty(), None);
+    }
+}
+
+impl Device for MMC {
+    fn name(&self) -> &str {
+        "snps,dw_mshc"
+    }
+
+    fn mmio_base(&self) -> usize {
+        self.base_address
+    }
+
+    fn mmio_size(&self) -> usize {
+        0x1000 // TODO: Hard coded for now
+    }
+
+    fn device_type(&self) -> crate::drivers::DeviceType {
+        crate::drivers::DeviceType::Block
+    }
+
+    fn interrupt_number(&self) -> Option<usize> {
+        todo!()
+    }
+
+    fn interrupt_handler(&self) {
+        todo!()
+    }
+
+    fn init(&self) {
+        self.card_init()
+    }
+
+    fn as_blk(
+        self: alloc::sync::Arc<Self>,
+    ) -> Option<alloc::sync::Arc<dyn crate::drivers::BlockDevice>> {
+        None
+    }
+
+    fn as_char(
+        self: alloc::sync::Arc<Self>,
+    ) -> Option<alloc::sync::Arc<dyn crate::drivers::CharDevice>> {
+        None
+    }
+
+    fn as_async_blk(
+        self: alloc::sync::Arc<Self>,
+    ) -> Option<alloc::sync::Arc<dyn AsyncBlockDevice>> {
+        Some(self)
+    }
+}
+
+impl AsyncBlockDevice for MMC {
+    fn num_blocks(&self) -> u64 {
+        todo!()
+    }
+
+    fn block_size(&self) -> usize {
+        todo!()
+    }
+
+    fn read_block(&self, block_id: u64, buf: &mut [u8]) -> crate::drivers::ADevResult {
+        todo!()
+    }
+
+    fn write_block(&self, block_id: u64, buf: &[u8]) -> crate::drivers::ADevResult {
+        todo!()
+    }
+
+    fn flush(&self) -> crate::drivers::ADevResult {
+        todo!()
     }
 }

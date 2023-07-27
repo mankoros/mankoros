@@ -12,8 +12,10 @@ use crate::memory::kernel_phys_dev_to_virt;
 use crate::memory::pagetable::pte::PTEFlags;
 use crate::{boot, memory};
 
-pub fn probe_sdio_blk() -> Option<usize> {
-    Some(0)
+use super::dw_mshc::{self, MMC};
+
+pub fn probe_sdio_blk() -> Option<MMC> {
+    dw_mshc::probe()
 }
 
 pub fn probe_virtio_blk() -> Option<VirtIoBlockDev> {
