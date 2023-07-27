@@ -92,6 +92,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_UNAME => self.sys_uname(),
             SYSCALL_SCHED_YIELD => self.sys_sched_yield().await,
             SYSCALL_GETTIMEOFDAY => self.sys_gettimeofday(),
+            SYSCALL_CLOCKGETTIME => self.sys_clockgettime(),
             SYSCALL_NANOSLEEP => self.sys_nanosleep().await,
             SYSCALL_GETUID => self.sys_getuid(),
             SYSCALL_GETRUSAGE => self.sys_getrusage(),

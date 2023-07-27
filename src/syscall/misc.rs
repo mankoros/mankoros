@@ -75,6 +75,17 @@ impl<'a> Syscall<'a> {
         Ok(0)
     }
 
+    pub fn sys_clockgettime(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let _clock_id = args[0] as usize;
+        let time_spec = args[1] as *mut TimeSpec;
+        info!("Syscall: clockgettime");
+        within_sum(|| unsafe {
+            (*time_spec) = TimeSpec::now();
+        });
+        Ok(0)
+    }
+
     pub fn sys_times(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
         let tms_ptr = args[0] as *mut Tms;
