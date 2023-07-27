@@ -231,19 +231,25 @@ impl ConcreteFile for FATFile {
             let (sct_id, sct_off) = self.chain.offset_sct(self.fs, offset);
             debug_assert!(sct_off == 0);
 
+            let mut readable_len = self.size() - offset;
             let mut buf = buf;
             let mut sid = sct_id;
             let mut read_len = 0;
-            while !buf.is_empty() {
-                let len = core::cmp::min(buf.len(), BLOCK_SIZE);
+            loop {
+                use core::cmp::min;
+                let len = min(min(buf.len(), readable_len), BLOCK_SIZE);
                 self.fs.read_sector(sid, &mut buf[..len]).await?;
+
                 buf = &mut buf[len..];
-                read_len += BLOCK_SIZE;
-                if let Some(next_sid) = self.fs.next_sector(sid) {
-                    sid = next_sid;
-                } else {
+                read_len += len;
+                readable_len -= len;
+
+                let next_sector = self.fs.next_sector(sid);
+                if next_sector.is_none() || readable_len == 0 || buf.is_empty() {
                     break;
                 }
+
+                sid = next_sector.unwrap();
             }
 
             Ok(read_len)
@@ -258,19 +264,25 @@ impl ConcreteFile for FATFile {
             let (sct_id, sct_off) = self.chain.offset_sct(self.fs, offset);
             debug_assert!(sct_off == 0);
 
+            let mut writable_len = self.size() - offset;
             let mut buf = buf;
             let mut sid = sct_id;
             let mut write_len = 0;
-            while !buf.is_empty() {
-                let len = core::cmp::min(buf.len(), BLOCK_SIZE);
+            loop {
+                use core::cmp::min;
+                let len = min(min(buf.len(), writable_len), BLOCK_SIZE);
                 self.fs.write_sector(sid, &buf[..len]).await?;
+
                 buf = &buf[len..];
-                write_len += BLOCK_SIZE;
-                if let Some(next_sid) = self.fs.next_sector(sid) {
-                    sid = next_sid;
-                } else {
+                write_len += len;
+                writable_len -= len;
+
+                let next_sector = self.fs.next_sector(sid);
+                if next_sector.is_none() || writable_len == 0 || buf.is_empty() {
                     break;
                 }
+
+                sid = next_sector.unwrap();
             }
 
             Ok(write_len)

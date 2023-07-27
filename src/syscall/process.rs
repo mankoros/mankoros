@@ -289,7 +289,7 @@ impl<'a> Syscall<'a> {
 
     pub fn sys_exit(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        info!("Syscall: exit");
+        info!("Syscall: exit (code: {})", args[0]);
         self.do_exit = true;
         self.lproc.set_exit_code(args[0] as i32);
         Ok(0)

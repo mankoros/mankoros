@@ -120,7 +120,7 @@ impl<'a> Syscall<'a> {
         let user_check = UserCheck::new_with_sum(&self.lproc);
         let path_name = user_check.checked_read_cstr(path_name as *const u8)?;
 
-        debug!(
+        info!(
             "fstatat: dir_fd: {}, path_name: {:?}, stat: 0x{:x}",
             dir_fd, path_name, kstat
         );
@@ -362,9 +362,15 @@ impl<'a> Syscall<'a> {
         let path = Path::from_string(path_name)?;
 
         if path.is_absolute() {
-            let dir_path = path.remove_tail();
-            dir = fs::root::get_root_dir().resolve(&dir_path).await?;
-            file_name = path.last().clone();
+            if path.is_root() {
+                // 处理在根目录下解析 "/" 的情况
+                dir = fs::root::get_root_dir();
+                file_name = String::from("");
+            } else {
+                let dir_path = path.remove_tail();
+                dir = fs::root::get_root_dir().resolve(&dir_path).await?;
+                file_name = path.last().clone();
+            }
         } else {
             let fd_dir = if dir_fd == AT_FDCWD {
                 let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone());

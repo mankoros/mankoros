@@ -44,7 +44,12 @@ impl Syscall<'_> {
         let args = self.cx.syscall_args();
         let (fd, buf, len) = (args[0], UserWritePtr::from_usize(args[1]), args[2]);
 
-        info!("Syscall: read, fd {fd}");
+        info!(
+            "Syscall: read, fd {}, buf: {:x}, len: {}",
+            fd,
+            buf.as_usize(),
+            len
+        );
 
         // *mut u8 does not implement Send
         let buf = unsafe { core::slice::from_raw_parts_mut(buf.raw_ptr_mut(), len) };
@@ -72,7 +77,7 @@ impl Syscall<'_> {
         let user_check = UserCheck::new_with_sum(&self.lproc);
         let path = user_check.checked_read_cstr(path as *const u8)?;
 
-        debug!("Open path: {}", path);
+        info!("Open path: {}", path);
         let path = Path::from_string(path).expect("Error parsing path");
 
         let dir = if path.is_absolute() {
@@ -129,8 +134,7 @@ impl Syscall<'_> {
             let read_fd = table.alloc(VfsFileRef::new(pipe_read));
             let write_fd = table.alloc(VfsFileRef::new(pipe_write));
 
-            debug!("read_fd: {}", read_fd);
-            debug!("write_fd: {}", write_fd);
+            info!("read_fd: {}, write_fd: {}", read_fd, write_fd);
 
             // TODO: check user permissions
             unsafe { *pipe.raw_ptr_mut() = read_fd as u32 }
@@ -140,9 +144,9 @@ impl Syscall<'_> {
     }
 
     pub fn sys_close(&mut self) -> SyscallResult {
-        info!("Syscall: close");
         let args = self.cx.syscall_args();
         let fd = args[0];
+        info!("Syscall: close: fd: {}", fd);
 
         self.lproc.with_mut_fdtable(|m| {
             if let Some(_) = m.remove(fd) {
