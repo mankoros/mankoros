@@ -2,11 +2,13 @@ mod timespec;
 mod timestat;
 mod timeval;
 mod tms;
+mod rusage;
 
 pub use self::timespec::TimeSpec;
 pub use self::timestat::TimeStat;
 pub use self::timeval::TimeVal;
 pub use self::tms::Tms;
+pub use self::rusage::Rusage;
 use crate::arch;
 use log::info;
 use riscv::register::{sie, time};

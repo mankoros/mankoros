@@ -94,6 +94,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_GETTIMEOFDAY => self.sys_gettimeofday(),
             SYSCALL_NANOSLEEP => self.sys_nanosleep().await,
             SYSCALL_GETUID => self.sys_getuid(),
+            SYSCALL_GETRUSAGE => self.sys_getrusage(),
 
             // unimplemented
             129 => self.sys_do_nothing("delete_module"),

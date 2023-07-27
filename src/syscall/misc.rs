@@ -8,7 +8,8 @@ use crate::{
     executor::{hart_local::get_curr_lproc, util_futures::yield_now},
     here,
     memory::{UserReadPtr, UserWritePtr},
-    timer::{get_time_f64, TimeSpec, TimeVal, Tms},
+    timer::{get_time_f64, Rusage, TimeSpec, TimeVal, Tms},
+    tools::errors::SysError,
 };
 
 use super::{Syscall, SyscallResult};
@@ -134,5 +135,33 @@ impl<'a> Syscall<'a> {
         info!("Syscall: getuid");
         // We don't implement user management, just return 0
         Ok(0)
+    }
+
+    pub fn sys_getrusage(&self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let who = args[0] as u32;
+        let usage = args[1] as *mut Rusage;
+
+        info!("Syscall: getrusage");
+
+        match get_curr_lproc() {
+            Some(lproc) => {
+                let (utime, stime) = lproc.timer().lock(here!()).output_us();
+
+                match who {
+                    0 | 1 | u32::MAX => {
+                        within_sum(|| unsafe {
+                            (*usage).ru_utime = utime.into();
+                            (*usage).ru_stime = stime.into();
+                        });
+                    }
+                    _ => return Err(SysError::EINVAL),
+                };
+                Ok(0)
+            }
+            None => {
+                panic!("Current hart have no lporc");
+            }
+        }
     }
 }
