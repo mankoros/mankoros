@@ -218,18 +218,23 @@ impl<F: ConcreteFile> PageManager<F> {
         let mut page_addr = PhysAddr::from(offset).round_down().bits();
 
         // 不用管什么有效长度了, 写入的话写就是了
-        page_buf = self.get_or_alloc(page_addr).as_mut_slice();
+        page_buf = self.get_or_alloc(page_addr);
         page_addr += PAGE_SIZE;
 
         loop {
             let target_len = target_buf.len();
             if target_len > PAGE_SIZE {
-                page_buf.copy_from_slice(&target_buf[..PAGE_SIZE]);
+                page_buf.set_len(PAGE_SIZE);
+                page_buf.as_mut_slice().copy_from_slice(&target_buf[..PAGE_SIZE]);
                 target_buf = &target_buf[PAGE_SIZE..];
-                page_buf = self.get_or_alloc(page_addr).as_mut_slice();
+                page_buf = self.get_or_alloc(page_addr);
                 page_addr += PAGE_SIZE;
             } else {
-                page_buf[..target_len].copy_from_slice(target_buf);
+                if page_buf.len() < target_len {
+                    // TODO: 找一个更靠谱的方式更新文件长度
+                    page_buf.set_len(target_len);
+                }
+                page_buf.as_mut_slice()[..target_len].copy_from_slice(target_buf);
                 return;
             }
         }
@@ -254,7 +259,7 @@ impl CachedPage {
     pub fn new(phys_addr: PhysAddr4K) -> Self {
         Self {
             is_dirty: AtomicBool::new(false),
-            effective_len: AtomicU32::new(0),
+            effective_len: AtomicU32::new(PAGE_SIZE as u32),
             phys_addr,
         }
     }

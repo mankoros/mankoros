@@ -5,7 +5,7 @@ mod tools;
 
 use fs::Fat32FS;
 
-pub type DEntryIter = dir::GroupDEntryIter;
+pub type DEntryIter<'a> = dir::GroupDEntryIter<'a>;
 pub use dir::FatDEntryData;
 pub use file::FATFile;
 pub use fs::BlkDevRef;

@@ -275,6 +275,11 @@ impl FATTableManager {
         self.fat[cid as usize] = 0;
     }
 
+    pub fn alloc_next(&mut self, cid: ClusterID) -> ClusterID {
+        let next_cid = self.alloc();
+        self.set_next(cid, next_cid);
+        next_cid
+    }
     pub fn set_next(&mut self, cid: ClusterID, next_cid: ClusterID) {
         self.fat[cid as usize] = next_cid as u32;
     }

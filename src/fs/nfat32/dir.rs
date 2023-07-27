@@ -1,4 +1,4 @@
-use super::tools::BlockCacheEntryRef;
+use super::tools::{BlockCacheEntryRef, ClusterChain};
 use super::{ClsOffsetT, ClusterID, Fat32FS, SectorID};
 
 use crate::fs::new_vfs::{VfsFileAttr, VfsFileKind};
@@ -327,18 +327,20 @@ impl Display for AtomDEPos {
     }
 }
 
-pub struct GroupDEntryIter {
+pub struct GroupDEntryIter<'a> {
     fs: &'static Fat32FS,
     window: AtomDEntryWindow,
     is_deleted: bool,
+    chain: Option<&'a ClusterChain>
 }
 
-impl GroupDEntryIter {
+impl GroupDEntryIter<'_> {
     pub fn new(fs: &'static Fat32FS, begin_cluster: ClusterID) -> Self {
         Self {
             fs,
             window: AtomDEntryWindow::new(fs, begin_cluster),
             is_deleted: false,
+            chain: None,
         }
     }
 
@@ -347,11 +349,12 @@ impl GroupDEntryIter {
             fs,
             window: AtomDEntryWindow::new_middle(fs, sector, gde_pos),
             is_deleted: false,
+            chain: None,
         }
     }
 }
 
-impl GroupDEntryIter {
+impl GroupDEntryIter<'_> {
     fn atom_iter(&self) -> impl Iterator<Item = AtomDEntryView> {
         self.window.iter()
     }
@@ -510,7 +513,7 @@ impl GroupDEntryIter {
     /// 之类的方法访问或修改当前 GDE 的信息
     pub(super) async fn mark_next(&mut self) -> SysResult<Option<()>> {
         loop {
-            let next = match self.window.move_right_one().await? {
+            let next = match self.window.move_right_one(self.chain).await? {
                 Some(next) => next,
                 None => return Ok(None),
             };
@@ -526,29 +529,32 @@ impl GroupDEntryIter {
         self.window.move_left(self.window.len()).await
     }
 
-    pub(super) fn append_enter(&mut self) {
+    pub(super) async fn sync_all(&mut self) -> SysResult<()> {
+        self.window.move_left(self.window.len()).await
+    }
+}
+
+impl<'it> GroupDEntryIter<'it> {
+    pub(super) fn append_enter<'c: 'it>(&mut self, chain: &'c ClusterChain) {
         self.window.in_append = true;
+        self.chain = Some(chain);
     }
     pub(super) async fn append<'a>(&'a mut self, dentry: &FatDEntryData<'a>) -> SysResult<()> {
         let ade_needed = dentry.lfn_needed() + 1;
         for _ in 0..ade_needed {
-            self.window.move_right_one().await?;
+            self.window.move_right_one(self.chain).await?;
         }
         self.create_entry(dentry).await
     }
     pub(super) async fn append_end(&mut self) -> SysResult<()> {
         // write an empty GDE
-        self.window.move_right_one().await?;
+        self.window.move_right_one(self.chain).await?;
         unsafe { self.window.last().mark_end() };
 
         // sync
         self.sync_all().await?;
         self.window.in_append = false;
         Ok(())
-    }
-
-    pub(super) async fn sync_all(&mut self) -> SysResult<()> {
-        self.window.move_left(self.window.len()).await
     }
 }
 
@@ -629,23 +635,23 @@ impl<'a> AtomDEntryWindow {
             self.sector_bufs.pop_front();
         }
 
-        log::trace!("move_left: {} -> {}", self.left_pos, new_left);
+        log::debug!("move_left: {} -> {}", self.left_pos, new_left);
         self.left_pos = new_left;
         self.begin_pos =
             self.begin_pos.offset_byte((buf_idx_where_new_left_in * BLOCK_SIZE) as isize);
         Ok(())
     }
 
-    pub async fn move_right_one(&mut self) -> SysResult<Option<AtomDEntryView>> {
+    pub async fn move_right_one<'c>(&mut self, chain: Option<&'c ClusterChain>) -> SysResult<Option<AtomDEntryView>> {
         let current = self.right_pos;
-        log::trace!(
+        log::debug!(
             "move_right_one enter: (right_pos: {}, buf_in_use: {})",
-            self.right_pos,
+            current,
             self.sector_bufs.len()
         );
 
         // 1. 检查是否需要加载新的 sector
-        let cur_buf_idx = self.buf_idx(self.right_pos);
+        let cur_buf_idx = self.buf_idx(current);
         if cur_buf_idx >= self.sector_bufs.len() {
             debug_assert!(cur_buf_idx == self.sector_bufs.len());
             // 要载入新的 sector
@@ -657,18 +663,39 @@ impl<'a> AtomDEntryWindow {
                 self.next_sector = self.fs.next_sector(next_sct);
             } else {
                 // 不存在新的 sector 了
-                return Ok(None);
+                if self.in_append {
+                    // 正在 append，需要新建 sector
+
+                    // 分配一个新的 cluster 并更新 chain
+                    let chain = chain.expect("move_right_one: chain is None when in append mode");
+                    let last_cluster = chain.last();
+                    let new_cluster = self.fs.with_fat(|f| f.alloc_next(last_cluster));
+                    chain.add(new_cluster);
+
+                    // 将创建好的块放入缓冲区, 同时更新 next_sector
+                    let new_sector = self.fs.first_sector(new_cluster);
+                    // TODO: 优化这里的逻辑, 对新分配的块, 块缓存不需要从磁盘读取一次
+                    let mut new_buf = SectorBuf::new(new_sector);
+                    self.load(&mut new_buf).await?;
+                    self.sector_bufs.push_back(new_buf);
+                    self.next_sector = self.fs.next_sector(new_sector);
+                    // 然后我们便可以继续移动我们的 right_pos
+                } else {
+                    // 不在 append，不需要新建 sector
+                    log::debug!("move_right_one: no more sectors");
+                    return Ok(None);
+                }
             }
         }
         debug_assert!(cur_buf_idx < self.sector_bufs.len());
 
         // 2. update the right_pos
-        self.right_pos = self.right_pos.offset_ade(1);
+        self.right_pos = current.offset_ade(1);
 
         // 3. check whether the new ADE is valid.
         let last_ade = self.get_in_dir(current);
         if last_ade.is_end() && !self.in_append {
-            log::trace!("move_right_one: reach end ({})", current);
+            log::debug!("move_right_one: reach end ({})", current);
             return Ok(None);
         } else {
             let ade_kind = if last_ade.is_lfn() {
@@ -678,18 +705,19 @@ impl<'a> AtomDEntryWindow {
             } else {
                 "unused"
             };
-            log::trace!("move_right_one: reach {} ({})", ade_kind, current);
+            log::debug!("move_right_one: reach {} ({})", ade_kind, current);
             Ok(Some(last_ade))
         }
     }
 
-    /// get the ADE with its relative AtomDEPos in this window
-    pub fn get_in_window(&self, idx: usize) -> AtomDEntryView {
-        self.get_in_dir(self.left_pos.offset_ade(idx as isize))
-    }
+    // /// get the ADE with its relative AtomDEPos in this window
+    // pub fn get_in_window(&self, idx: usize) -> AtomDEntryView {
+    //     self.get_in_dir(self.left_pos.offset_ade(idx as isize))
+    // }
 
     /// get the ADE with its AtomDEPos in current directory
     pub fn get_in_dir(&self, pos: AtomDEPos) -> AtomDEntryView {
+        log::debug!("get_in_dir: pos: {}, begin_pos: {}", pos, self.begin_pos);
         let delta_ade = pos.as_ade_offset() - self.begin_pos.as_ade_offset();
         self.get_in_buf(delta_ade)
     }

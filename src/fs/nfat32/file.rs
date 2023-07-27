@@ -146,7 +146,7 @@ impl FATFile {
             }
             it.leave_next().await?;
         }
-        it.append_enter();
+        it.append_enter(&self.chain);
         // TODO: 这对吗? 看起来不太对劲
         it.append(data).await?;
         file.editor.set_pos(self.into_de_pos(&it));
