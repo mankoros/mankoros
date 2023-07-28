@@ -15,7 +15,7 @@ use riscv::register::{sie, time};
 /// 目前硬编码为 10MHz(for qemu)
 pub static mut CLOCK_FREQ: usize = 10_000_000;
 /// 每秒的时钟中断数
-pub const INTERRUPT_PER_SEC: usize = 100;
+pub const INTERRUPT_PER_SEC: usize = 10;
 /// 每微秒的时钟周期数
 fn machine_ticks_per_usec() -> usize {
     unsafe { CLOCK_FREQ / USEC_PER_SEC }

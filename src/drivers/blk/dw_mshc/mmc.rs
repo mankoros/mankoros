@@ -6,6 +6,7 @@
 use core::cell::UnsafeCell;
 use core::mem::size_of;
 
+use alloc::boxed::Box;
 use byte_slice_cast::*;
 use log::debug;
 use log::info;
@@ -189,7 +190,7 @@ impl MMC {
 
         info!("Current FIFO count: {}", self.fifo_filled_cnt());
 
-        let cmdarg = CMDARG::from(0x200);
+        let cmdarg = CMDARG::from(153);
         let resp = self.send_cmd(cmd, cmdarg, Some(&mut buffer)).expect("Error sending command");
         debug!("Magic: 0x{:x}", buffer[0]);
         info!("Current FIFO count: {}", self.fifo_filled_cnt());
@@ -301,6 +302,7 @@ impl MMC {
         if cmd.data_expected() {
             let buffer = // TODO: dirty
                 buffer.unwrap_or(unsafe { core::slice::from_raw_parts_mut(0 as *mut usize, 64) });
+            assert!(buffer_offset == 0);
             wait_for!({
                 let rinsts: RINSTS =
                     unsafe { base.byte_add(RINSTS::offset()).read_volatile() }.into();
@@ -312,6 +314,8 @@ impl MMC {
                 }
                 rinsts.data_transfer_over() || !rinsts.no_error()
             });
+            debug!("read {:?} bytes", (buffer_offset) * 8);
+            debug!("Current FIFO count: {}", self.fifo_filled_cnt());
         }
 
         // Check for error
@@ -350,7 +354,7 @@ impl MMC {
     fn read_fifo<T>(&self) -> T {
         let base = self.virt_base_address() as *mut T;
         let result = unsafe { base.byte_add(*self.fifo_offset.get()).read_volatile() };
-        unsafe { *self.fifo_offset.get() += size_of::<T>() };
+        // unsafe { *self.fifo_offset.get() += size_of::<T>() };
         result
     }
 
@@ -549,7 +553,16 @@ impl AsyncBlockDevice for MMC {
     }
 
     fn read_block(&self, block_id: u64, buf: &mut [u8]) -> crate::drivers::ADevResult {
-        todo!()
+        let buf = unsafe { core::mem::transmute(buf) };
+        Box::pin(async move {
+            debug!("reading block {}", block_id);
+            // Read one block
+            self.set_size(512, 512);
+            let cmd = CMD::data_cmd(0, 17);
+            let cmdarg = CMDARG::from(block_id as u32);
+            let resp = self.send_cmd(cmd, cmdarg, Some(buf)).expect("Error sending command");
+            Ok(())
+        })
     }
 
     fn write_block(&self, block_id: u64, buf: &[u8]) -> crate::drivers::ADevResult {
