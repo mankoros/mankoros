@@ -2,14 +2,14 @@
 //!
 
 use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
-use log::warn;
+use log::{info, warn};
 
 use crate::{
     arch, boot,
     memory::{self, address::VirtAddr, kernel_phys_dev_to_virt, pagetable::pte::PTEFlags},
 };
 
-use super::{cpu, plic, BlockDevice, CharDevice, Device};
+use super::{cpu, plic, AsyncBlockDevice, CharDevice, Device};
 
 pub struct DeviceManager {
     cpus: Vec<cpu::CPU>,
@@ -24,12 +24,12 @@ impl DeviceManager {
             devices: Vec::new(),
             interrupt_map: BTreeMap::new(),
             cpus: Vec::new(),
-            plic: plic::PLIC::new(0, 0),
+            plic: plic::PLIC::new(0, 0x1000), // TODO: parse from device tree
         }
     }
 
-    pub fn disks(&self) -> Vec<Arc<dyn BlockDevice>> {
-        self.devices.iter().filter_map(|d| d.clone().as_blk()).collect::<Vec<_>>()
+    pub fn disks(&self) -> Vec<Arc<dyn AsyncBlockDevice>> {
+        self.devices.iter().filter_map(|d| d.clone().as_async_blk()).collect::<Vec<_>>()
     }
     pub fn serials(&self) -> Vec<Arc<dyn CharDevice>> {
         self.devices.iter().filter_map(|d| d.clone().as_char()).collect::<Vec<_>>()
@@ -43,7 +43,10 @@ impl DeviceManager {
         self.plic = plic::probe();
 
         // Probe Devices
-        if let Some(dev) = super::blk::probe() {
+        if let Some(dev) = super::blk::probe_virtio_blk() {
+            self.devices.push(Arc::new(dev));
+        }
+        if let Some(dev) = super::blk::probe_sdio_blk() {
             self.devices.push(Arc::new(dev));
         }
         if let Some(dev) = super::serial::probe() {
@@ -59,9 +62,17 @@ impl DeviceManager {
     }
 
     pub fn interrupt_handler(&mut self) {
+        info!("Interrupt Sstatus {:?}", riscv::register::sstatus::read());
+        unsafe { riscv::register::sstatus::clear_sie() };
+        info!("Handling interrupt");
         // First clain interrupt from PLIC
         if let Some(irq_number) = self.plic.claim_irq(self.irq_context()) {
             if let Some(dev) = self.interrupt_map.get(&irq_number) {
+                info!(
+                    "Handling interrupt from device: {:?}, irq: {}",
+                    dev.name(),
+                    irq_number
+                );
                 dev.interrupt_handler();
                 // Complete interrupt when done
                 self.plic.complete_irq(irq_number, self.irq_context());
@@ -111,6 +122,7 @@ impl DeviceManager {
         for dev in self.devices.iter() {
             if let Some(irq) = dev.interrupt_number() {
                 self.plic.enable_irq(irq, self.irq_context());
+                info!("Enable external interrupt: {}", irq);
             }
         }
         unsafe { riscv::register::sie::set_sext() };

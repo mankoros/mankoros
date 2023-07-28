@@ -6,13 +6,19 @@ use log::{info, warn};
 use virtio_drivers::transport::{self, mmio::MmioTransport, Transport};
 
 use crate::consts::address_space::K_SEG_DTB;
-use crate::drivers::blk::dev::as_dev_type;
+use crate::drivers::blk::virtio::as_dev_type;
 use crate::drivers::{Device, DeviceType, VirtIoBlockDev};
 use crate::memory::kernel_phys_dev_to_virt;
 use crate::memory::pagetable::pte::PTEFlags;
 use crate::{boot, memory};
 
-pub fn probe() -> Option<VirtIoBlockDev> {
+use super::dw_mshc::{self, MMC};
+
+pub fn probe_sdio_blk() -> Option<MMC> {
+    dw_mshc::probe()
+}
+
+pub fn probe_virtio_blk() -> Option<VirtIoBlockDev> {
     let device_tree = unsafe { fdt::Fdt::from_ptr(K_SEG_DTB as _).expect("Parse DTB failed") };
     let node = device_tree.find_compatible(&["virtio,mmio"])?;
     let reg = node.reg()?.next()?;

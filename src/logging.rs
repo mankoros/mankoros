@@ -5,10 +5,12 @@
 // Adapted from rCore https://github.com/rcore-os/rCore/blob/13ad2d19058901e6401a978d4e20acf7f5610666/kernel/src/logging.rs
 // And AcreOS/modules/axlog/src/lib.rs
 
-use crate::timer;
+use crate::sync::SpinNoIrqLock;
+use crate::{here, timer};
 use core::str::FromStr;
 use core::{fmt, sync::atomic::AtomicBool};
 
+use lazy_static::lazy_static;
 use log::{self, Level, LevelFilter, Log, Metadata, Record};
 
 macro_rules! with_color {
@@ -69,6 +71,10 @@ pub fn set_max_level(level: &str) {
 
 struct SimpleLogger;
 
+lazy_static! {
+    static ref LOG_LOCK: SpinNoIrqLock<()> = SpinNoIrqLock::new(());
+}
+
 impl Log for SimpleLogger {
     fn enabled(&self, _metadata: &Metadata) -> bool {
         true
@@ -94,9 +100,10 @@ impl Log for SimpleLogger {
             Level::Debug => ColorCode::Cyan,
             Level::Trace => ColorCode::BrightBlack,
         };
+        LOG_LOCK.lock(here!());
         __print_impl(with_color!(
             ColorCode::White,
-            "[{} {} {} {}\n",
+            "[{} {} {} {}\r\n",
             with_color!(level_color, "{:<5}", level),
             with_color!(ColorCode::BrightBlue, "{:0>4}", timer::get_time_sec()),
             with_color!(ColorCode::White, "{:>40}:{:<4}]", target, line),

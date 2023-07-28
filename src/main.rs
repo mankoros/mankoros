@@ -10,6 +10,7 @@
 #![feature(allocator_api)]
 #![feature(new_uninit)]
 #![allow(dead_code)]
+#![allow(mutable_transmutes)]
 #![feature(map_try_insert)]
 #![feature(btree_drain_filter)]
 #![feature(let_chains)]
@@ -152,7 +153,9 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     manager.probe();
     manager.map_devices();
     manager.devices_init();
+    info!("Device initialization complete");
     manager.enable_external_interrupts();
+    info!("External interrupts enabled");
 
     let serial0 = manager.serials()[0].clone();
     let serial = SerialWrapper::new(serial0);
@@ -278,6 +281,8 @@ pub static PANIC_COUNT: AtomicUsize = AtomicUsize::new(0);
 /// This function is called on panic.
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
+    // Ignore interrupts
+    unsafe { riscv::register::sstatus::clear_sie() };
     let logging_initialized = unsafe { logging::INITIALIZED.load(Ordering::SeqCst) };
     DEVICE_REMAPPED.store(false, Ordering::SeqCst);
     if PANIC_COUNT.fetch_add(1, core::sync::atomic::Ordering::SeqCst) >= 1 {
@@ -315,6 +320,9 @@ fn panic(info: &PanicInfo) -> ! {
     }
 
     xdebug::backtrace();
+
+    // Safe energy
+    unsafe { riscv::asm::wfi() }
 
     loop {}
 }

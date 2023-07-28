@@ -3,7 +3,7 @@ use log::info;
 use mbr_nostd::PartitionTable;
 
 use crate::{
-    drivers::BlockDevice,
+    drivers::{AsyncBlockDevice, BlockDevice},
     executor::block_on,
     fs::{
         memfs::{tmpdir::TmpDir, tty::TTY, zero::ZeroDev},
@@ -23,7 +23,7 @@ pub mod pipe;
 pub mod root;
 pub mod stdio;
 
-pub fn init_filesystems(blk_dev: Arc<dyn BlockDevice>) {
+pub fn init_filesystems(blk_dev: Arc<dyn AsyncBlockDevice>) {
     info!("Filesystem built-in self testing (BIST)...");
     new_vfs::path::path_test();
 

@@ -17,7 +17,7 @@ use riscv::register::{sie, time};
 /// 目前硬编码为 10MHz(for qemu)
 pub static mut CLOCK_FREQ: usize = 10_000_000;
 /// 每秒的时钟中断数
-pub const INTERRUPT_PER_SEC: usize = 100;
+pub const INTERRUPT_PER_SEC: usize = 10;
 /// 每微秒的时钟周期数
 fn machine_ticks_per_usec() -> usize {
     unsafe { CLOCK_FREQ / USEC_PER_SEC }
@@ -91,9 +91,9 @@ pub fn timer_handler() {
     set_next_timer_irq();
     unsafe {
         TIMER_TICK += 1;
-        if TIMER_TICK >= 100 {
+        if TIMER_TICK >= INTERRUPT_PER_SEC {
             TIMER_TICK = 0;
-            info!("Timer IRQ fired at hart {}", arch::get_hart_id());
+            info!("Hart {}: +1s", arch::get_hart_id());
         }
     }
 }

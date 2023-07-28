@@ -1,6 +1,6 @@
 mod sifive;
 mod uart8250;
-
+use super::wait_for;
 use alloc::{boxed::Box, collections::VecDeque};
 use log::{info, warn};
 use ringbuffer::{RingBufferExt, RingBufferRead, RingBufferWrite};
@@ -12,15 +12,6 @@ use core::{
     pin::Pin,
     task::{Poll, Waker},
 };
-
-macro_rules! wait_for {
-    ($cond:expr) => {
-        while !$cond {
-            core::hint::spin_loop();
-        }
-    };
-}
-pub(crate) use wait_for;
 
 use crate::{
     consts::address_space::K_SEG_DTB, here, memory::kernel_phys_dev_to_virt, println,
@@ -132,7 +123,9 @@ impl Device for Serial {
         None
     }
 
-    fn as_async_blk(self: alloc::sync::Arc<Self>) -> Option<alloc::sync::Arc<dyn super::AsyncBlockDevice>> {
+    fn as_async_blk(
+        self: alloc::sync::Arc<Self>,
+    ) -> Option<alloc::sync::Arc<dyn super::AsyncBlockDevice>> {
         None
     }
 }
@@ -229,10 +222,11 @@ fn probe_serial_console(stdout: &fdt::node::FdtNode) -> Serial {
     let base_paddr = reg.starting_address as usize;
     let size = reg.size.unwrap();
     let base_vaddr = kernel_phys_dev_to_virt(base_paddr);
-    let irq_number = stdout.property("interrupts").unwrap().as_usize().unwrap();
+    let mut irq_number = stdout.property("interrupts").unwrap().as_usize().unwrap();
     info!("IRQ number: {}", irq_number);
 
-    match stdout.compatible().unwrap().first() {
+    let first_compatible = stdout.compatible().unwrap().first();
+    match first_compatible {
         "ns16550a" | "snps,dw-apb-uart" => {
             // VisionFive 2 (FU740)
             // virt QEMU
@@ -253,7 +247,14 @@ fn probe_serial_console(stdout: &fdt::node::FdtNode) -> Serial {
                 reg_shift = reg_shift_raw.as_usize().expect("Parse reg-shift to usize failed");
             }
             let uart = unsafe {
-                uart8250::Uart::new(base_vaddr, freq_raw, 115200, reg_io_width, reg_shift)
+                uart8250::Uart::new(
+                    base_vaddr,
+                    freq_raw,
+                    115200,
+                    reg_io_width,
+                    reg_shift,
+                    first_compatible == "snps,dw-apb-uart",
+                )
             };
             return Serial::new(base_paddr, size, irq_number, Box::new(uart));
         }
