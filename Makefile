@@ -117,6 +117,15 @@ zImage: build
 	@#cp zImage /srv/tftp/
 	scp zImage 100.72.223.46:/private/tftpboot/zImage
 
+release-zImage: MODE = release
+release-zImage: CARGO_BUILD_ARGS += --release
+release-zImage: KERNEL_FILE = target/$(TARGET)/$(MODE)/mankoros
+release-zImage: build
+	gzip -f $(BIN_FILE)
+	mkimage -A riscv -O linux -C gzip -T kernel -a 0x40400000 -e 0x40400000 -n MankorOS -d $(BIN_FILE).gz zImage
+	@#cp zImage /srv/tftp/
+	scp zImage 100.72.223.46:/private/tftpboot/zImage
+
 clean:
 	@cargo clean
 	@rm -rf $(BIN_FILE)

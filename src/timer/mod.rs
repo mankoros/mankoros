@@ -89,9 +89,9 @@ pub fn timer_handler() {
     set_next_timer_irq();
     unsafe {
         TIMER_TICK += 1;
-        if TIMER_TICK >= 100 {
+        if TIMER_TICK >= INTERRUPT_PER_SEC {
             TIMER_TICK = 0;
-            info!("Timer IRQ fired at hart {}", arch::get_hart_id());
+            info!("Hart {}: +1s", arch::get_hart_id());
         }
     }
 }
