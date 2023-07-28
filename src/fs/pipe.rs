@@ -46,10 +46,16 @@ impl Pipe {
     }
 
     fn is_hang_up(&self) -> bool {
-        if self.is_read {
-            self.data.lock(here!()).is_empty() && Arc::strong_count(&self.data) < 2
-        } else {
-            Arc::strong_count(&self.data) < 2
+        Arc::strong_count(&self.data) < 2
+    }
+}
+
+impl Drop for Pipe {
+    fn drop(&mut self) {
+        let only_one = Arc::strong_count(&self.data) == 1;
+        let has_data = !self.data.lock(here!()).is_empty();
+        if only_one && has_data {
+            panic!("Pipe is not empty when dropped, very wrong");
         }
     }
 }
@@ -57,73 +63,79 @@ impl Pipe {
 impl VfsFile for Pipe {
     impl_vfs_default_non_dir!(Pipe);
 
-    fn write_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> ASysResult<usize> {
+    fn write_at<'a>(&'a self, _offset: usize, buf: &'a [u8]) -> ASysResult<usize> {
         Box::pin(async move {
             // Check if the pipe is writable
             if self.is_read {
                 return Err(SysError::EPERM);
             }
-            // Check if the pipe is hang up
+
             if self.is_hang_up() {
+                // don't allow writing to a closed pipe
+                log::info!("write to a closed pipe");
                 return Ok(0);
             }
 
-            let buf_len = buf.len();
-
-            let mut data = loop {
-                // Acquire the lock
-                let data = self.data.lock(here!());
-                // Check if the buffer is enough
-                if data.capacity() - data.len() >= buf_len {
-                    break data;
+            loop {
+                let mut data = self.data.lock(here!());
+                if data.len() + buf.len() <= data.capacity() {
+                    for i in 0..buf.len() {
+                        data.enqueue(buf[i]);
+                    }
+                    return Ok(buf.len());
+                } else {
+                    // wait for next round
+                    drop(data);
+                    yield_now().await;
                 }
-                // Release the lock
-                drop(data);
-                // Wait for next round
-                yield_now().await;
-            };
-            for b in buf.iter() {
-                data.push(*b);
             }
-            // Auto release lock
-            Ok(buf_len)
         })
     }
 
-    fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
+    fn read_at<'a>(&'a self, _offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
         Box::pin(async move {
             // Check if the pipe is readable
             if !self.is_read {
                 return Err(SysError::EPERM);
             }
-            // Check if the pipe is hang up
-            if self.is_hang_up() {
-                return Ok(0);
-            }
 
-            let buf_len = buf.len();
-            let mut data = loop {
-                // Acquire the lock
-                let data = self.data.lock(here!());
-                // Check if the buffer is enough
-                if data.len() >= buf_len {
-                    break data;
+            loop {
+                let mut data = self.data.lock(here!());
+                log::debug!(
+                    "pipe read loop: data_len: {}, buf_len: {}, ref_cnt: {}",
+                    data.len(),
+                    buf.len(),
+                    Arc::strong_count(&self.data)
+                );
+
+                if data.len() >= buf.len() {
+                    for i in 0..buf.len() {
+                        buf[i] = data.dequeue().unwrap();
+                    }
+                    return Ok(buf.len());
+                } else {
+                    if self.is_hang_up() {
+                        // return leftover data
+                        // must save len first here
+                        let read_len = data.len();
+                        for i in 0..data.len() {
+                            buf[i] = data.dequeue().unwrap();
+                        }
+                        return Ok(read_len);
+                    } else {
+                        // wait for next round
+                        drop(data);
+                        yield_now().await;
+                        continue;
+                    }
                 }
-                // Release the lock
-                drop(data);
-                // Wait for next round
-                yield_now().await;
-            };
-            for i in 0..buf_len {
-                buf[i] = data.dequeue().expect("Just checked for len, should not fail");
             }
-            Ok(buf_len)
         })
     }
 
     fn get_page(
         &self,
-        offset: usize,
+        _offset: usize,
         _kind: super::new_vfs::top::MmapKind,
     ) -> ASysResult<crate::memory::address::PhysAddr4K> {
         unimplemented!("Should never get page for a pipe")
@@ -131,7 +143,7 @@ impl VfsFile for Pipe {
 
     fn poll_ready(
         &self,
-        offset: usize,
+        _offset: usize,
         len: usize,
         kind: super::new_vfs::top::PollKind,
     ) -> ASysResult<usize> {
@@ -147,12 +159,21 @@ impl VfsFile for Pipe {
                     if data.len() >= len {
                         break Ok(len);
                     } else {
-                        drop(data);
-                        yield_now().await;
+                        if self.is_hang_up() {
+                            break Ok(data.len());
+                        } else {
+                            drop(data);
+                            yield_now().await;
+                        }
                     }
                 }
             } else {
                 loop {
+                    if self.is_hang_up() {
+                        // don't allow writing to a closed pipe
+                        return Ok(0);
+                    }
+
                     let data = self.data.lock(here!());
                     if data.capacity() - data.len() >= len {
                         break Ok(len);
@@ -165,7 +186,7 @@ impl VfsFile for Pipe {
         })
     }
 
-    fn poll_read(&self, offset: usize, buf: &mut [u8]) -> usize {
+    fn poll_read(&self, _offset: usize, buf: &mut [u8]) -> usize {
         debug_assert!(self.is_read);
         let mut data = self.data.lock(here!());
         let len = min(data.len(), buf.len());
@@ -175,7 +196,7 @@ impl VfsFile for Pipe {
         len
     }
 
-    fn poll_write(&self, offset: usize, buf: &[u8]) -> usize {
+    fn poll_write(&self, _offset: usize, buf: &[u8]) -> usize {
         debug_assert!(!self.is_read);
         let mut data = self.data.lock(here!());
         let len = min(data.capacity() - data.len(), buf.len());

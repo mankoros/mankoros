@@ -191,7 +191,7 @@ impl Syscall<'_> {
         }
 
         let args = self.cx.syscall_args();
-        let (fds, nfds, _timeout_ts, _sigmask) = (
+        let (fds, nfds, timeout_ts, _sigmask) = (
             UserReadPtr::<PollFd>::from_usize(args[0]),
             args[1],
             args[2],
@@ -199,9 +199,10 @@ impl Syscall<'_> {
         );
 
         info!(
-            "Syscall: ppoll, fds: 0x{:x}, nfds: {}",
+            "Syscall: ppoll, fds: 0x{:x}, nfds: {}, timeout_ts: {}",
             fds.as_usize(),
-            nfds
+            nfds,
+            timeout_ts,
         );
 
         let user_check = UserCheck::new_with_sum(&self.lproc);

@@ -331,7 +331,7 @@ pub struct GroupDEntryIter<'a> {
     fs: &'static Fat32FS,
     window: AtomDEntryWindow,
     is_deleted: bool,
-    chain: Option<&'a ClusterChain>
+    chain: Option<&'a ClusterChain>,
 }
 
 impl GroupDEntryIter<'_> {
@@ -635,16 +635,19 @@ impl<'a> AtomDEntryWindow {
             self.sector_bufs.pop_front();
         }
 
-        log::debug!("move_left: {} -> {}", self.left_pos, new_left);
+        log::trace!("move_left: {} -> {}", self.left_pos, new_left);
         self.left_pos = new_left;
         self.begin_pos =
             self.begin_pos.offset_byte((buf_idx_where_new_left_in * BLOCK_SIZE) as isize);
         Ok(())
     }
 
-    pub async fn move_right_one<'c>(&mut self, chain: Option<&'c ClusterChain>) -> SysResult<Option<AtomDEntryView>> {
+    pub async fn move_right_one<'c>(
+        &mut self,
+        chain: Option<&'c ClusterChain>,
+    ) -> SysResult<Option<AtomDEntryView>> {
         let current = self.right_pos;
-        log::debug!(
+        log::trace!(
             "move_right_one enter: (right_pos: {}, buf_in_use: {})",
             current,
             self.sector_bufs.len()
@@ -682,7 +685,7 @@ impl<'a> AtomDEntryWindow {
                     // 然后我们便可以继续移动我们的 right_pos
                 } else {
                     // 不在 append，不需要新建 sector
-                    log::debug!("move_right_one: no more sectors");
+                    log::trace!("move_right_one: no more sectors");
                     return Ok(None);
                 }
             }
@@ -695,7 +698,7 @@ impl<'a> AtomDEntryWindow {
         // 3. check whether the new ADE is valid.
         let last_ade = self.get_in_dir(current);
         if last_ade.is_end() && !self.in_append {
-            log::debug!("move_right_one: reach end ({})", current);
+            log::trace!("move_right_one: reach end ({})", current);
             return Ok(None);
         } else {
             let ade_kind = if last_ade.is_lfn() {
@@ -705,7 +708,7 @@ impl<'a> AtomDEntryWindow {
             } else {
                 "unused"
             };
-            log::debug!("move_right_one: reach {} ({})", ade_kind, current);
+            log::trace!("move_right_one: reach {} ({})", ade_kind, current);
             Ok(Some(last_ade))
         }
     }
@@ -717,7 +720,6 @@ impl<'a> AtomDEntryWindow {
 
     /// get the ADE with its AtomDEPos in current directory
     pub fn get_in_dir(&self, pos: AtomDEPos) -> AtomDEntryView {
-        log::debug!("get_in_dir: pos: {}, begin_pos: {}", pos, self.begin_pos);
         let delta_ade = pos.as_ade_offset() - self.begin_pos.as_ade_offset();
         self.get_in_buf(delta_ade)
     }

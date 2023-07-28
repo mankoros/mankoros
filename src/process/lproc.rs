@@ -24,7 +24,7 @@ use alloc::{
 };
 use core::{
     cell::SyncUnsafeCell,
-    sync::atomic::{AtomicI32, AtomicUsize, Ordering},
+    sync::atomic::{AtomicBool, AtomicI32, AtomicUsize, Ordering},
 };
 use log::debug;
 use riscv::register::sstatus;
@@ -127,10 +127,10 @@ impl LightProcess {
         &self.timer
     }
 
-    pub fn set_signal(self: Arc<Self>, signal: signal::SignalSet) {
+    pub fn set_signal(self: &Arc<Self>, signal: signal::SignalSet) {
         self.signal.lock(here!()).set(signal, true);
     }
-    pub fn clear_signal(self: Arc<Self>, signal: signal::SignalSet) {
+    pub fn clear_signal(self: &Arc<Self>, signal: signal::SignalSet) {
         self.signal.lock(here!()).set(signal, false);
     }
 
@@ -149,17 +149,21 @@ impl LightProcess {
     pub fn children(&self) -> Vec<Arc<LightProcess>> {
         self.children.lock(here!()).clone()
     }
+    /// mostly for debug
+    pub fn children_pid_usize(&self) -> Vec<usize> {
+        self.children().iter().map(|c| c.id().into()).collect::<Vec<usize>>()
+    }
 
-    pub fn add_child(self: Arc<Self>, child: Arc<LightProcess>) {
+    pub fn add_child(self: &Arc<Self>, child: Arc<LightProcess>) {
         self.children.lock(here!()).push(child);
     }
 
-    pub fn remove_child(self: Arc<Self>, child: &Arc<LightProcess>) {
+    pub fn remove_child(self: &Arc<Self>, child: &Arc<LightProcess>) {
         let mut children = self.children.lock(here!());
         let index = children.iter().position(|c| Arc::ptr_eq(c, child)).unwrap();
         children.remove(index);
     }
-    pub fn do_exit(self: Arc<Self>) {
+    pub fn do_exit(self: &Arc<Self>) {
         if let Some(parent) = self.parent() {
             let parent = parent.upgrade().unwrap();
             // No remove from parent here, because it will be done in the parent's wait
@@ -168,9 +172,18 @@ impl LightProcess {
             // Set self status
             self.set_status(ProcessStatus::STOPPED);
         }
-        // Set children's parent to None
+        // Set children's parent to self's parent
         let children = self.children.lock(here!());
         children.iter().for_each(|c| *c.parent.lock(here!()) = self.parent());
+        drop(children);
+
+        log::debug!(
+            "do_exit: left children {:?} to parent {:?}",
+            self.children_pid_usize(),
+            self.parent()
+        );
+        // release all fd
+        self.with_mut_fdtable(|f| f.release_all());
     }
 
     pub fn with_group<T>(&self, f: impl FnOnce(&ThreadGroup) -> T) -> T {
@@ -280,6 +293,9 @@ impl LightProcess {
         // TODO: 改成彻底的 lazy alloc
         self.with_mut_memory(|m| m.areas_mut().insert_heap(PAGE_SIZE));
         debug!("Heap alloc done.");
+
+        // update the fd table
+        self.with_mut_fdtable(|t| t.close_on_exec());
 
         // 设置状态为 READY
         self.set_status(ProcessStatus::READY);
@@ -438,6 +454,7 @@ pub struct FileDescriptor {
     pub get_dents_progress: AtomicUsize, // indicates how many dentries we have read so far
     /// 当前文件标识符的偏移量记录
     pub curr: AtomicUsize,
+    pub close_at_exec: AtomicBool,
 }
 
 impl FileDescriptor {
@@ -446,7 +463,15 @@ impl FileDescriptor {
             file,
             get_dents_progress: AtomicUsize::new(0),
             curr: AtomicUsize::new(0),
+            close_at_exec: AtomicBool::new(false),
         })
+    }
+
+    pub fn set_close_on_exec(&self, val: bool) {
+        self.close_at_exec.store(val, Ordering::SeqCst);
+    }
+    pub fn is_close_on_exec(&self) -> bool {
+        self.close_at_exec.load(Ordering::SeqCst)
     }
 
     pub fn get_dents_progress(&self) -> usize {
@@ -476,6 +501,7 @@ impl Clone for FileDescriptor {
             file: self.file.clone(),
             get_dents_progress: AtomicUsize::new(self.get_dents_progress()),
             curr: AtomicUsize::new(self.curr()),
+            close_at_exec: AtomicBool::new(self.is_close_on_exec()),
         }
     }
 }
@@ -547,6 +573,30 @@ impl FdTable {
 
     pub fn get(&self, fd: usize) -> Option<Arc<FileDescriptor>> {
         self.table.get(&fd).cloned()
+    }
+
+    pub fn close_on_exec(&mut self) {
+        self.table.retain(|no, fd| {
+            if fd.is_close_on_exec() {
+                self.pool.release(*no);
+                false
+            } else {
+                true
+            }
+        });
+    }
+    pub fn release_all(&mut self) {
+        self.table.retain(|no, _| {
+            self.pool.release(*no);
+            false
+        })
+    }
+}
+
+impl Drop for FdTable {
+    fn drop(&mut self) {
+        self.table.clear();
+        log::debug!("FdTable dropped");
     }
 }
 

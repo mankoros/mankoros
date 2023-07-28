@@ -108,7 +108,7 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                         m.handle_pagefault(VirtAddr::from(stval), access_type)
                     });
                     if let Err(e) = result {
-                        info!("Pagefault failed: {:?}, process killed", e);
+                        warn!("Pagefault failed: {:?}, process killed", e);
                         is_exit = true;
                     }
                     // do_exit = trap_handler::page_fault(&thread, e, stval, context.user_sepc).await;

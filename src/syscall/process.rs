@@ -101,6 +101,10 @@ impl<'a> Syscall<'a> {
             pid, wstatus, options
         );
 
+        if self.lproc.signal().contains(signal::SignalSet::SIGCHLD) {
+            return Err(SysError::EINTR);
+        }
+
         let result_lproc = loop {
             yield_now().await;
 
@@ -111,6 +115,15 @@ impl<'a> Syscall<'a> {
                 .into_iter()
                 .filter(|lp| lp.status() == ProcessStatus::STOPPED)
                 .collect::<Vec<_>>();
+
+            log::debug!(
+                "syscall wait: all children pids: {:?}",
+                self.lproc.children_pid_usize()
+            );
+            log::debug!(
+                "syscall wait: stopped children pids: {:?}",
+                stopped_children.iter().map(|lp| lp.id().into()).collect::<Vec<usize>>()
+            );
 
             // If WNOHANG is specified, return immediately if no child exited.
             if options.contains(WaitOptions::WNOHANG) && stopped_children.is_empty() {
@@ -132,9 +145,9 @@ impl<'a> Syscall<'a> {
             };
 
             if let Some(child) = target_child_opt {
-                self.lproc.clone().remove_child(&child.clone());
+                self.lproc.remove_child(&child);
                 // Reset SIGCHLC signal
-                self.lproc.clone().clear_signal(signal::SignalSet::SIGCHLD);
+                self.lproc.clear_signal(signal::SignalSet::SIGCHLD);
                 break child.clone();
             }
         };
@@ -240,6 +253,7 @@ impl<'a> Syscall<'a> {
             "syscall: execve: path: {:?}, argv: {:?}, envp: {:?}",
             path, argv, envp
         );
+        log::debug!("syscall: execve: pid: {:?}", self.lproc.id());
 
         // 不知道为什么要加，从 Oops 抄过来的
         envp.push(String::from("LD_LIBRARY_PATH=."));

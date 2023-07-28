@@ -70,18 +70,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_GETPID => self.sys_getpid(),
             SYSCALL_GETTID => self.sys_gettid(),
             SYSCALL_SET_TID_ADDRESS => self.sys_set_tid_address(),
-            SYSCALL_SIGACTION => {
-                warn!("Syscall sigaction not implemented");
-                Ok(0)
-            }
-            SYSCALL_SIGPROCMASK => {
-                warn!("Syscall sigprocmask is not implemented");
-                Ok(0)
-            }
-            SYSCALL_IOCTL => {
-                warn!("Syscall ioctl is not implemented");
-                Ok(0)
-            }
+
             // Memory related
             SYSCALL_BRK => self.sys_brk(),
             SYSCALL_MUNMAP => self.sys_munmap(),
@@ -98,9 +87,13 @@ impl<'a> Syscall<'a> {
             SYSCALL_GETRUSAGE => self.sys_getrusage(),
 
             // unimplemented
-            129 => self.sys_do_nothing("delete_module"),
-            155 => self.sys_do_nothing("sched_getparam"),
-            154 => self.sys_do_nothing("sched_setparam"),
+            29 => self.sys_do_nothing("ioctl"),
+            94 => self.sys_do_nothing("exit_group"),
+            129 => self.sys_do_nothing("kill"),
+            135 => self.sys_do_nothing("rt_sigprocmask"),
+            134 => self.sys_do_nothing("rt_sigaction"),
+            155 => self.sys_do_nothing("getpgid"),
+            154 => self.sys_do_nothing("setpgid"),
 
             _ => {
                 warn!("Unknown syscall_id: {}", syscall_no);
@@ -115,7 +108,7 @@ impl<'a> Syscall<'a> {
             Err(_) => -1isize as usize,
         };
 
-        info!("Syscall ret: {:?}", result);
+        info!("Syscall {} ret: {:?}", self.cx.syscall_no(), result);
 
         self.cx.set_user_a0(ret);
         self.do_exit

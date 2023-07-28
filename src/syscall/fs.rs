@@ -413,7 +413,9 @@ impl<'a> Syscall<'a> {
                 let fd_lower_bound = arg;
                 let new_fd = self.lproc.with_mut_fdtable(|f| {
                     let old_fd = f.get(fd).unwrap();
-                    f.dup(NewFdRequirement::GreaterThan(fd_lower_bound), &old_fd)
+                    let new_fd = f.dup(NewFdRequirement::GreaterThan(fd_lower_bound), &old_fd);
+                    f.get(new_fd).unwrap().set_close_on_exec(true);
+                    new_fd
                 });
                 Ok(new_fd)
             }
