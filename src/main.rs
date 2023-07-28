@@ -315,5 +315,8 @@ fn panic(info: &PanicInfo) -> ! {
 
     xdebug::backtrace();
 
+    // Safe energy
+    unsafe { riscv::asm::wfi() }
+
     loop {}
 }

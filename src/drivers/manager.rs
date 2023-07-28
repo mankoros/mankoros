@@ -2,7 +2,7 @@
 //!
 
 use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
-use log::warn;
+use log::{info, warn};
 
 use crate::{
     arch, boot,
@@ -62,9 +62,17 @@ impl DeviceManager {
     }
 
     pub fn interrupt_handler(&mut self) {
+        info!("Interrupt Sstatus {:?}", riscv::register::sstatus::read());
+        unsafe { riscv::register::sstatus::clear_sie() };
+        info!("Handling interrupt");
         // First clain interrupt from PLIC
         if let Some(irq_number) = self.plic.claim_irq(self.irq_context()) {
             if let Some(dev) = self.interrupt_map.get(&irq_number) {
+                info!(
+                    "Handling interrupt from device: {:?}, irq: {}",
+                    dev.name(),
+                    irq_number
+                );
                 dev.interrupt_handler();
                 // Complete interrupt when done
                 self.plic.complete_irq(irq_number, self.irq_context());
@@ -114,6 +122,7 @@ impl DeviceManager {
         for dev in self.devices.iter() {
             if let Some(irq) = dev.interrupt_number() {
                 self.plic.enable_irq(irq, self.irq_context());
+                info!("Enable external interrupt: {}", irq);
             }
         }
         unsafe { riscv::register::sie::set_sext() };

@@ -36,11 +36,17 @@ pub fn init_device_manager() {
 }
 
 macro_rules! wait_for {
-    ($cond:expr) => {
-        while !$cond {
+    ($cond:expr) => {{
+        let mut timeout = 1000000;
+        while !$cond && timeout > 0 {
             core::hint::spin_loop();
+            timeout -= 1;
         }
-    };
+        if timeout == 0 {
+            use log::warn;
+            warn!("wait_for timeout");
+        }
+    }};
 }
 pub(crate) use wait_for;
 

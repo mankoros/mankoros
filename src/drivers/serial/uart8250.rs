@@ -3,7 +3,8 @@
 
 use super::{wait_for, UartDriver};
 use bitflags::bitflags;
-use core::fmt::Write; // for formatted output
+use core::fmt::Write;
+use log::info; // for formatted output
 
 // the UART control registers.
 // some have different meanings for
@@ -48,6 +49,7 @@ pub struct Uart {
     baud_rate: u32,
     reg_io_width: usize,
     reg_shift: usize,
+    is_snps: bool,
 }
 
 impl Uart {
@@ -62,6 +64,7 @@ impl Uart {
         baud_rate: usize,
         reg_io_width: usize,
         reg_shift: usize,
+        is_snps: bool,
     ) -> Self {
         Self {
             base_address: base,
@@ -69,6 +72,7 @@ impl Uart {
             baud_rate: baud_rate as u32,
             reg_io_width,
             reg_shift,
+            is_snps,
         }
     }
 
@@ -157,6 +161,9 @@ impl Uart {
             // Enable interrupts now
             reg.byte_add(IER << self.reg_shift).write_volatile(0x01);
         }
+        info!("IER register: 0b{:b}", unsafe {
+            reg.byte_add(IER << self.reg_shift).read_volatile()
+        });
     }
 
     fn line_sts_u8(&mut self) -> LineStsFlags {
@@ -220,10 +227,16 @@ impl Uart {
 
     /// Receives a byte on the serial port.
     pub fn receive(&mut self) -> u8 {
-        let ptr = self.base_address as *mut u8;
+        let ptr = self.base_address as *mut u32;
         unsafe {
             wait_for!(self.line_sts_u8().contains(LineStsFlags::INPUT_FULL));
-            ptr.add(0).read_volatile()
+            if self.is_snps {
+                // Clear busy detect interrupt
+                // by reading UART status register. see Synopsys documentation
+                // hard-coded register offset
+                ptr.byte_add(31 << self.reg_shift).read_volatile();
+            }
+            ptr.add(0).read_volatile() as u8
         }
     }
 }

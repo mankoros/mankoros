@@ -222,10 +222,11 @@ fn probe_serial_console(stdout: &fdt::node::FdtNode) -> Serial {
     let base_paddr = reg.starting_address as usize;
     let size = reg.size.unwrap();
     let base_vaddr = kernel_phys_dev_to_virt(base_paddr);
-    let irq_number = stdout.property("interrupts").unwrap().as_usize().unwrap();
+    let mut irq_number = stdout.property("interrupts").unwrap().as_usize().unwrap();
     info!("IRQ number: {}", irq_number);
 
-    match stdout.compatible().unwrap().first() {
+    let first_compatible = stdout.compatible().unwrap().first();
+    match first_compatible {
         "ns16550a" | "snps,dw-apb-uart" => {
             // VisionFive 2 (FU740)
             // virt QEMU
@@ -246,7 +247,14 @@ fn probe_serial_console(stdout: &fdt::node::FdtNode) -> Serial {
                 reg_shift = reg_shift_raw.as_usize().expect("Parse reg-shift to usize failed");
             }
             let uart = unsafe {
-                uart8250::Uart::new(base_vaddr, freq_raw, 115200, reg_io_width, reg_shift)
+                uart8250::Uart::new(
+                    base_vaddr,
+                    freq_raw,
+                    115200,
+                    reg_io_width,
+                    reg_shift,
+                    first_compatible == "snps,dw-apb-uart",
+                )
             };
             return Serial::new(base_paddr, size, irq_number, Box::new(uart));
         }

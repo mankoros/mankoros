@@ -59,7 +59,6 @@ impl MMC {
         }
     }
     pub fn card_init(&self) {
-        return;
         info!("====================== SDIO Init START ========================");
 
         info!("Card detect: {:b}", self.card_detect());
@@ -87,6 +86,7 @@ impl MMC {
         self.reset_fifo();
         self.set_controller_bus_width(card_idx, CtypeCardWidth::Width1);
         self.set_dma(false); // Disable DMA
+        info!("Control register: {:?}", self.control_reg());
 
         let cmd = CMD::reset_cmd0(0);
         self.send_cmd(cmd, CMDARG::empty(), None);
@@ -213,32 +213,41 @@ impl MMC {
         };
 
         // Build chain descriptor
-        for idx in 0..descriptor_cnt {
-            descriptor_table[idx] = Descriptor::new(
-                512,
-                buffer_page_paddr[idx],
-                descriptor_page_paddr + (idx + 1) % descriptor_cnt * 16, // 16B for each
-            );
+        // for idx in 0..descriptor_cnt {
+        //     descriptor_table[idx] = Descriptor::new(
+        //         512,
+        //         buffer_page_paddr[idx],
+        //         descriptor_page_paddr + (idx + 1) % descriptor_cnt * 16, // 16B for each
+        //     );
+        // }
+        // // Set descriptor base address
+        // self.set_descript_base_address(descriptor_page_paddr);
+
+        // // Enable DMA
+        // self.set_dma(true);
+
+        // // Read one block
+        // let buffer = unsafe {
+        //     core::slice::from_raw_parts_mut(
+        //         kernel_phys_to_virt(buffer_page_paddr[0]) as *mut usize,
+        //         64,
+        //     )
+        // };
+        // debug!("Magic before: 0x{:x}", buffer[0]);
+        // let cmdarg = CMDARG::from(0x200);
+        // let resp = self.send_cmd(cmd, cmdarg, None).expect("Error sending command");
+
+        // debug!("Magic after: 0x{:x}", buffer[0]);
+
+        info!("Control register: {:?}", self.control_reg());
+        let base = self.virt_base_address() as *mut u32;
+        let rinsts: RINSTS = unsafe { base.byte_add(RINSTS::offset()).read_volatile() }.into();
+        // Clear interrupt by writing 1
+        unsafe {
+            // Just clear all for now
+            base.byte_add(RINSTS::offset()).write_volatile(rinsts.into());
         }
-        // Set descriptor base address
-        self.set_descript_base_address(descriptor_page_paddr);
-
-        // Enable DMA
-        self.set_dma(true);
-
-        // Read one block
-        let buffer = unsafe {
-            core::slice::from_raw_parts_mut(
-                kernel_phys_to_virt(buffer_page_paddr[0]) as *mut usize,
-                64,
-            )
-        };
-        debug!("Magic before: 0x{:x}", buffer[0]);
-        let cmdarg = CMDARG::from(0x200);
-        let resp = self.send_cmd(cmd, cmdarg, None).expect("Error sending command");
-
-        debug!("Magic after: 0x{:x}", buffer[0]);
-
+        info!("INT Status register: {:?}", rinsts);
         info!("======================= SDIO Init END ========================");
     }
 
@@ -502,12 +511,10 @@ impl Device for MMC {
     }
 
     fn interrupt_number(&self) -> Option<usize> {
-        Some(self.interrupt_number)
+        None
     }
 
-    fn interrupt_handler(&self) {
-        todo!()
-    }
+    fn interrupt_handler(&self) {}
 
     fn init(&self) {
         self.card_init()
