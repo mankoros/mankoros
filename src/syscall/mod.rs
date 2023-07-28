@@ -102,10 +102,9 @@ impl<'a> Syscall<'a> {
         };
 
         // 设置返回值
-        // TODO: 设计 ENOSYS 之类的全局错误码信息供用户程序使用
         let ret = match result {
             Ok(ret) => ret,
-            Err(_) => -1isize as usize,
+            Err(err) => (-(err as isize)) as usize,
         };
 
         info!("Syscall {} ret: {:?}", self.cx.syscall_no(), result);

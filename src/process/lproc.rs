@@ -294,9 +294,6 @@ impl LightProcess {
         self.with_mut_memory(|m| m.areas_mut().insert_heap(PAGE_SIZE));
         debug!("Heap alloc done.");
 
-        // update the fd table
-        self.with_mut_fdtable(|t| t.close_on_exec());
-
         // 设置状态为 READY
         self.set_status(ProcessStatus::READY);
         debug!("User init done.");
@@ -454,7 +451,6 @@ pub struct FileDescriptor {
     pub get_dents_progress: AtomicUsize, // indicates how many dentries we have read so far
     /// 当前文件标识符的偏移量记录
     pub curr: AtomicUsize,
-    pub close_at_exec: AtomicBool,
 }
 
 impl FileDescriptor {
@@ -463,15 +459,7 @@ impl FileDescriptor {
             file,
             get_dents_progress: AtomicUsize::new(0),
             curr: AtomicUsize::new(0),
-            close_at_exec: AtomicBool::new(false),
         })
-    }
-
-    pub fn set_close_on_exec(&self, val: bool) {
-        self.close_at_exec.store(val, Ordering::SeqCst);
-    }
-    pub fn is_close_on_exec(&self) -> bool {
-        self.close_at_exec.load(Ordering::SeqCst)
     }
 
     pub fn get_dents_progress(&self) -> usize {
@@ -501,7 +489,6 @@ impl Clone for FileDescriptor {
             file: self.file.clone(),
             get_dents_progress: AtomicUsize::new(self.get_dents_progress()),
             curr: AtomicUsize::new(self.curr()),
-            close_at_exec: AtomicBool::new(self.is_close_on_exec()),
         }
     }
 }
@@ -521,19 +508,24 @@ pub enum NewFdRequirement {
 impl FdTable {
     pub fn new_empty() -> Self {
         Self {
-            pool: UsizePool::new(0),
+            // never alloc 0, 1, 2
+            pool: UsizePool::new(3),
             table: BTreeMap::new(),
         }
     }
 
+    pub fn add_std(&mut self) {
+        debug_assert!(!self.table.contains_key(&0));
+        debug_assert!(!self.table.contains_key(&1));
+        debug_assert!(!self.table.contains_key(&2));
+        self.table.insert(0, FileDescriptor::new(VfsFileRef::new(fs::stdio::Stdin)));
+        self.table.insert(1, FileDescriptor::new(VfsFileRef::new(fs::stdio::Stdout)));
+        self.table.insert(2, FileDescriptor::new(VfsFileRef::new(fs::stdio::Stderr)));
+    }
+
     pub fn new_with_std() -> Self {
         let mut t = Self::new_empty();
-        let fd = t.alloc(VfsFileRef::new(fs::stdio::Stdin));
-        debug_assert_eq!(fd, 0);
-        let fd = t.alloc(VfsFileRef::new(fs::stdio::Stdout));
-        debug_assert_eq!(fd, 1);
-        let fd = t.alloc(VfsFileRef::new(fs::stdio::Stderr));
-        debug_assert_eq!(fd, 2);
+        t.add_std();
         t
     }
 
@@ -544,7 +536,7 @@ impl FdTable {
         fd
     }
     pub fn dup(&mut self, new_fd_req: NewFdRequirement, old_fd: &Arc<FileDescriptor>) -> usize {
-        let fd_no = match new_fd_req {
+        let new_fd_no = match new_fd_req {
             NewFdRequirement::Exactly(new_fd) => new_fd,
             NewFdRequirement::GreaterThan(lower_bound) => {
                 let mut skipped_fds = Vec::new();
@@ -562,8 +554,8 @@ impl FdTable {
             NewFdRequirement::None => self.pool.get(),
         };
         let new_fd = Arc::new((**old_fd).clone());
-        self.table.insert(fd_no, new_fd);
-        fd_no
+        self.table.insert(new_fd_no, new_fd);
+        new_fd_no
     }
 
     pub fn remove(&mut self, fd: usize) -> Option<Arc<FileDescriptor>> {
@@ -575,16 +567,6 @@ impl FdTable {
         self.table.get(&fd).cloned()
     }
 
-    pub fn close_on_exec(&mut self) {
-        self.table.retain(|no, fd| {
-            if fd.is_close_on_exec() {
-                self.pool.release(*no);
-                false
-            } else {
-                true
-            }
-        });
-    }
     pub fn release_all(&mut self) {
         self.table.retain(|no, _| {
             self.pool.release(*no);

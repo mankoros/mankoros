@@ -168,6 +168,11 @@ impl<F: ConcreteFile> PageManager<F> {
             Some(page) => page,
             None => return total_len,
         };
+
+        if (offset - page_addr) >= page.len() {
+            // 如果第一页就是文件末尾, 就直接返回
+            return total_len;
+        }
         page_buf = &page.as_slice()[offset - page_addr..];
         if page_buf.is_empty() {
             return total_len;
