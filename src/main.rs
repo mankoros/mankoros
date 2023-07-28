@@ -10,6 +10,7 @@
 #![feature(allocator_api)]
 #![feature(new_uninit)]
 #![allow(dead_code)]
+#![allow(mutable_transmutes)]
 #![feature(map_try_insert)]
 #![feature(btree_drain_filter)]
 #![feature(let_chains)]

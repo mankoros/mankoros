@@ -90,7 +90,7 @@ impl MMC {
         info!("Control register: {:?}", self.control_reg());
 
         let cmd = CMD::reset_cmd0(0);
-        self.send_cmd(cmd, CMDARG::empty(), None);
+        self.send_cmd(cmd, CMDARG::empty(), None, false);
 
         // SDIO Check
         // info!("SDIO Check");
@@ -106,7 +106,7 @@ impl MMC {
         // CMD8
         let cmd = CMD::no_data_cmd(card_idx, 8);
         let cmdarg = CMDARG::from((1 << 8) | TEST_PATTERN);
-        let resp = self.send_cmd(cmd, cmdarg, None).expect("Error sending command");
+        let resp = self.send_cmd(cmd, cmdarg, None, false).expect("Error sending command");
         if (resp.resp(0) & TEST_PATTERN) == 0 {
             warn!("Card {} unusable", card_idx);
         }
@@ -118,10 +118,10 @@ impl MMC {
             // Send CMD55 before ACMD
             let cmd = CMD::no_data_cmd(card_idx, 55);
             let cmdarg = CMDARG::empty();
-            self.send_cmd(cmd, cmdarg, None);
+            self.send_cmd(cmd, cmdarg, None, false);
             let cmd = CMD::no_data_cmd_no_crc(card_idx, 41); // CRC is all 1 bit by design
             let cmdarg = CMDARG::from((1 << 30) | (1 << 24) | 0xFF8000);
-            if let Some(resp) = self.send_cmd(cmd, cmdarg, None) {
+            if let Some(resp) = self.send_cmd(cmd, cmdarg, None, false) {
                 if resp.ocr() & (1 << 31) != 0 {
                     info!("Card {} powered up", card_idx);
                     if resp.ocr() & (1 << 30) != 0 {
@@ -135,7 +135,7 @@ impl MMC {
 
         // CMD2, get CID
         let cmd = CMD::no_data_cmd_no_crc(card_idx, 2).with_response_length(true); // R2 response, no CRC
-        if let Some(resp) = self.send_cmd(cmd, CMDARG::empty(), None) {
+        if let Some(resp) = self.send_cmd(cmd, CMDARG::empty(), None, false) {
             let cid = CID::from(resp.resps_u128());
             info!("CID: {:x?}", cid);
             info!(
@@ -146,19 +146,19 @@ impl MMC {
 
         // CMD3, get RCA
         let cmd = CMD::no_data_cmd(card_idx, 3);
-        let resp = self.send_cmd(cmd, CMDARG::empty(), None).expect("Error executing CMD3");
+        let resp = self.send_cmd(cmd, CMDARG::empty(), None, false).expect("Error executing CMD3");
         let rca = resp.resp(0) >> 16; // RCA[31:16]
         info!("Card status: {:x?}", resp.resp(0) & 0xFFFF);
 
         // CMD9, get CSD
         let cmd = CMD::no_data_cmd_no_crc(card_idx, 9).with_response_length(true); // R2 response, no CRC
         let cmdarg = CMDARG::from(rca << 16);
-        self.send_cmd(cmd, cmdarg, None);
+        self.send_cmd(cmd, cmdarg, None, false);
 
         // CMD7 select card
         let cmd = CMD::no_data_cmd(card_idx, 7);
         let cmdarg = CMDARG::from(rca << 16);
-        let resp = self.send_cmd(cmd, cmdarg, None).expect("Error executing CMD7");
+        let resp = self.send_cmd(cmd, cmdarg, None, false).expect("Error executing CMD7");
 
         info!("Current FIFO count: {}", self.fifo_filled_cnt());
 
@@ -166,11 +166,11 @@ impl MMC {
         // Send CMD55 before ACMD
         let cmd = CMD::no_data_cmd(card_idx, 55);
         let cmdarg = CMDARG::from(rca << 16);
-        self.send_cmd(cmd, cmdarg, None); // RCA is required
+        self.send_cmd(cmd, cmdarg, None, false); // RCA is required
         self.set_size(8, 8); // Set transfer size
         let cmd = CMD::data_cmd(card_idx, 51);
         let mut buffer: [usize; 64] = [0; 64]; // 512B
-        self.send_cmd(cmd, CMDARG::empty(), Some(&mut buffer));
+        self.send_cmd(cmd, CMDARG::empty(), Some(&mut buffer), true);
         info!("Current FIFO count: {}", self.fifo_filled_cnt());
         let resp = u64::from_be(self.read_fifo::<u64>());
         info!("Bus width supported: {:b}", (resp >> 48) & 0xF);
@@ -186,12 +186,16 @@ impl MMC {
         self.set_size(512, 512);
         let cmd = CMD::data_cmd(card_idx, 17);
         let cmdarg = CMDARG::empty();
-        let resp = self.send_cmd(cmd, cmdarg, Some(&mut buffer)).expect("Error sending command");
+        let resp = self
+            .send_cmd(cmd, cmdarg, Some(&mut buffer), true)
+            .expect("Error sending command");
 
         info!("Current FIFO count: {}", self.fifo_filled_cnt());
 
         let cmdarg = CMDARG::from(153);
-        let resp = self.send_cmd(cmd, cmdarg, Some(&mut buffer)).expect("Error sending command");
+        let resp = self
+            .send_cmd(cmd, cmdarg, Some(&mut buffer), true)
+            .expect("Error sending command");
         debug!("Magic: 0x{:x}", buffer[0]);
         info!("Current FIFO count: {}", self.fifo_filled_cnt());
 
@@ -253,7 +257,13 @@ impl MMC {
     }
 
     /// Internal function to send a command to the card
-    fn send_cmd(&self, cmd: CMD, arg: CMDARG, buffer: Option<&mut [usize]>) -> Option<RESP> {
+    fn send_cmd(
+        &self,
+        cmd: CMD,
+        arg: CMDARG,
+        buffer: Option<&mut [usize]>,
+        is_read: bool,
+    ) -> Option<RESP> {
         let base = self.virt_base_address() as *mut u32;
 
         // Sanity check
@@ -303,19 +313,35 @@ impl MMC {
             let buffer = // TODO: dirty
                 buffer.unwrap_or(unsafe { core::slice::from_raw_parts_mut(0 as *mut usize, 64) });
             assert!(buffer_offset == 0);
-            wait_for!({
-                let rinsts: RINSTS =
-                    unsafe { base.byte_add(RINSTS::offset()).read_volatile() }.into();
-                if rinsts.receive_data_request() && !self.dma_enabled() {
-                    while self.fifo_filled_cnt() >= 2 {
-                        buffer[buffer_offset] = self.read_fifo::<usize>();
-                        buffer_offset += 1;
+            if is_read {
+                wait_for!({
+                    let rinsts: RINSTS =
+                        unsafe { base.byte_add(RINSTS::offset()).read_volatile() }.into();
+                    if rinsts.receive_data_request() && !self.dma_enabled() {
+                        while self.fifo_filled_cnt() >= 2 {
+                            buffer[buffer_offset] = self.read_fifo::<usize>();
+                            buffer_offset += 1;
+                        }
                     }
-                }
-                rinsts.data_transfer_over() || !rinsts.no_error()
-            });
-            debug!("read {:?} bytes", (buffer_offset) * 8);
-            debug!("Current FIFO count: {}", self.fifo_filled_cnt());
+                    rinsts.data_transfer_over() || !rinsts.no_error()
+                });
+            } else {
+                wait_for!({
+                    let rinsts: RINSTS =
+                        unsafe { base.byte_add(RINSTS::offset()).read_volatile() }.into();
+                    if rinsts.transmit_data_request() && !self.dma_enabled() {
+                        // Hard coded FIFO depth
+                        while self.fifo_filled_cnt() < 120 {
+                            buffer[buffer_offset] = self.read_fifo::<usize>();
+                            buffer_offset += 1;
+                        }
+                    }
+                    rinsts.data_transfer_over() || !rinsts.no_error()
+                });
+            }
+            debug!("transmit {:?} bytes", (buffer_offset) * 8);
+            debug!("Current oFIFO count: {}", self.fifo_filled_cnt());
+            self.reset_fifo_offset();
         }
 
         // Check for error
@@ -354,8 +380,22 @@ impl MMC {
     fn read_fifo<T>(&self) -> T {
         let base = self.virt_base_address() as *mut T;
         let result = unsafe { base.byte_add(*self.fifo_offset.get()).read_volatile() };
-        // unsafe { *self.fifo_offset.get() += size_of::<T>() };
+        unsafe { *self.fifo_offset.get() += size_of::<T>() };
         result
+    }
+    /// Write data to FIFO
+    fn write_fifo<T>(&self, value: T) {
+        let base = self.virt_base_address() as *mut T;
+        unsafe {
+            base.byte_add(*self.fifo_offset.get()).write_volatile(value);
+            *self.fifo_offset.get() += size_of::<T>()
+        };
+    }
+    /// Reset FIFO offset
+    fn reset_fifo_offset(&self) {
+        // Hard coded
+        // From Synopsys documentation
+        unsafe { *self.fifo_offset.get() = 0x600 };
     }
 
     /// Reset FIFO
@@ -475,7 +515,7 @@ impl MMC {
         let clkena = CLKENA::new().with_cclk_enable(0);
         unsafe { base.byte_add(CLKENA::offset()).write_volatile(clkena) };
         let cmd = CMD::clock_cmd();
-        self.send_cmd(cmd, CMDARG::empty(), None);
+        self.send_cmd(cmd, CMDARG::empty(), None, false);
 
         // Set clock divider
         info!("Set clock divider");
@@ -490,7 +530,7 @@ impl MMC {
         unsafe { base.byte_add(CLKENA::offset()).write_volatile(clkena) };
 
         let cmd = CMD::clock_cmd();
-        self.send_cmd(cmd, CMDARG::empty(), None);
+        self.send_cmd(cmd, CMDARG::empty(), None, false);
     }
     fn virt_base_address(&self) -> usize {
         kernel_phys_dev_to_virt(self.base_address)
@@ -558,15 +598,25 @@ impl AsyncBlockDevice for MMC {
             debug!("reading block {}", block_id);
             // Read one block
             self.set_size(512, 512);
-            let cmd = CMD::data_cmd(0, 17);
+            let cmd = CMD::data_cmd(0, 17); // TODO: card number hard coded to 0
             let cmdarg = CMDARG::from(block_id as u32);
-            let resp = self.send_cmd(cmd, cmdarg, Some(buf)).expect("Error sending command");
+            self.send_cmd(cmd, cmdarg, Some(buf), true).expect("Error sending command");
             Ok(())
         })
     }
 
     fn write_block(&self, block_id: u64, buf: &[u8]) -> crate::drivers::ADevResult {
-        todo!()
+        let buf = unsafe { core::mem::transmute(buf) };
+        Box::pin(async move {
+            debug!("writing block {}", block_id);
+            // Read one block
+            self.set_size(512, 512);
+            // CMD24 single block write
+            let cmd = CMD::data_cmd(0, 24); // TODO: card number hard coded to 0
+            let cmdarg = CMDARG::from(block_id as u32);
+            self.send_cmd(cmd, cmdarg, Some(buf), false).expect("Error sending command");
+            Ok(())
+        })
     }
 
     fn flush(&self) -> crate::drivers::ADevResult {

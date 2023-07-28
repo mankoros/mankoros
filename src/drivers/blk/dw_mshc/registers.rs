@@ -89,7 +89,7 @@ bitflags! {
         const RE = 1 << 1;
         const CD = 1 << 2; // Command done
         const DtO = 1 << 3;
-        const TCDR = 1 << 4;
+        const TxDR = 1 << 4;
         const RxDR = 1 << 5;
         const RCRC = 1 << 6;
         const DCRC = 1 << 7;
@@ -125,6 +125,9 @@ impl RINSTS {
     }
     pub fn receive_data_request(&self) -> bool {
         RINSTS_int_status::from_bits_truncate(self.int_status()).contains(RINSTS_int_status::RxDR)
+    }
+    pub fn transmit_data_request(&self) -> bool {
+        RINSTS_int_status::from_bits_truncate(self.int_status()).contains(RINSTS_int_status::TxDR)
     }
     pub fn no_error(&self) -> bool {
         // Check if response_timeout error, response_CRC error, or response error is set.
