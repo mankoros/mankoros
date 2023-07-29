@@ -12,10 +12,8 @@ use alloc::{
 pub mod aux_vector;
 pub mod lproc;
 pub mod pid;
-mod shared_frame_mgr;
 pub mod user_space;
 pub mod userloop;
-pub use shared_frame_mgr::with_shared_frame_mgr;
 
 pub fn spawn_proc_from_file(file: VfsFileRef) {
     let lproc = LightProcess::new();

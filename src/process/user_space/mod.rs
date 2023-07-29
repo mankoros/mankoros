@@ -17,7 +17,7 @@ use crate::{
     process::{aux_vector::AuxElement, user_space::user_area::PageFaultAccessType},
 };
 
-use super::{aux_vector::AuxVector, shared_frame_mgr::with_shared_frame_mgr};
+use super::aux_vector::AuxVector;
 
 use self::user_area::{PageFaultErr, UserAreaManager, UserAreaPerm, VirtAddrRange};
 use log::{debug, trace};
@@ -330,11 +330,9 @@ impl UserSpace {
 
     pub fn clone_cow(&mut self) -> Self {
         Self {
-            page_table: self.page_table.copy_table_and_mark_self_cow(|frame_paddr| {
-                with_shared_frame_mgr(|mgr| {
-                    mgr.add_ref(frame_paddr.page_num());
-                });
-            }),
+            page_table: self
+                .page_table
+                .copy_table_and_mark_self_cow(|frame_paddr| frame_paddr.page_num().increase()),
             areas: self.areas.clone(),
         }
     }

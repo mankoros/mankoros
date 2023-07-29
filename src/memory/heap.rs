@@ -1,7 +1,11 @@
 use buddy_system_allocator::LockedHeap;
 
-// 4 MiB kernel init heap
-const KERNEL_HEAP_SIZE: usize = 4 * 1024 * 1024;
+// 16 MiB kernel init heap
+// The frame reference count is 4 byte per frame.
+// Given an 8 GiB physis memory & 4k page size,
+// the frame reference count will cost 8 MiB memory.
+// So we need larger than 8 MiB heap.
+const KERNEL_HEAP_SIZE: usize = 16 * 1024 * 1024;
 
 #[global_allocator]
 static HEAP_ALLOCATOR: LockedHeap<32> = LockedHeap::<32>::empty();

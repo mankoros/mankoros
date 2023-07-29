@@ -78,9 +78,21 @@ pub fn alloc_frame() -> Option<PhysAddr4K> {
             }
         }
     }
-    paddr
+
+    // in early stage, we don't have frame ref count
+    if true {
+        if let Some(paddr) = paddr {
+            paddr.page_num().increase();
+            Some(paddr)
+        } else {
+            None
+        }
+    } else {
+        paddr
+    }
 }
 pub fn dealloc_frame(target: PhysAddr4K) {
+    debug_assert!(target.page_num().is_free());
     GlobalFrameAlloc.dealloc(target);
 }
 pub fn alloc_frame_contiguous(size: usize, align_log2: usize) -> Option<PhysAddr4K> {
