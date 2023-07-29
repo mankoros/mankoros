@@ -103,7 +103,8 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     // Initial logging support
     println!("Logging initializing...");
     logging::init();
-    info!("Logging initialised");
+    println!("Logging initialized");
+    info!("Logging initialized");
 
     let device_tree_size =
         humansize::SizeFormatter::new(device_tree.total_size(), humansize::BINARY);
@@ -210,6 +211,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     {
         run_final_test();
         executor::run_until_idle();
+        println!("!TEST FINISH!");
     }
 
     #[cfg(feature = "shell")]

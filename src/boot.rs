@@ -20,6 +20,9 @@ use crate::{
 };
 use log::info;
 
+#[cfg(feature = "final")]
+core::arch::global_asm!(include_str!("dtb.asm"));
+
 const BOOT_MSG: &str = r"
  __  __             _               ___  ____  
 |  \/  | __ _ _ __ | | _____  _ __ / _ \/ ___| 
@@ -109,6 +112,7 @@ unsafe extern "C" fn entry(hartid: usize) -> ! {
         "   auipc s2, 0",  // Set s2 to boot_pc
         "   mv    tp, a0",
         "   mv    s1, a1", // Save dtb address to s1
+        "   call  {set_dtb_addr}", // Use embedded dtb
         "   mv    a1, s2", // Set a1 to boot_pc
         // Set a temp stack for filling page table in Rust
         "   call  {set_early_stack}",
@@ -130,8 +134,27 @@ unsafe extern "C" fn entry(hartid: usize) -> ! {
         set_early_stack   = sym set_early_stack,
         set_boot_pt = sym setup_vm,
         set_stack =  sym set_stack,
+        set_dtb_addr = sym set_dtb_addr,
         options(noreturn),
     )
+}
+
+#[naked]
+pub unsafe extern "C" fn set_dtb_addr(hartid: usize, boot_pgtbl: usize) {
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "final")] {
+            core::arch::asm!(
+                "   la    s1, __embed_dtb", // Use embedded dtb
+                "   ret                  ",
+                options(noreturn),
+            )
+        } else {
+            core::arch::asm!(
+                "   ret                  ",
+                options(noreturn),
+            )
+        }
+    }
 }
 
 #[naked]
