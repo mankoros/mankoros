@@ -267,7 +267,7 @@ fn run_busybox_test() {
     envp.push(String::from("PATH=/"));
 
     let lproc = LightProcess::new();
-    lproc.clone().do_exec(busybox, args, Vec::new());
+    lproc.clone().do_exec(busybox, args, envp);
     spawn_proc(lproc);
 }
 

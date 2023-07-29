@@ -86,6 +86,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_NANOSLEEP => self.sys_nanosleep().await,
             SYSCALL_GETUID => self.sys_getuid(),
             SYSCALL_GETRUSAGE => self.sys_getrusage(),
+            SYSCALL_SYSLOG => self.sys_do_nothing("syslog"),
 
             // unimplemented
             29 => self.sys_do_nothing("ioctl"),
