@@ -47,6 +47,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_WRITE => self.sys_write().await,
             SYSCALL_PPOLL => self.sys_ppoll().await,
             SYSCALL_WRITEV => self.sys_writev().await,
+            SYSCALL_READV => self.sys_readv().await,
             SYSCALL_LSEEK => self.sys_lseek().await,
 
             // FS related

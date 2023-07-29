@@ -289,13 +289,6 @@ impl Syscall<'_> {
     }
 
     pub async fn sys_writev(&mut self) -> SyscallResult {
-        #[repr(C)]
-        #[derive(Debug, Clone, Copy)]
-        struct IoVec {
-            base: usize,
-            len: usize,
-        }
-
         let args = self.cx.syscall_args();
         let (fd, iov, iovcnt) = (args[0], UserReadPtr::<IoVec>::from(args[1]), args[2]);
 
@@ -332,6 +325,51 @@ impl Syscall<'_> {
         fd.add_curr(total_len);
         Ok(total_len)
     }
+
+    pub async fn sys_readv(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (fd, iov, iovcnt) = (args[0], UserWritePtr::<IoVec>::from(args[1]), args[2]);
+
+        info!(
+            "Syscall: readv, fd: {}, iov: 0x{:x}, iovcnt: {}",
+            fd,
+            iov.as_usize(),
+            iovcnt
+        );
+
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+        let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
+        let file = fd.file.clone();
+
+        let mut offset = fd.curr();
+        let mut total_len = 0;
+        let mut iov_ptr = iov;
+        for i in 0..iovcnt {
+            let iov = user_check.checked_read(iov_ptr.raw_ptr())?;
+            log::debug!(
+                "syscall readv: iov #{}: iov_ptr: 0x{:x}, len: {}",
+                i,
+                iov_ptr.as_usize(),
+                iov.len
+            );
+            // TODO: 检查用户给的指针是不是合法的
+            let buf = unsafe { VirtAddr::from(iov.base).as_mut_slice(iov.len) };
+            let read_len = file.read_at(offset, buf).await?;
+            total_len += read_len;
+            offset += read_len;
+            iov_ptr = iov_ptr.add(1);
+        }
+
+        fd.add_curr(total_len);
+        Ok(total_len)
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct IoVec {
+    base: usize,
+    len: usize,
 }
 
 bitflags::bitflags! {
