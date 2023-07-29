@@ -51,6 +51,9 @@ impl VfsFile for Stdin {
     ) -> ASysResult<crate::memory::address::PhysAddr4K> {
         unimplemented!("Stdin::get_page")
     }
+    fn truncate(&self, length: usize) -> ASysResult {
+        unimplemented!("Stdin::truncate")
+    }
 
     fn poll_ready(
         &self,
@@ -112,6 +115,9 @@ impl VfsFile for Stdout {
         _kind: super::new_vfs::top::MmapKind,
     ) -> ASysResult<crate::memory::address::PhysAddr4K> {
         unimplemented!("Stdout::get_page")
+    }
+    fn truncate(&self, length: usize) -> ASysResult {
+        unimplemented!("Stdout::truncate")
     }
 
     fn poll_ready(
@@ -188,6 +194,9 @@ impl VfsFile for Stderr {
         _kind: super::new_vfs::top::MmapKind,
     ) -> ASysResult<crate::memory::address::PhysAddr4K> {
         unimplemented!("stderr::get_page")
+    }
+    fn truncate(&self, length: usize) -> ASysResult {
+        unimplemented!("stderr::truncate")
     }
 
     fn poll_ready(

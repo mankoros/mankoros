@@ -69,6 +69,10 @@ impl<F: ConcreteFile> VfsFile for PageCacheFile<F> {
         })
     }
 
+    fn truncate(&self, length: usize) -> ASysResult {
+        dyn_future(async move { self.file.truncate(length).await })
+    }
+
     fn poll_ready(
         &self,
         offset: usize,

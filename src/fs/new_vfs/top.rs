@@ -28,10 +28,12 @@ pub enum PollKind {
 pub const OFFSET_TAIL: usize = 0;
 
 pub trait VfsFile: Send + Sync {
-    // 文件操作
+    // 通用操作
     /// 获取文件的各类属性,
     /// 例如文件类型, 文件大小, 文件创建时间等等
     fn attr(&self) -> ASysResult<VfsFileAttr>;
+
+    // 文件操作
     /// 读取文件内容
     fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize>;
     /// 写入文件内容
@@ -39,6 +41,8 @@ pub trait VfsFile: Send + Sync {
     /// 获得代表文件 [offset, offset + PAGE_SIZE) 范围内内容的物理页.
     /// offset 必须是 PAGE_SIZE 的倍数.
     fn get_page(&self, offset: usize, kind: MmapKind) -> ASysResult<PhysAddr4K>;
+    /// 改变文件长度
+    fn truncate(&self, length: usize) -> ASysResult;
 
     // 高级文件操作
     /// 要求文件准备好 [offset, offset + len) 范围内的内容以供读取或写入.
@@ -166,6 +170,9 @@ macro_rules! impl_vfs_default_non_file {
         ) -> $crate::tools::errors::ASysResult<$crate::memory::address::PhysAddr4K> {
             unimplemented!(concat!(stringify!(ty), "::get_page"))
         }
+        fn truncate(&self, _len: usize) -> $crate::tools::errors::ASysResult {
+            unimplemented!(concat!(stringify!(ty), "::truncate"))
+        }
         fn poll_ready(
             &self,
             _offset: usize,
@@ -218,6 +225,9 @@ macro_rules! impl_vfs_forward_file {
         }
         fn get_page(&self, offset: usize, kind: $crate::fs::new_vfs::top::MmapKind) -> $crate::tools::errors::ASysResult<$crate::memory::address::PhysAddr4K> {
             self.$($e)+.get_page(offset, kind)
+        }
+        fn truncate(&self, len: usize) -> $crate::tools::errors::ASysResult {
+            self.$($e)+.truncate(len)
         }
         fn poll_ready(
             &self,

@@ -165,6 +165,14 @@ impl<'a> Syscall<'a> {
         Ok(0)
     }
 
+    pub async fn sys_fturncate(&self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (fd, length) = (args[0], args[1]);
+        let file = self.lproc.with_mut_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
+        file.file.truncate(length).await?;
+        Ok(0)
+    }
+
     pub async fn sys_mkdir(&self) -> SyscallResult {
         let args = self.cx.syscall_args();
         let (_dir_fd, path, _user_mode) = (args[0], args[1], args[2]);

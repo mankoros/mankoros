@@ -60,6 +60,9 @@ impl<'a> Syscall<'a> {
             SYSCALL_MKDIRAT => self.sys_mkdir().await,
             SYSCALL_UMOUNT => self.sys_umount().await,
             SYSCALL_MOUNT => self.sys_mount().await,
+            SYSCALL_SYNC => self.sys_do_nothing("sync"),
+            SYSCALL_FSYNC => self.sys_do_nothing("fsync"),
+            SYSCALL_FTURNCATE => self.sys_fturncate().await,
 
             // Process related
             SYSCALL_GETCWD => self.sys_getcwd(),
@@ -149,6 +152,7 @@ pub const SYSCALL_LINKAT: usize = 37;
 pub const SYSCALL_UMOUNT: usize = 39;
 pub const SYSCALL_MOUNT: usize = 40;
 pub const SYSCALL_STATFS: usize = 43;
+pub const SYSCALL_FTURNCATE: usize = 46;
 pub const SYSCALL_FACCESSAT: usize = 48;
 pub const SYSCALL_CHDIR: usize = 49;
 pub const SYSCALL_OPENAT: usize = 56;
@@ -168,6 +172,7 @@ pub const SYSCALL_PPOLL: usize = 73;
 pub const SYSCALL_READLINKAT: usize = 78;
 pub const SYSCALL_NEWFSTATAT: usize = 79;
 pub const SYSCALL_NEWFSTAT: usize = 80;
+pub const SYSCALL_SYNC: usize = 81;
 pub const SYSCALL_FSYNC: usize = 82;
 pub const SYSCALL_UTIMENSAT: usize = 88;
 pub const SYSCALL_EXIT: usize = 93;

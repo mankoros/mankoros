@@ -46,6 +46,9 @@ impl VfsFile for ZeroDev {
             }
         })
     }
+    fn truncate(&self, _length: usize) -> ASysResult {
+        dyn_future(async move { Ok(()) })
+    }
 
     fn poll_ready(&self, _offset: usize, len: usize, _kind: PollKind) -> ASysResult<usize> {
         dyn_future(async move { Ok(len) })
