@@ -16,7 +16,7 @@ MEM_SIZE	:= 4G
 MAX_BUILD_JOBS	:= 8
 
 # Build args
-CARGO_BUILD_ARGS := -j $(MAX_BUILD_JOBS)
+CARGO_BUILD_ARGS := -j $(MAX_BUILD_JOBS) --features shell
 
 ifeq ($(MODE), release)
 CARGO_BUILD_ARGS += --release
@@ -126,6 +126,15 @@ release-zImage: build
 	@#cp zImage /srv/tftp/
 	scp zImage 100.72.223.46:/private/tftpboot/zImage
 
+final: MODE = release
+final: CARGO_BUILD_ARGS = -j $(MAX_BUILD_JOBS) --features final --release
+final: KERNEL_FILE = target/$(TARGET)/$(MODE)/mankoros
+final: build
+	cp $(BIN_FILE) os.bin
+
+final-qemu: final
+	@$(QEMU_CMD)
+
 clean:
 	@cargo clean
 	@rm -rf $(BIN_FILE)
@@ -134,4 +143,4 @@ clean:
 	@rm -rf qemu.dtb
 
 # Compatible with OS competition
-all: build
+all: final

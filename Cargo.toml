@@ -14,6 +14,10 @@ panic = "abort"
 [profile.release]
 panic = "abort"
 
+[features]
+shell = [] # Spawn a busybox shell
+final = [] # Final competition test cases
+
 [dependencies]
 bitflags = "2.3.1"
 rustversion = "1.0.11"

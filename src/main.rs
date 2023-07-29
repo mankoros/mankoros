@@ -24,8 +24,11 @@
 extern crate alloc;
 
 use alloc::boxed::Box;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::fmt::Write;
+use process::lproc::LightProcess;
+use process::spawn_proc;
 
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -62,10 +65,10 @@ use crate::boot::boot_pagetable_paddr;
 use crate::consts::address_space::K_SEG_PHY_MEM_BEG;
 use crate::utils::SerialWrapper;
 
+use crate::arch::init_hart_local_info;
 use crate::executor::block_on;
 use crate::memory::address::kernel_virt_text_to_phys;
 use crate::memory::pagetable;
-use crate::arch::init_hart_local_info;
 
 // use trap::ticks;
 
@@ -200,20 +203,66 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
 
     fs::init_filesystems(manager.disks()[0].clone());
 
-    // Probe prelimiary devices
+    // Probe prelimiary tests
     run_preliminary_test();
 
-    process::spawn_init();
-    // Loop even if nothing in queue
-    // Maybe all the task is sleeping
-    loop {
+    #[cfg(feature = "final")]
+    {
+        run_final_test();
         executor::run_until_idle();
+    }
+
+    #[cfg(feature = "shell")]
+    {
+        process::spawn_init();
+        // Loop even if nothing in queue
+        // Maybe all the task is sleeping
+        loop {
+            executor::run_until_idle();
+        }
     }
 
     // Shutdown
     sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
 
     unreachable!();
+}
+
+/// Execute final competition tests
+///
+fn run_final_test() {
+    let root_dir = fs::root::get_root_dir();
+    let busybox = block_on(root_dir.lookup("busybox")).expect("Read busybox failed");
+
+    let args = ["busybox", "sh", "busybox_testcode.sh"]
+        .to_vec()
+        .into_iter()
+        .map(|s: &str| s.to_string())
+        .collect::<Vec<_>>();
+
+    // Some necessary environment variables.
+    let mut envp = Vec::new();
+    envp.push(String::from("LD_LIBRARY_PATH=."));
+    envp.push(String::from("SHELL=/busybox"));
+    envp.push(String::from("PWD=/"));
+    envp.push(String::from("USER=root"));
+    envp.push(String::from("MOTD_SHOWN=pam"));
+    envp.push(String::from("LANG=C.UTF-8"));
+    envp.push(String::from(
+        "INVOCATION_ID=e9500a871cf044d9886a157f53826684",
+    ));
+    envp.push(String::from("TERM=vt220"));
+    envp.push(String::from("SHLVL=2"));
+    envp.push(String::from("JOURNAL_STREAM=8:9265"));
+    envp.push(String::from("OLDPWD=/root"));
+    envp.push(String::from("_=busybox"));
+    envp.push(String::from("LOGNAME=root"));
+    envp.push(String::from("HOME=/"));
+    envp.push(String::from("PATH=/"));
+
+    let lproc = LightProcess::new();
+    lproc.clone().do_exec(busybox, args, Vec::new());
+    spawn_proc(lproc);
 }
 
 fn run_preliminary_test() {
