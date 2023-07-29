@@ -209,7 +209,8 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
 
     #[cfg(feature = "final")]
     {
-        run_final_test();
+        run_busybox_test();
+        run_time_test();
         executor::run_until_idle();
         println!("!TEST FINISH!");
     }
@@ -232,7 +233,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
 
 /// Execute final competition tests
 ///
-fn run_final_test() {
+fn run_busybox_test() {
     let root_dir = fs::root::get_root_dir();
     let busybox = block_on(root_dir.lookup("busybox")).expect("Read busybox failed");
 
@@ -264,6 +265,18 @@ fn run_final_test() {
 
     let lproc = LightProcess::new();
     lproc.clone().do_exec(busybox, args, Vec::new());
+    spawn_proc(lproc);
+}
+
+fn run_time_test() {
+    let root_dir = fs::root::get_root_dir();
+    let bin = block_on(root_dir.lookup("time-test")).expect("Read binary failed");
+
+    let args = Vec::new();
+
+    // Some necessary environment variables.
+    let lproc = LightProcess::new();
+    lproc.clone().do_exec(bin, args, Vec::new());
     spawn_proc(lproc);
 }
 
