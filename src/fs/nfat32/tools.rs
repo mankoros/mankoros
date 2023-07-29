@@ -42,7 +42,7 @@ impl CachedBlkDev {
     pub async fn get(&self, id: BlockID) -> SysResult<BlockCacheEntryRef> {
         let result = {
             let cache = self.cache.lock(here!());
-            cache.get(&id).map(|entry| entry.clone())
+            cache.get(&id).cloned()
         };
         match result {
             Some(entry) => Ok(entry),
@@ -155,10 +155,10 @@ impl ClusterChain {
         self.inner().len()
     }
     pub fn first(&self) -> ClusterID {
-        self.inner().first().unwrap().clone()
+        *self.inner().first().unwrap()
     }
     pub fn last(&self) -> ClusterID {
-        self.inner().last().unwrap().clone()
+        *self.inner().last().unwrap()
     }
 
     /// 向链尾添加一个 cluster

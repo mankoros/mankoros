@@ -113,21 +113,19 @@ impl VfsFile for Pipe {
                         buf[i] = data.dequeue().unwrap();
                     }
                     return Ok(buf.len());
-                } else {
-                    if self.is_hang_up() {
-                        // return leftover data
-                        // must save len first here
-                        let read_len = data.len();
-                        for i in 0..data.len() {
-                            buf[i] = data.dequeue().unwrap();
-                        }
-                        return Ok(read_len);
-                    } else {
-                        // wait for next round
-                        drop(data);
-                        yield_now().await;
-                        continue;
+                } else if self.is_hang_up() {
+                    // return leftover data
+                    // must save len first here
+                    let read_len = data.len();
+                    for i in 0..data.len() {
+                        buf[i] = data.dequeue().unwrap();
                     }
+                    return Ok(read_len);
+                } else {
+                    // wait for next round
+                    drop(data);
+                    yield_now().await;
+                    continue;
                 }
             }
         })
@@ -158,13 +156,11 @@ impl VfsFile for Pipe {
                     let data = self.data.lock(here!());
                     if data.len() >= len {
                         break Ok(len);
+                    } else if self.is_hang_up() {
+                        break Ok(data.len());
                     } else {
-                        if self.is_hang_up() {
-                            break Ok(data.len());
-                        } else {
-                            drop(data);
-                            yield_now().await;
-                        }
+                        drop(data);
+                        yield_now().await;
                     }
                 }
             } else {

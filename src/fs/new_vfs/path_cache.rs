@@ -8,12 +8,11 @@ use super::{
 use crate::{
     here, impl_vfs_default_non_file,
     sync::SpinNoIrqLock,
-    tools::errors::{dyn_future, ASysResult, SysError, SysResult},
+    tools::errors::{dyn_future, ASysResult, SysError},
 };
 use alloc::{
     collections::BTreeMap,
     string::{String, ToString},
-    sync::{Arc, Weak},
     vec::Vec,
 };
 use futures::FutureExt;
@@ -151,18 +150,16 @@ impl<F: ConcreteFile> VfsFile for PathCacheDir<F> {
             if let Some(file) = subdirs.get(name) {
                 // 如果有缓存，直接返回
                 Ok(file)
+            } else if subdirs.is_all() {
+                // 若缓存已经代表了全部文件, 则可以直接返回 ENOENT
+                Err(SysError::ENOENT)
             } else {
-                if subdirs.is_all() {
-                    // 若缓存已经代表了全部文件, 则可以直接返回 ENOENT
-                    Err(SysError::ENOENT)
-                } else {
-                    // 若否, 则向具体文件系统查找, 如果找到了就缓存并返回
-                    self.file.lock().await.lookup(name).await.map(|file| {
-                        let file = self.pack_concrete_file(name, file);
-                        subdirs.put(name.to_string(), file.clone());
-                        file
-                    })
-                }
+                // 若否, 则向具体文件系统查找, 如果找到了就缓存并返回
+                self.file.lock().await.lookup(name).await.map(|file| {
+                    let file = self.pack_concrete_file(name, file);
+                    subdirs.put(name.to_string(), file.clone());
+                    file
+                })
             }
         })
     }
@@ -192,16 +189,14 @@ impl<F: ConcreteFile> VfsFile for PathCacheDir<F> {
                     file.mark_deleted();
                 }
                 // 否则什么也不做
+            } else if subdirs.is_all() {
+                // 若缓存已经代表了全部文件, 则可以直接返回 ENOENT
+                return Err(SysError::ENOENT);
             } else {
-                if subdirs.is_all() {
-                    // 若缓存已经代表了全部文件, 则可以直接返回 ENOENT
-                    return Err(SysError::ENOENT);
-                } else {
-                    // 若否, 则向具体文件系统查找并要求删除
-                    let file = self.file.lookup(name).await?;
-                    self.file.detach(&file).await?;
-                    file.mark_deleted();
-                }
+                // 若否, 则向具体文件系统查找并要求删除
+                let file = self.file.lookup(name).await?;
+                self.file.detach(&file).await?;
+                file.mark_deleted();
             }
             Ok(())
         })
@@ -217,16 +212,14 @@ impl<F: ConcreteFile> VfsFile for PathCacheDir<F> {
                 }
                 // 否则什么也不做
                 Ok(file)
+            } else if subdirs.is_all() {
+                // 若缓存已经代表了全部文件, 则可以直接返回 ENOENT
+                Err(SysError::ENOENT)
             } else {
-                if subdirs.is_all() {
-                    // 若缓存已经代表了全部文件, 则可以直接返回 ENOENT
-                    Err(SysError::ENOENT)
-                } else {
-                    // 若否, 则向具体文件系统查找并要求删除
-                    let file = self.file.lookup(name).await?;
-                    self.file.detach(&file).await?;
-                    Ok(self.pack_file(name, file).await)
-                }
+                // 若否, 则向具体文件系统查找并要求删除
+                let file = self.file.lookup(name).await?;
+                self.file.detach(&file).await?;
+                Ok(self.pack_file(name, file).await)
             }
         })
     }

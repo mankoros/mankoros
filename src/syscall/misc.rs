@@ -9,7 +9,7 @@ use crate::{
     here,
     memory::{UserReadPtr, UserWritePtr},
     timer::{get_time_f64, Rusage, TimeSpec, TimeVal, Tms},
-    tools::{errors::SysError, user_check::{self, UserCheck}},
+    tools::{errors::SysError, user_check::UserCheck},
 };
 
 use super::{Syscall, SyscallResult};
@@ -59,7 +59,7 @@ impl<'a> Syscall<'a> {
 
         let user_check = UserCheck::new_with_sum(&self.lproc);
         user_check.checked_write(uts, UtsName::default())?;
-        
+
         Ok(0)
     }
 
@@ -75,7 +75,7 @@ impl<'a> Syscall<'a> {
 
     pub fn sys_clockgettime(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let _clock_id = args[0] as usize;
+        let _clock_id = args[0];
         let time_spec = args[1] as *mut TimeSpec;
         info!("Syscall: clockgettime");
         within_sum(|| unsafe {

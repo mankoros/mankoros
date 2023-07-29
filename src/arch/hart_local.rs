@@ -1,12 +1,13 @@
-use core::{cell::SyncUnsafeCell, mem::MaybeUninit};
 use super::get_hart_id;
+use core::mem::MaybeUninit;
 
 struct HartLocalInfo {
-    sum_cnt: usize
+    sum_cnt: usize,
 }
 
 const HART_MAX: usize = 4;
-static mut HART_LOCAL_INFO: [HartLocalInfo; HART_MAX] = unsafe { MaybeUninit::zeroed().assume_init() };
+static mut HART_LOCAL_INFO: [HartLocalInfo; HART_MAX] =
+    unsafe { MaybeUninit::zeroed().assume_init() };
 
 pub fn init_hart_local_info() {
     // need to do nothing currently

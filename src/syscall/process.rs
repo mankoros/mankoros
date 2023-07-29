@@ -145,7 +145,7 @@ impl<'a> Syscall<'a> {
             };
 
             if let Some(child) = target_child_opt {
-                self.lproc.remove_child(&child);
+                self.lproc.remove_child(child);
                 // Reset SIGCHLC signal
                 self.lproc.clear_signal(signal::SignalSet::SIGCHLD);
                 break child.clone();

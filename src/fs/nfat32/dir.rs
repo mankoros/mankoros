@@ -1,14 +1,14 @@
 use super::tools::{BlockCacheEntryRef, ClusterChain};
 use super::{ClsOffsetT, ClusterID, Fat32FS, SectorID};
 
-use crate::fs::new_vfs::{VfsFileAttr, VfsFileKind};
+use crate::fs::new_vfs::VfsFileKind;
 use crate::{
     fs::{disk::BLOCK_SIZE, nfat32::parse},
     tools::errors::SysResult,
 };
 use alloc::{collections::VecDeque, string::String, vec::Vec};
 use core::fmt::Display;
-use core::mem::{size_of, MaybeUninit};
+use core::mem::MaybeUninit;
 use core::{cmp::min, usize};
 
 bitflags::bitflags! {
@@ -36,9 +36,9 @@ impl From<VfsFileKind> for Fat32DEntryAttr {
     }
 }
 
-impl Into<VfsFileKind> for Fat32DEntryAttr {
-    fn into(self) -> VfsFileKind {
-        if self.contains(Fat32DEntryAttr::DIRECTORY) {
+impl From<Fat32DEntryAttr> for VfsFileKind {
+    fn from(val: Fat32DEntryAttr) -> Self {
+        if val.contains(Fat32DEntryAttr::DIRECTORY) {
             VfsFileKind::Directory
         } else {
             VfsFileKind::RegularFile
@@ -444,7 +444,7 @@ impl GroupDEntryIter<'_> {
         self.window.get_in_buf(0).is_unused() || self.is_deleted || self.window.in_append
     }
     pub(super) fn can_create(&self, dentry: &FatDEntryData) -> bool {
-        self.can_create_any() && dentry.lfn_needed() + 1 <= self.window.len()
+        self.can_create_any() && dentry.lfn_needed() < self.window.len()
     }
 
     pub(super) async fn create_entry<'a>(
@@ -699,7 +699,7 @@ impl<'a> AtomDEntryWindow {
         let last_ade = self.get_in_dir(current);
         if last_ade.is_end() && !self.in_append {
             log::trace!("move_right_one: reach end ({})", current);
-            return Ok(None);
+            Ok(None)
         } else {
             let ade_kind = if last_ade.is_lfn() {
                 "lfn"
@@ -745,7 +745,7 @@ impl<'a> AtomDEntryWindow {
     /// how many ADE this windows holding now
     pub fn len(&self) -> usize {
         let delta_byte = self.right_pos.as_byte_offset() - self.left_pos.as_byte_offset();
-        (delta_byte as usize) / (DENTRY_SIZE as usize)
+        delta_byte / (DENTRY_SIZE as usize)
     }
     /// left bound of this windows, in current directory
     pub fn left_pos(&self) -> AtomDEPos {

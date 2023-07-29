@@ -1,10 +1,11 @@
 use super::errors::{SysError, SysResult};
 use crate::{
+    arch::{sum_mode_pop, sum_mode_push},
     memory::address::VirtAddr,
     process::{
         lproc::LightProcess,
         user_space::user_area::{PageFaultAccessType, UserAreaPerm},
-    }, arch::{sum_mode_push, sum_mode_pop},
+    },
 };
 use alloc::{string::String, vec::Vec};
 use log::trace;

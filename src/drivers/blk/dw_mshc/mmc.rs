@@ -158,7 +158,7 @@ impl MMC {
         // CMD7 select card
         let cmd = CMD::no_data_cmd(card_idx, 7);
         let cmdarg = CMDARG::from(rca << 16);
-        let resp = self.send_cmd(cmd, cmdarg, None, false).expect("Error executing CMD7");
+        let _resp = self.send_cmd(cmd, cmdarg, None, false).expect("Error executing CMD7");
 
         info!("Current FIFO count: {}", self.fifo_filled_cnt());
 
@@ -186,14 +186,14 @@ impl MMC {
         self.set_size(512, 512);
         let cmd = CMD::data_cmd(card_idx, 17);
         let cmdarg = CMDARG::empty();
-        let resp = self
+        let _resp = self
             .send_cmd(cmd, cmdarg, Some(&mut buffer), true)
             .expect("Error sending command");
 
         info!("Current FIFO count: {}", self.fifo_filled_cnt());
 
         let cmdarg = CMDARG::from(153);
-        let resp = self
+        let _resp = self
             .send_cmd(cmd, cmdarg, Some(&mut buffer), true)
             .expect("Error sending command");
         debug!("Magic: 0x{:x}", buffer[0]);
@@ -210,7 +210,7 @@ impl MMC {
         for i in 0..descriptor_cnt {
             buffer_page_paddr[i] = alloc_frame().expect("Error allocating buffer page").bits();
         }
-        let descriptor_table = unsafe {
+        let _descriptor_table = unsafe {
             core::slice::from_raw_parts_mut(
                 descriptor_page_vaddr as *mut Descriptor,
                 descriptor_cnt,
@@ -311,7 +311,7 @@ impl MMC {
         // Wait for data transfer complete if data expected
         if cmd.data_expected() {
             let buffer = // TODO: dirty
-                buffer.unwrap_or(unsafe { core::slice::from_raw_parts_mut(0 as *mut usize, 64) });
+                buffer.unwrap_or(unsafe { core::slice::from_raw_parts_mut(core::ptr::null_mut::<usize>(), 64) });
             assert!(buffer_offset == 0);
             if is_read {
                 wait_for!({
@@ -413,9 +413,9 @@ impl MMC {
         let blksiz = BLKSIZ::new().with_block_size(block_size);
         let bytcnt = BYTCNT::new().with_byte_count(byte_cnt);
         let base = self.virt_base_address() as *mut BLKSIZ;
-        unsafe { base.byte_add(BLKSIZ::offset()).write_volatile(blksiz.into()) };
+        unsafe { base.byte_add(BLKSIZ::offset()).write_volatile(blksiz) };
         let base = self.virt_base_address() as *mut BYTCNT;
-        unsafe { base.byte_add(BYTCNT::offset()).write_volatile(bytcnt.into()) };
+        unsafe { base.byte_add(BYTCNT::offset()).write_volatile(bytcnt) };
     }
 
     fn set_controller_bus_width(&self, card_index: usize, width: CtypeCardWidth) {
@@ -435,8 +435,8 @@ impl MMC {
     }
     fn status(&self) -> STATUS {
         let base = self.virt_base_address() as *mut STATUS;
-        let status = unsafe { base.byte_add(STATUS::offset()).read_volatile() };
-        status
+
+        unsafe { base.byte_add(STATUS::offset()).read_volatile() }
     }
 
     fn card_detect(&self) -> usize {
@@ -447,14 +447,14 @@ impl MMC {
 
     fn power_enable(&self) -> PWREN {
         let base = self.virt_base_address() as *mut PWREN;
-        let pwren = unsafe { base.byte_add(PWREN::offset()).read_volatile() };
-        pwren
+
+        unsafe { base.byte_add(PWREN::offset()).read_volatile() }
     }
 
     fn clock_enable(&self) -> CLKENA {
         let base = self.virt_base_address() as *mut CLKENA;
-        let clkena = unsafe { base.byte_add(CLKENA::offset()).read_volatile() };
-        clkena
+
+        unsafe { base.byte_add(CLKENA::offset()).read_volatile() }
     }
 
     fn set_dma(&self, enable: bool) {
@@ -478,8 +478,8 @@ impl MMC {
 
     fn dma_status(&self) -> IDSTS {
         let base = self.virt_base_address() as *mut IDSTS;
-        let idsts = unsafe { base.byte_add(IDSTS::offset()).read_volatile() };
-        idsts
+
+        unsafe { base.byte_add(IDSTS::offset()).read_volatile() }
     }
 
     fn card_width(&self, index: usize) -> CtypeCardWidth {
@@ -490,8 +490,8 @@ impl MMC {
 
     fn control_reg(&self) -> CTRL {
         let base = self.virt_base_address() as *mut CTRL;
-        let ctrl = unsafe { base.byte_add(CTRL::offset()).read_volatile() };
-        ctrl
+
+        unsafe { base.byte_add(CTRL::offset()).read_volatile() }
     }
 
     fn descriptor_base_address(&self) -> usize {
@@ -499,7 +499,7 @@ impl MMC {
         let dbaddrl = unsafe { base.byte_add(DBADDRL::offset()).read_volatile() };
         let base = self.virt_base_address() as *mut DBADDRU;
         let dbaddru = unsafe { base.byte_add(DBADDRU::offset()).read_volatile() };
-        usize::from(dbaddru.addr()) << 32 | usize::from(dbaddrl.addr())
+        dbaddru.addr() << 32 | dbaddrl.addr()
     }
 
     fn set_descript_base_address(&self, addr: usize) {

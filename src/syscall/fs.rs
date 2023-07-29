@@ -1,7 +1,7 @@
 //! Filesystem related syscall
 //!
 
-use alloc::{string::String, sync::Arc};
+use alloc::string::String;
 use log::{debug, info, warn};
 
 use crate::{
@@ -128,7 +128,7 @@ impl<'a> Syscall<'a> {
 
         let (dir, file_name) = self.at_helper(dir_fd, path_name, flags).await?;
 
-        let file = if file_name == String::from("") {
+        let file = if file_name == *"" {
             dir
         } else {
             dir.lookup(&file_name).await?
@@ -286,7 +286,7 @@ impl<'a> Syscall<'a> {
             progress, total_files
         );
 
-        for (name, vfs_entry) in &files[progress.clone()..] {
+        for (name, vfs_entry) in &files[progress..] {
             // TODO-BUG: 检查写入后的长度是否满足 u64 的对齐要求, 不满足补 0
             // TODO: d_name 是 &str, 末尾可能会有很多 \0, 想办法去掉它们
             let this_entry_len = core::mem::size_of::<DirentFront>() + name.len() + 1;
@@ -308,7 +308,7 @@ impl<'a> Syscall<'a> {
 
             let user_check = UserCheck::new_with_sum(&self.lproc);
             user_check.checked_write(dirent_beg, dirent_front)?;
-            user_check.checked_write_cstr(d_name_beg.as_usize() as *mut u8, &name)?;
+            user_check.checked_write_cstr(d_name_beg.as_usize() as *mut u8, name)?;
 
             wroten_len += this_entry_len;
             progress += 1;

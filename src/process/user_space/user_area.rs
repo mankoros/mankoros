@@ -20,7 +20,7 @@ use crate::arch::get_curr_page_table_addr;
 
 use crate::executor::block_on;
 use crate::fs::new_vfs::top::{MmapKind, VfsFileRef};
-use crate::memory::frame::dealloc_frame;
+
 use crate::tools::errors::{SysError, SysResult};
 use core::ops::Range;
 use log::{debug, warn};

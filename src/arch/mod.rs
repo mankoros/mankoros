@@ -4,8 +4,8 @@ use crate::consts;
 
 mod hart_local;
 pub use hart_local::init_hart_local_info;
-pub use hart_local::sum_mode_push;
 pub use hart_local::sum_mode_pop;
+pub use hart_local::sum_mode_push;
 
 /// Returns the current frame pointer or stack base pointer
 #[inline(always)]

@@ -1,6 +1,5 @@
-use alloc::{sync::Arc, vec::Vec};
+use alloc::sync::Arc;
 use log::info;
-use mbr_nostd::PartitionTable;
 
 use crate::{
     drivers::{AsyncBlockDevice, BlockDevice},
@@ -9,8 +8,6 @@ use crate::{
         memfs::{tmpdir::TmpDir, tty::TTY, zero::ZeroDev},
         new_vfs::top::VfsFileRef,
     },
-    here,
-    sync::SpinNoIrqLock,
 };
 
 pub mod disk;

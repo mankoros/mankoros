@@ -241,7 +241,7 @@ impl ConcreteFile for Disk {
         todo!()
     }
 
-    fn truncate<'a>(&'a self, _new_size: usize) -> ASysResult {
+    fn truncate(&self, _new_size: usize) -> ASysResult {
         todo!()
     }
 

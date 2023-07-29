@@ -7,7 +7,7 @@ use crate::{
         self,
         new_vfs::{
             path::Path,
-            top::{PollKind, VfsFileRef, OFFSET_TAIL},
+            top::{PollKind, VfsFileRef},
             VfsFileKind,
         },
         pipe::Pipe,

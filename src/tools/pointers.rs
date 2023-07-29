@@ -1,5 +1,5 @@
-use alloc::{boxed::Box, string::String, vec::Vec};
-use core::{cell::SyncUnsafeCell, cmp, fmt::Debug, pin::Pin, sync::atomic::AtomicUsize};
+use alloc::{boxed::Box, string::String};
+use core::{cell::SyncUnsafeCell, fmt::Debug, pin::Pin, sync::atomic::AtomicUsize};
 
 pub struct Ptr<T>(*mut T);
 
@@ -127,14 +127,10 @@ impl<T> UniquePtr<T> {
         Self(Box::pin(SyncUnsafeCell::new(data)))
     }
     pub fn as_ref(&self) -> &T {
-        unsafe {
-            self.0.get().as_ref().unwrap()
-        }
+        unsafe { self.0.get().as_ref().unwrap() }
     }
     pub fn as_mut(&self) -> &mut T {
-        unsafe {
-            self.0.get().as_mut().unwrap()
-        }
+        unsafe { self.0.get().as_mut().unwrap() }
     }
     pub fn borrow(&self) -> Ptr<T> {
         Ptr::new(self.as_mut() as *mut _)

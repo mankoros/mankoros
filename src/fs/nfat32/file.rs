@@ -297,7 +297,7 @@ impl ConcreteFile for FATFile {
         })
     }
 
-    fn truncate<'a>(&'a self, new_size: usize) -> ASysResult {
+    fn truncate(&self, new_size: usize) -> ASysResult {
         // 如果是文件夹，不允许 truncate
         // 如果是文件, 那么根据 new_size 是大是小决定
         // 如果小, 则调整 chain, 把多出来的块还给 fs

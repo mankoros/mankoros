@@ -1,7 +1,7 @@
 use super::arena::{MAtomicPtr, ObjPool, Ptr};
 use crate::sync::SpinNoIrqLock;
-use alloc::{boxed::Box, vec::Vec};
-use core::{mem::MaybeUninit, pin::Pin, sync::atomic::Ordering};
+
+use core::sync::atomic::Ordering;
 
 pub trait HashKey {
     fn hash(&self) -> usize;

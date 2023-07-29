@@ -222,7 +222,7 @@ fn probe_serial_console(stdout: &fdt::node::FdtNode) -> Serial {
     let base_paddr = reg.starting_address as usize;
     let size = reg.size.unwrap();
     let base_vaddr = kernel_phys_dev_to_virt(base_paddr);
-    let mut irq_number = stdout.property("interrupts").unwrap().as_usize().unwrap();
+    let irq_number = stdout.property("interrupts").unwrap().as_usize().unwrap();
     info!("IRQ number: {}", irq_number);
 
     let first_compatible = stdout.compatible().unwrap().first();

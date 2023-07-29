@@ -11,7 +11,7 @@ use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use crate::fs::new_vfs::path_cache::PathCacheDir;
 use crate::fs::new_vfs::sync_attr_file::SyncAttrFile;
 use crate::fs::new_vfs::top::{VfsFS, VfsFileRef};
-use crate::fs::new_vfs::underlying::ConcreteFS;
+
 use core::pin::Pin;
 use core::slice;
 
@@ -173,8 +173,8 @@ impl Fat32FS {
         let lscc = self.log_cls_size_sct as u32;
         let relative_sid = sector_id - self.data_begin_sct;
         // this formula can be cross verified with Self::first_sector
-        let cluster_id = ((relative_sid >> lscc) + 2) as ClusterID;
-        cluster_id
+
+        ((relative_sid >> lscc) + 2) as ClusterID
     }
 
     pub(super) fn next_sector(&self, sid: SectorID) -> Option<SectorID> {
@@ -281,7 +281,7 @@ impl FATTableManager {
         next_cid
     }
     pub fn set_next(&mut self, cid: ClusterID, next_cid: ClusterID) {
-        self.fat[cid as usize] = next_cid as u32;
+        self.fat[cid as usize] = next_cid;
     }
 
     pub fn next(&self, cid: ClusterID) -> Option<ClusterID> {

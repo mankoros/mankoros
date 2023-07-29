@@ -4,16 +4,9 @@ use crate::{
         PAGE_SIZE,
     },
     memory::{address::PhysPageNum, frame::dealloc_frame},
-    sync::SpinNoIrqLock,
 };
-use alloc::{alloc::alloc, boxed::Box, collections::BTreeMap, vec::Vec};
-use core::{
-    alloc::Layout,
-    cell::SyncUnsafeCell,
-    intrinsics,
-    sync::atomic::{AtomicUsize, Ordering},
-};
-use log::trace;
+use alloc::alloc::alloc;
+use core::{alloc::Layout, intrinsics};
 
 static mut FRAME_REF_CNT_PTR: *mut u32 = 0 as _;
 
