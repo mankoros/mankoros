@@ -169,6 +169,35 @@ impl Syscall<'_> {
         })
     }
 
+    pub async fn sys_lseek(&mut self) -> SyscallResult {
+        const SEEK_SET: usize = 0; /* Seek from beginning of file.  */
+        const SEEK_CUR: usize = 1; /* Seek from current position.  */
+        const SEEK_END: usize = 2; /* Seek from end of file.  */
+
+        let args = self.cx.syscall_args();
+        let (fd, offset, whence) = (args[0], args[1], args[2]);
+
+        let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
+        match whence {
+            SEEK_SET => {
+                fd.set_curr(offset);
+            }
+            SEEK_CUR => {
+                fd.set_curr(fd.curr() + offset);
+            }
+            SEEK_END => {
+                let size = fd.file.attr().await?.byte_size;
+                let offset = ((size as isize) + (offset as isize)) as usize;
+                fd.set_curr(offset);
+            }
+            _ => {
+                return Err(SysError::EINVAL);
+            }
+        }
+
+        Ok(fd.curr())
+    }
+
     pub async fn sys_ppoll(&mut self) -> SyscallResult {
         #[repr(C)]
         #[derive(Debug, Copy, Clone)]
