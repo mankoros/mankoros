@@ -76,6 +76,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_BRK => self.sys_brk(),
             SYSCALL_MUNMAP => self.sys_munmap(),
             SYSCALL_MMAP => self.sys_mmap(),
+            SYSCALL_MPROTECT => self.sys_do_nothing("mprotect"),
 
             // Misc
             SYSCALL_TIMES => self.sys_times(),
