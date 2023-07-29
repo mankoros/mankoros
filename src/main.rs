@@ -21,6 +21,7 @@
 #![feature(box_into_inner)]
 #![feature(async_iterator)]
 #![feature(const_maybe_uninit_zeroed)]
+#![feature(core_intrinsics)]
 extern crate alloc;
 
 use alloc::boxed::Box;
@@ -68,6 +69,7 @@ use crate::utils::SerialWrapper;
 use crate::arch::init_hart_local_info;
 use crate::executor::block_on;
 use crate::memory::address::kernel_virt_text_to_phys;
+use crate::memory::frame_ref_cnt::init_frame_ref_cnt;
 use crate::memory::pagetable;
 
 // use trap::ticks;
@@ -127,6 +129,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     // Initial memory system
     frame::init();
     heap::init();
+    init_frame_ref_cnt();
 
     // Initialize interrupt controller
     trap::trap::init();

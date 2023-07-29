@@ -21,7 +21,6 @@ use crate::arch::get_curr_page_table_addr;
 use crate::executor::block_on;
 use crate::fs::new_vfs::top::{MmapKind, VfsFileRef};
 use crate::memory::frame::dealloc_frame;
-use crate::process::shared_frame_mgr::with_shared_frame_mgr;
 use crate::tools::errors::{SysError, SysResult};
 use core::ops::Range;
 use log::{debug, warn};
@@ -244,27 +243,23 @@ impl UserArea {
             debug_assert!(self.perm().contains(UserAreaPerm::WRITE));
 
             // decrease the old frame's ref count
-            let old_frame = pte.paddr();
-            let mut is_shared = false;
-            with_shared_frame_mgr(|mgr| {
-                is_shared = mgr.is_shared(old_frame.page_num());
-            });
+            let old_frame = pte.ppn();
 
-            if is_shared {
-                with_shared_frame_mgr(|mgr| {
-                    mgr.remove_ref(old_frame.page_num());
-                });
+            if old_frame.is_shared() {
+                // must not be the last one
+                old_frame.decrease();
+                debug_assert!(!old_frame.is_free());
 
                 // copy the data
                 // assert we are in process's page table now
                 debug_assert!(page_table.root_paddr().bits() == get_curr_page_table_addr());
                 frame = alloc_frame().ok_or(PageFaultErr::KernelOOM)?;
                 unsafe {
-                    frame.as_mut_page_slice().copy_from_slice(old_frame.as_page_slice());
+                    frame.as_mut_page_slice().copy_from_slice(old_frame.addr().as_page_slice());
                 }
             } else {
                 // Not shared, just set the pte to writable
-                frame = old_frame;
+                frame = old_frame.addr();
             }
         } else {
             // a lazy alloc or lazy load (demand paging)
@@ -526,31 +521,16 @@ impl UserAreaManager {
             }
         }
         // 释放被删除的段
-        with_shared_frame_mgr(|mgr| {
-            iter_vpn(range, |vpn| {
-                // TODO-PERF: 尝试在段中维护已映射的共享物理页，以减少查询次数
-                let pte = page_table.get_pte_copied_from_vpn(vpn);
-                if pte.is_none() {
-                    return;
-                }
-                let pte = pte.unwrap();
-                // Remove the page from the page table.
-                page_table.unmap_page(vpn.addr());
-
-                let ppn = pte.ppn();
-                // 如果是共享的，则只减少引用计数，否则释放
-                if mgr.is_shared(ppn) {
-                    mgr.remove_ref(ppn);
-                } else {
-                    // Fill the page with zeroes when in debug mode
-                    cfg_if::cfg_if! {
-                        if #[cfg(debug_assertions)] {
-                            unsafe { pte.paddr().as_mut_page_slice().fill(0) };
-                        }
-                    }
-                    dealloc_frame(ppn.addr());
-                }
-            })
+        iter_vpn(range, |vpn| {
+            let pte = page_table.get_pte_copied_from_vpn(vpn);
+            if pte.is_none() {
+                return;
+            }
+            let pte = pte.unwrap();
+            // Remove the page from the page table.
+            page_table.unmap_page(vpn.addr());
+            // Decrement the reference count of the page and try to deallocate it.
+            pte.ppn().decrease_and_try_dealloc();
         })
     }
 }
