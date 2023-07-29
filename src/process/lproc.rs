@@ -1,6 +1,9 @@
 use super::{
     pid::{alloc_pid, Pid, PidHandler},
-    user_space::UserSpace,
+    user_space::{
+        shm_mgr::{Shm, ShmId},
+        UserSpace,
+    },
 };
 use crate::{
     arch::{self, switch_page_table, within_sum},
@@ -73,6 +76,7 @@ pub struct LightProcess {
     status: SpinNoIrqLock<SyncUnsafeCell<ProcessStatus>>,
     timer: SpinNoIrqLock<TimeStat>,
     exit_code: AtomicI32,
+    shm_table: SpinNoIrqLock<ShmTable>,
 
     // Per thread information
     private_info: SpinNoIrqLock<PrivateInfo>,
@@ -226,6 +230,13 @@ impl LightProcess {
         f(&mut self.private_info.lock(here!()))
     }
 
+    pub fn with_shm_table<T>(&self, f: impl FnOnce(&ShmTable) -> T) -> T {
+        f(&self.shm_table.lock(here!()))
+    }
+    pub fn with_mut_shm_table<T>(&self, f: impl FnOnce(&mut ShmTable) -> T) -> T {
+        f(&mut self.shm_table.lock(here!()))
+    }
+
     pub fn is_exit(&self) -> bool {
         self.status() == ProcessStatus::ZOMBIE
     }
@@ -240,6 +251,7 @@ impl LightProcess {
             status: SpinNoIrqLock::new(SyncUnsafeCell::new(ProcessStatus::UNINIT)),
             timer: SpinNoIrqLock::new(TimeStat::new()),
             exit_code: AtomicI32::new(0),
+            shm_table: SpinNoIrqLock::new(ShmTable::new_empty()),
             group: new_shared(ThreadGroup::new_empty()),
             memory: new_shared(UserSpace::new()),
             fsinfo: new_shared(FsInfo::new()),
@@ -413,6 +425,7 @@ impl LightProcess {
             status,
             timer,
             exit_code,
+            shm_table: SpinNoIrqLock::new(ShmTable::new_empty()),
             group,
             memory,
             fsinfo,
@@ -579,6 +592,42 @@ impl Drop for FdTable {
     fn drop(&mut self) {
         self.table.clear();
         log::debug!("FdTable dropped");
+    }
+}
+
+pub struct ShmTable {
+    pool: UsizePool,
+    table: BTreeMap<ShmId, Arc<Shm>>,
+}
+
+impl ShmTable {
+    pub fn new_empty() -> Self {
+        Self {
+            pool: UsizePool::new(0),
+            table: BTreeMap::new(),
+        }
+    }
+
+    pub fn alloc(&mut self, shm: Arc<Shm>) -> ShmId {
+        let id = self.pool.get();
+        self.table.insert(id, shm);
+        id
+    }
+
+    pub fn get(&self, id: ShmId) -> Option<Arc<Shm>> {
+        self.table.get(&id).cloned()
+    }
+
+    pub fn remove(&mut self, id: ShmId) -> Option<Arc<Shm>> {
+        self.pool.release(id);
+        self.table.remove(&id)
+    }
+
+    pub fn release_all(&mut self) {
+        self.table.retain(|no, _| {
+            self.pool.release(*no);
+            false
+        })
     }
 }
 

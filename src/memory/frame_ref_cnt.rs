@@ -104,4 +104,14 @@ impl PhysPageNum {
             dealloc_frame(self.addr());
         }
     }
+    pub fn decrease_and_must_dealloc(self) {
+        let prev = self.add_ref_cnt(-1);
+        if prev != 1 {
+            panic!(
+                "decrease_and_must_dealloc: ref_cnt != 1, ref_cnt = {}",
+                prev
+            );
+        }
+        dealloc_frame(self.addr());
+    }
 }

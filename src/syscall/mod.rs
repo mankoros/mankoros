@@ -78,6 +78,10 @@ impl<'a> Syscall<'a> {
             SYSCALL_MUNMAP => self.sys_munmap(),
             SYSCALL_MMAP => self.sys_mmap(),
             SYSCALL_MPROTECT => self.sys_do_nothing("mprotect"),
+            SYSCALL_SHMGET => self.sys_shmget(),
+            SYSCALL_SHMCTL => self.sys_shmctl(),
+            SYSCALL_SHMAT => self.sys_shmat(),
+            SYSCALL_SHMDT => self.sys_shmdt(),
 
             // Misc
             SYSCALL_TIMES => self.sys_times(),
@@ -197,6 +201,10 @@ pub const SYSCALL_GETEUID: usize = 175;
 pub const SYSCALL_GETEGID: usize = 177;
 pub const SYSCALL_GETTID: usize = 178;
 pub const SYSCALL_SYSINFO: usize = 179;
+pub const SYSCALL_SHMGET: usize = 194;
+pub const SYSCALL_SHMCTL: usize = 195;
+pub const SYSCALL_SHMAT: usize = 196;
+pub const SYSCALL_SHMDT: usize = 197;
 pub const SYSCALL_SOCKET: usize = 198;
 pub const SYSCALL_BIND: usize = 200;
 pub const SYSCALL_LISTEN: usize = 201;

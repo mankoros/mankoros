@@ -18,10 +18,11 @@ use crate::consts::address_space::{
 
 use crate::arch::get_curr_page_table_addr;
 
+use super::shm_mgr::{Shm, ShmId};
 use crate::executor::block_on;
 use crate::fs::new_vfs::top::{MmapKind, VfsFileRef};
-
 use crate::tools::errors::{SysError, SysResult};
+use alloc::sync::Arc;
 use core::ops::Range;
 use log::{debug, warn};
 
@@ -29,7 +30,7 @@ pub type VirtAddrRange = Range<VirtAddr>;
 
 #[inline(always)]
 ///! 用于迭代虚拟地址范围内的所有页, 如果首尾不是页对齐的就 panic
-fn iter_vpn(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum)) {
+pub(super) fn iter_vpn(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum)) {
     let start_vpn = range.start.assert_4k().page_num();
     let end_vpn = range.end.round_up().page_num(); // End vaddr may not be 4k aligned
     let mut vpn = start_vpn;
@@ -42,7 +43,7 @@ fn iter_vpn(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum)) {
 #[inline(always)]
 ///! 用于迭代虚拟地址范围内的所有页, 如果首尾不是页对齐的, 会自动向前或向后扩展到页对齐.
 ///! 不知道有没有用, 先留着吧
-fn iter_vpn_extend(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum)) {
+pub(super) fn iter_vpn_extend(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum)) {
     let start_vpn = range.start.round_down().page_num();
     let end_vpn = range.end.round_up().page_num();
     let mut vpn = start_vpn;
@@ -153,12 +154,19 @@ enum UserAreaType {
     /// 匿名映射区域
     MmapAnonymous,
     /// 私有映射区域
-    MmapPrivate { file: VfsFileRef, offset: usize },
+    MmapPrivate {
+        file: VfsFileRef,
+        offset: usize,
+    },
     // TODO: 共享映射区域
     // MmapShared {
     //     file: VfsFileRef,
     //     offset: usize,
     // },
+    Shm {
+        id: ShmId,
+        shm: Arc<Shm>,
+    },
 }
 
 impl Debug for UserAreaType {
@@ -168,6 +176,7 @@ impl Debug for UserAreaType {
             UserAreaType::MmapPrivate { file: _, offset } => {
                 write!(f, "MmapPrivate {{ offset: {} }}", offset)
             }
+            UserAreaType::Shm { id, shm: _ } => write!(f, "Shm {{ id: {} }}", id),
         }
     }
 }
@@ -199,6 +208,13 @@ impl UserArea {
     pub fn new_private(perm: UserAreaPerm, file: VfsFileRef, offset: usize) -> Self {
         Self {
             kind: UserAreaType::MmapPrivate { file, offset },
+            perm,
+        }
+    }
+
+    pub fn new_shm(perm: UserAreaPerm, id: ShmId, shm: Arc<Shm>) -> Self {
+        Self {
+            kind: UserAreaType::Shm { id, shm },
             perm,
         }
     }
@@ -282,6 +298,9 @@ impl UserArea {
                         .expect("read file failed");
                     // Read length may be less than PAGE_SIZE, due to file mmap
                 }
+                UserAreaType::Shm { id: _, shm: _ } => {
+                    panic!("shm should be mapped immediately, will never page fault")
+                }
             }
         }
 
@@ -303,6 +322,7 @@ impl UserArea {
                 *offset += split_at - range.start;
                 UserArea::new_private(self.perm, file.clone(), old_offset)
             }
+            Shm { id: _, shm: _ } => panic!("shm should never be split"),
         }
     }
 
@@ -315,6 +335,7 @@ impl UserArea {
             MmapPrivate { file, offset } => {
                 UserArea::new_private(self.perm, file.clone(), *offset + (split_at - range.start))
             }
+            Shm { id: _, shm: _ } => panic!("shm should never be split"),
         }
     }
 }
@@ -432,6 +453,16 @@ impl UserAreaManager {
         self.insert_mmap_private_at(begin, size, perm, file, offset)
     }
 
+    pub fn insert_shm(
+        &mut self,
+        perm: UserAreaPerm,
+        id: ShmId,
+        shm: Arc<Shm>,
+    ) -> SysResult<(VirtAddrRange, &UserArea)> {
+        let (begin, _) = self.find_free_mmap_area(shm.size())?;
+        self.insert_shm_at(begin, perm, id, shm)
+    }
+
     pub fn insert_mmap_anonymous_at(
         &mut self,
         begin_vaddr: VirtAddr,
@@ -468,6 +499,24 @@ impl UserAreaManager {
             .map_err(|_| SysError::ENOMEM)
     }
 
+    pub fn insert_shm_at(
+        &mut self,
+        begin_vaddr: VirtAddr,
+        perm: UserAreaPerm,
+        id: ShmId,
+        shm: Arc<Shm>,
+    ) -> SysResult<(VirtAddrRange, &UserArea)> {
+        let range = VirtAddrRange {
+            start: begin_vaddr,
+            end: begin_vaddr + shm.size(),
+        };
+        let area = UserArea::new_shm(perm, id, shm);
+        self.map
+            .try_insert(range.clone(), area)
+            .map(|v| (range, &*v))
+            .map_err(|_| SysError::ENOMEM)
+    }
+
     pub fn page_fault(
         &mut self,
         page_table: &mut PageTable,
@@ -495,6 +544,12 @@ impl UserAreaManager {
             self.page_fault(page_table, vpn, perm.into()).unwrap();
             vpn += 1;
         }
+    }
+
+    pub fn remove_shm(&mut self, vaddr: VirtAddr) -> SysResult<VirtAddrRange> {
+        let (range, _) = self.map.get(vaddr).ok_or(SysError::EINVAL)?;
+        self.map.force_remove_one(range.clone());
+        Ok(range)
     }
 
     pub fn unmap_range(&mut self, page_table: &mut PageTable, range: VirtAddrRange) {

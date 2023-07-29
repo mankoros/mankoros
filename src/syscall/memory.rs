@@ -6,9 +6,13 @@ use log::info;
 
 use crate::{
     consts::PAGE_MASK,
-    memory::{address::VirtAddr, pagetable::pte::PTEFlags},
-    process::user_space::user_area::UserAreaPerm,
-    tools::errors::SysError,
+    memory::{address::VirtAddr, pagetable::pte::PTEFlags, UserPtr, UserReadPtr, UserWritePtr},
+    process::user_space::{
+        shm_mgr::{global_shm_mgr, ShmId},
+        user_area::UserAreaPerm,
+    },
+    syscall::memory::ipc::{ShmIdDs, IPC_RMID, IPC_SET, IPC_STAT},
+    tools::{errors::SysError, user_check::UserCheck},
 };
 
 use super::{Syscall, SyscallResult};
@@ -164,5 +168,182 @@ impl<'a> Syscall<'a> {
         self.lproc.with_mut_memory(|m| m.unmap_range(range));
 
         Ok(0)
+    }
+
+    pub fn sys_shmget(&mut self) -> SyscallResult {
+        use ipc::*;
+
+        let args = self.cx.syscall_args();
+        let (key, size, shmflg) = (args[0], args[1], args[2]);
+        info!(
+            "Syscall shmget: shmget key={} size={} shmflg={}",
+            key, size, shmflg
+        );
+
+        let mgr = global_shm_mgr();
+
+        let shm = if let Some(shm) = mgr.get(key) {
+            if (shmflg & IPC_CREAT != 0) && (shmflg & IPC_EXCL != 0) {
+                return Err(SysError::EEXIST);
+            }
+            shm
+        } else {
+            if shmflg & IPC_CREAT == 0 {
+                return Err(SysError::ENOENT);
+            }
+
+            let key = if key == IPC_PRIVATE { None } else { Some(key) };
+            let shm = mgr.create(key, size, self.lproc.id())?;
+            shm
+        };
+
+        let id = self.lproc.with_mut_shm_table(|f| f.alloc(shm));
+        Ok(id)
+    }
+
+    pub fn sys_shmat(&mut self) -> SyscallResult {
+        use ipc::*;
+        let args = self.cx.syscall_args();
+        let (shmid, shmaddr, shmflg) = (args[0], args[1], args[2]);
+        info!(
+            "Syscall shmat: shmat shmid={} shmaddr={} shmflg={}",
+            shmid, shmaddr, shmflg
+        );
+
+        let shm = self.lproc.with_shm_table(|f| f.get(shmid)).ok_or(SysError::EINVAL)?;
+        let vaddr = if shmaddr == 0 {
+            None
+        } else {
+            Some(VirtAddr::from(shmaddr))
+        };
+        let pid = self.lproc.id();
+        let perm = if shmflg & SHM_RDONLY != 0 {
+            UserAreaPerm::READ
+        } else {
+            UserAreaPerm::READ | UserAreaPerm::WRITE
+        };
+
+        let vaddr = self
+            .lproc
+            .with_mut_memory(|m| m.attach_shm(vaddr, pid, shmid as ShmId, shm, perm))?;
+
+        Ok(vaddr.bits())
+    }
+
+    pub fn sys_shmdt(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let shmaddr = VirtAddr::from(args[0]);
+        info!("Syscall shmdt: shmdt shmaddr={:?}", shmaddr);
+        self.lproc.with_mut_memory(|m| m.detach_shm(shmaddr)).map(|()| 0)
+    }
+
+    pub fn sys_shmctl(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (shmid, cmd, buf) = (args[0], args[1], args[2]);
+        info!(
+            "Syscall shmctl: shmctl shmid={} cmd={} buf={}",
+            shmid, cmd, buf
+        );
+
+        let shm = self.lproc.with_shm_table(|f| f.get(shmid)).ok_or(SysError::EINVAL)?;
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+
+        match cmd {
+            IPC_STAT => {
+                let buf = UserWritePtr::<ShmIdDs>::from(buf);
+                let data = ShmIdDs {
+                    shm_perm: ipc::IPCPerm {
+                        __key: shmid as _,
+                        uid: 0,
+                        gid: 0,
+                        cuid: 0,
+                        cgid: 0,
+                        mode: 0o777,
+                        __seq: 0,
+                        __pad2: 0,
+                        __glibc_reserved1: 0,
+                        __glibc_reserved2: 0,
+                    },
+                    shm_segsz: shm.size() as _,
+                    shm_atime: 0,
+                    shm_dtime: 0,
+                    shm_ctime: 0,
+                    shm_cpid: Into::<usize>::into(shm.creater()) as _,
+                    shm_lpid: Into::<usize>::into(shm.last_operater()) as _,
+                    shm_nattch: shm.attach_cnt() as _,
+                    __glibc_reserved4: 0,
+                    __glibc_reserved5: 0,
+                };
+                user_check.checked_write(buf.raw_ptr_mut(), data)?;
+                Ok(0)
+            }
+            IPC_SET => {
+                log::info!("IPC_SET can change nothing now");
+                Ok(0)
+            }
+            IPC_RMID => {
+                let result = self.lproc.with_mut_shm_table(|f| f.remove(shmid));
+                match result {
+                    Some(_) => Ok(0),
+                    None => Err(SysError::EINVAL),
+                }
+            }
+            _ => Err(SysError::EINVAL),
+        }
+    }
+}
+
+mod ipc {
+    /* Mode bits for `msgget', `semget', and `shmget'.  */
+    /// Create key if key does not exist.
+    pub const IPC_CREAT: usize = 0o1000;
+    /// Fail if key exists.
+    pub const IPC_EXCL: usize = 0o2000;
+    /// Return error on wait.
+    pub const IPC_NOWAIT: usize = 0o4000;
+
+    /* Control commands for `msgctl', `semctl', and `shmctl'.  */
+    /// Remove identifier.
+    pub const IPC_RMID: usize = 0;
+    /// Set `ipc_perm' options.
+    pub const IPC_SET: usize = 1;
+    /// Get `ipc_perm' options.
+    pub const IPC_STAT: usize = 2;
+    /// Get kernel structure.
+    pub const IPC_INFO: usize = 3;
+
+    /* Special key values.  */
+    /// Private key.
+    pub const IPC_PRIVATE: usize = 0;
+
+    pub const SHM_RDONLY: usize = 0o10000;
+
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    pub struct IPCPerm {
+        pub __key: u32,
+        pub uid: u32,
+        pub gid: u32,
+        pub cuid: u32,
+        pub cgid: u32,
+        pub mode: u32,
+        pub __seq: u16,
+        pub __pad2: u16,
+        pub __glibc_reserved1: u64,
+        pub __glibc_reserved2: u64,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    pub struct ShmIdDs {
+        pub shm_perm: IPCPerm,
+        pub shm_segsz: u64,
+        pub shm_atime: u64,
+        pub shm_dtime: u64,
+        pub shm_ctime: u64,
+        pub shm_cpid: u32,
+        pub shm_lpid: u32,
+        pub shm_nattch: u64,
+        pub __glibc_reserved4: u64,
+        pub __glibc_reserved5: u64,
     }
 }

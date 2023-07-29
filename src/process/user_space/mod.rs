@@ -1,7 +1,8 @@
 pub mod range_map;
+pub mod shm_mgr;
 pub mod user_area;
 
-use alloc::{string::String, vec::Vec};
+use alloc::{string::String, sync::Arc, vec::Vec};
 
 use crate::{
     arch::{get_curr_page_table_addr, within_sum},
@@ -14,12 +15,19 @@ use crate::{
         kernel_phys_to_virt,
         pagetable::{pagetable::PageTable, pte::PTEFlags},
     },
-    process::{aux_vector::AuxElement, user_space::user_area::PageFaultAccessType},
+    process::{
+        aux_vector::AuxElement,
+        user_space::user_area::{iter_vpn, PageFaultAccessType},
+    },
+    tools::errors::{SysError, SysResult},
 };
 
-use super::aux_vector::AuxVector;
+use super::{aux_vector::AuxVector, pid::Pid};
 
-use self::user_area::{PageFaultErr, UserAreaManager, UserAreaPerm, VirtAddrRange};
+use self::{
+    shm_mgr::{Shm, ShmId},
+    user_area::{PageFaultErr, UserAreaManager, UserAreaPerm, VirtAddrRange},
+};
 use log::{debug, trace};
 
 pub const THREAD_STACK_SIZE: usize = 16 * 1024;
@@ -308,6 +316,39 @@ impl UserSpace {
         let entry_point = VirtAddr::from(elf.header.pt2.entry_point() as usize);
 
         (entry_point, auxv)
+    }
+
+    pub fn attach_shm(
+        &mut self,
+        vaddr: Option<VirtAddr>,
+        pid: Pid,
+        id: ShmId,
+        shm: Arc<Shm>,
+        perm: UserAreaPerm,
+    ) -> SysResult<VirtAddr> {
+        let (range, _) = match vaddr {
+            Some(vaddr) => self.areas.insert_shm_at(vaddr, perm, id, shm.clone()),
+            None => self.areas.insert_shm(perm, id, shm.clone()),
+        }?;
+
+        let mut vaddr4k = range.start.assert_4k();
+        for frame in shm.attach(pid) {
+            frame.page_num().increase();
+            self.page_table.map_page(vaddr4k, *frame, perm.into());
+            vaddr4k = vaddr4k.next_page();
+        }
+
+        Ok(range.start)
+    }
+
+    pub fn detach_shm(&mut self, vaddr: VirtAddr) -> SysResult {
+        let range = self.areas.remove_shm(vaddr)?;
+        iter_vpn(range, |vpn| {
+            let paddr = self.page_table.unmap_page(vpn.addr());
+            paddr.page_num().decrease_and_try_dealloc();
+            unsafe { riscv::asm::sfence_vma(0, vpn.addr().bits()) };
+        });
+        Ok(())
     }
 
     pub fn handle_pagefault(
