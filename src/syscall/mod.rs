@@ -1,17 +1,16 @@
-use crate::{process::lproc::LightProcess, tools::errors::SysError};
-
-use crate::trap::context::UKContext;
-
-use log::{info, warn};
-
 mod fs;
 mod io;
 mod memory;
 mod misc;
 mod process;
+mod signal;
 
 use crate::tools::errors::SysResult;
+use crate::trap::context::UKContext;
+use crate::{process::lproc::LightProcess, tools::errors::SysError};
 use alloc::sync::Arc;
+use log::{info, warn};
+
 pub use process::CloneFlags;
 
 pub struct Syscall<'a> {
@@ -72,6 +71,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_GETPID => self.sys_getpid(),
             SYSCALL_GETTID => self.sys_gettid(),
             SYSCALL_SET_TID_ADDRESS => self.sys_set_tid_address(),
+            SYSCALL_RT_SIGTIMEDWAIT => self.sys_sigwait().await,
 
             // Memory related
             SYSCALL_BRK => self.sys_brk(),
