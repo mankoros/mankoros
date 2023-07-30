@@ -194,12 +194,15 @@ impl Syscall<'_> {
                 fd.set_curr(offset);
             }
             SEEK_CUR => {
-                fd.set_curr((fd.curr() as isize + offset as isize) as usize);
+                let result = (fd.curr() as isize) + (offset as isize);
+                log::info!("SEEK_CUR: {result}");
+                fd.set_curr(result as usize);
             }
             SEEK_END => {
                 let size = fd.file.attr().await?.byte_size;
-                let offset = ((size as isize) + (offset as isize)) as usize;
-                fd.set_curr(offset);
+                let offset = (size as isize) + (offset as isize);
+                log::info!("SEEK_END: {offset}");
+                fd.set_curr(offset as usize);
             }
             _ => {
                 return Err(SysError::EINVAL);

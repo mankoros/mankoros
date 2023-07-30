@@ -36,7 +36,18 @@ impl<F: ConcreteFile> PageCacheFile<F> {
 
 impl<F: ConcreteFile> VfsFile for PageCacheFile<F> {
     fn attr(&self) -> ASysResult<super::VfsFileAttr> {
-        dyn_future(async { Ok(self.file.attr().await) })
+        dyn_future(async {
+            let mut attr = self.file.attr().await;
+            let mgr = self.mgr.lock().await;
+            let last = mgr.cached_pages.last_key_value();
+
+            if let Some((begin_offset, page_cache)) = last {
+                let end_offset = begin_offset + page_cache.len();
+                attr.byte_size = attr.byte_size.max(end_offset);
+            }
+
+            Ok(attr)
+        })
     }
 
     fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
