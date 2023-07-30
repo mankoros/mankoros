@@ -15,6 +15,7 @@ use crate::sync::SpinNoIrqLock;
 use log::*;
 
 use super::address::{kernel_virt_text_to_phys, PhysAddr4K};
+use crate::memory::frame_ref_cnt::is_frame_ref_cnt_inited;
 
 // Support 64GiB (?)
 pub type FrameAllocator = bitmap_allocator::BitAlloc16M;
@@ -79,16 +80,13 @@ pub fn alloc_frame() -> Option<PhysAddr4K> {
         }
     }
 
-    // in early stage, we don't have frame ref count
-    if true {
-        if let Some(paddr) = paddr {
-            paddr.page_num().increase();
-            Some(paddr)
-        } else {
-            None
-        }
+    debug_assert!(is_frame_ref_cnt_inited());
+    if let Some(paddr) = paddr {
+        debug_assert!(paddr.page_num().is_free());
+        paddr.page_num().increase();
+        Some(paddr)
     } else {
-        paddr
+        None
     }
 }
 pub fn dealloc_frame(target: PhysAddr4K) {

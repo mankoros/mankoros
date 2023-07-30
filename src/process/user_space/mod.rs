@@ -398,5 +398,6 @@ impl Drop for UserSpace {
 
         drop(areas);
         drop(page_table);
+        log::debug!("drop user space done")
     }
 }

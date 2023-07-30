@@ -375,7 +375,7 @@ impl Drop for PageTable {
                         }
                     }
                     // Clear dealloc page when in debug
-                    unsafe { frame.as_mut_page_slice().fill(0) };
+                    unsafe { frame.as_mut_page_slice().fill(0x5) };
                 }
             }
             frame.page_num().decrease();

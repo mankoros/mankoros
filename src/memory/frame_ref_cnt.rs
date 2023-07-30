@@ -95,10 +95,10 @@ impl PhysPageNum {
         // if previous value is 1, then we can dealloc this frame
         if self.add_ref_cnt(-1) == 1 {
             // Fill the page with zeroes when in debug mode
+            log::debug!("dealloc_frame {:?} by ref count == 0", self.addr());
             cfg_if::cfg_if! {
                 if #[cfg(debug_assertions)] {
-                    unsafe { self.addr().as_mut_page_slice().fill(0) };
-                    log::debug!("dealloc_frame {:?} by ref count == 0", self.addr())
+                    unsafe { self.addr().as_mut_page_slice().fill(0x5) };
                 }
             }
             dealloc_frame(self.addr());

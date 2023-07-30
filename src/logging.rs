@@ -51,7 +51,7 @@ cfg_if::cfg_if! {
     if #[cfg(debug_assertions)] {
         const LOG_LEVEL: &str = "debug";
     } else {
-        const LOG_LEVEL: &str = "error";
+        const LOG_LEVEL: &str = "debug";
     }
 }
 

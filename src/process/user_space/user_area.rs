@@ -586,6 +586,7 @@ impl UserAreaManager {
         }
         // 释放被删除的段
         iter_vpn(range, |vpn| {
+            log::debug!("release vpn: {:x?}", vpn);
             let pte = page_table.get_pte_copied_from_vpn(vpn);
             if pte.is_none() {
                 return;
@@ -595,6 +596,7 @@ impl UserAreaManager {
             page_table.unmap_page(vpn.addr());
             // Decrement the reference count of the page and try to deallocate it.
             pte.ppn().decrease_and_try_dealloc();
+            unsafe { riscv::asm::sfence_vma(0, vpn.addr().bits()) };
         })
     }
 }

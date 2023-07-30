@@ -277,7 +277,8 @@ impl LightProcess {
         switch_page_table(page_table_paddr.bits());
 
         // Drop old userspace
-        *self.memory.lock(here!()) = new_userspace;
+        self.with_mut_memory(|m| *m = new_userspace);
+        log::debug!("do_exec: new userspace switched");
 
         // 把 elf 的 segment 映射到用户空间
         let (entry_point, auxv) = self.with_mut_memory(|m| m.parse_and_map_elf_file(elf_file));
