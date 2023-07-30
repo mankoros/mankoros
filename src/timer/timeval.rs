@@ -6,6 +6,8 @@
 
 use core::ops::Add;
 
+use crate::consts;
+
 #[repr(C)]
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Default)]
 pub struct TimeVal {
@@ -28,9 +30,9 @@ impl Add for TimeVal {
             tv_sec: self.tv_sec + other.tv_sec,
             tv_usec: self.tv_usec + other.tv_usec,
         };
-        if new_ts.tv_usec >= super::USEC_PER_SEC {
+        if new_ts.tv_usec >= consts::time::USEC_PER_SEC {
             new_ts.tv_sec += 1;
-            new_ts.tv_usec -= super::USEC_PER_SEC;
+            new_ts.tv_usec -= consts::time::USEC_PER_SEC;
         }
         new_ts
     }
@@ -39,14 +41,14 @@ impl Add for TimeVal {
 impl From<usize> for TimeVal {
     fn from(usec: usize) -> Self {
         Self {
-            tv_sec: usec / super::USEC_PER_SEC,
-            tv_usec: usec % super::USEC_PER_SEC,
+            tv_sec: usec / consts::time::USEC_PER_SEC,
+            tv_usec: usec % consts::time::USEC_PER_SEC,
         }
     }
 }
 
 impl From<TimeVal> for usize {
     fn from(val: TimeVal) -> Self {
-        val.tv_sec * super::USEC_PER_SEC + val.tv_usec
+        val.tv_sec * consts::time::USEC_PER_SEC + val.tv_usec
     }
 }

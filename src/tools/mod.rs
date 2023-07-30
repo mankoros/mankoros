@@ -1,5 +1,4 @@
 pub mod arena;
-pub mod consts;
 pub mod errors;
 pub mod handler_pool;
 pub mod hash;

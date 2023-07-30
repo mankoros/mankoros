@@ -2,7 +2,7 @@ use fdt::Fdt;
 
 use crate::{
     consts::{self, address_space::K_SEG_DTB},
-    println, timer,
+    println,
 };
 
 /// early_parse_device_tree
@@ -23,5 +23,5 @@ pub fn early_parse_device_tree() -> Fdt<'static> {
 pub fn device_init() {
     let device_tree = unsafe { fdt::Fdt::from_ptr(K_SEG_DTB as _).expect("Parse DTB failed") };
     // Init timer frequency
-    unsafe { timer::CLOCK_FREQ = device_tree.cpus().next().unwrap().timebase_frequency() };
+    consts::time::set_clock_freq(device_tree.cpus().next().unwrap().timebase_frequency());
 }

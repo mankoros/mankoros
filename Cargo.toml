@@ -42,6 +42,7 @@ array-init = "2.1.0"
 futures = { version = "0.3", default-features = false }
 bitfield-struct = "0.4.4"
 byte-slice-cast = { version = "1.2.2", default-features = false }
+paste = "1.0"
 
 [dependencies.lazy_static]
 # For runtime initializing static vars

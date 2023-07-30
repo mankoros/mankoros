@@ -1,6 +1,9 @@
 pub mod address_space;
 pub mod device;
 pub mod memlayout;
+pub mod time;
+
+mod const_register;
 
 pub const KERNEL_LINK_ADDR: usize = address_space::K_SEG_DATA_BEG;
 
