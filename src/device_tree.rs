@@ -13,10 +13,8 @@ pub fn early_parse_device_tree() -> Fdt<'static> {
     let device_tree = unsafe { fdt::Fdt::from_ptr(K_SEG_DTB as _).expect("Parse DTB failed") };
     // Memory
     let phy_mem = device_tree.memory().regions().next().expect("No memory region found");
-    unsafe {
-        consts::device::PHYMEM_START = phy_mem.starting_address as usize;
-        consts::device::MAX_PHYSICAL_MEMORY = phy_mem.size.unwrap();
-    }
+    consts::device::set_phymem_start(phy_mem.starting_address as usize);
+    consts::device::set_max_physical_memory(phy_mem.size.unwrap());
     device_tree
 }
 

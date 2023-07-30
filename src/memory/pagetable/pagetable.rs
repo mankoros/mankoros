@@ -7,7 +7,7 @@
 use crate::{
     arch, boot,
     consts::{
-        self, address_space::K_SEG_PHY_MEM_BEG, device::MAX_PHYSICAL_MEMORY, device::PHYMEM_START,
+        self, address_space::K_SEG_PHY_MEM_BEG, device::max_physical_memory, device::phymem_start,
         HUGE_PAGE_SIZE,
     },
     memory::{self, address::VirtPageNum},
@@ -47,8 +47,8 @@ pub fn map_kernel_phys_seg() {
     let boot_pagetable = boot::boot_pagetable();
 
     // Map kernel physical memory
-    for i in (0..unsafe { MAX_PHYSICAL_MEMORY }).step_by(HUGE_PAGE_SIZE) {
-        let paddr: usize = i + unsafe { PHYMEM_START };
+    for i in (0..max_physical_memory()).step_by(HUGE_PAGE_SIZE) {
+        let paddr: usize = i + phymem_start();
         let vaddr = VirtAddr::from(i + K_SEG_PHY_MEM_BEG);
 
         // DA WRV

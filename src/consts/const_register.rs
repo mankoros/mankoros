@@ -24,6 +24,23 @@ macro_rules! register_mut_const {
             }
         }
     };
+    ($(#[$meta:meta])*pub $name:ident, $type:ty, $value:expr) => {
+        $(#[$meta])*
+        pub static mut $name: $type = $value;
+        paste::paste! {
+            $(#[$meta])*
+            pub fn [<$name:lower>]() -> $type {
+                unsafe { $name }
+            }
+        }
+        paste::paste! {
+            pub fn [<set_ $name:lower>](num: $type) {
+                unsafe {
+                    $name = num;
+                }
+            }
+        }
+    };
     () => {};
 }
 
