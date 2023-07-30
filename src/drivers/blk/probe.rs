@@ -41,7 +41,6 @@ pub fn probe_virtio_blk() -> Option<VirtIoBlockDev> {
     kernel_page_table.unmap_region(
         (kernel_phys_dev_to_virt(reg.starting_address as usize)).into(),
         reg.size?,
-        false,
     );
     // Avoid drop
     core::mem::forget(kernel_page_table);

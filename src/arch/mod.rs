@@ -68,6 +68,13 @@ pub fn get_curr_page_table_addr() -> usize {
     riscv::register::satp::read().ppn() << consts::PAGE_SIZE_BITS
 }
 
+pub fn flush_tlb(vaddr: usize) {
+    unsafe { riscv::asm::sfence_vma(0, vaddr) };
+}
+pub fn flush_tlb_all() {
+    unsafe { riscv::asm::sfence_vma_all() };
+}
+
 #[inline(never)]
 pub fn spin(cycle: usize) {
     for _ in 0..cycle {

@@ -9,6 +9,11 @@ use core::ops::{Add, AddAssign, Sub, SubAssign};
 pub struct PhysAddr4K(usize);
 
 impl PhysAddr4K {
+    pub const fn is_valid(self) -> bool {
+        let b = self.bits();
+        (b < 0xffff_ffff_0000_0000) && (b & consts::PAGE_MASK == 0)
+    }
+
     pub const fn bits(self) -> usize {
         self.0
     }
@@ -52,7 +57,7 @@ impl PhysAddr4K {
     }
 }
 
-impl const From<usize> for PhysAddr4K {
+impl From<usize> for PhysAddr4K {
     fn from(bits: usize) -> Self {
         Self::from(bits)
     }

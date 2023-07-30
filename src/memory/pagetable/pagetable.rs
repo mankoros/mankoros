@@ -5,7 +5,8 @@
 //!
 
 use crate::{
-    arch, boot,
+    arch::{self},
+    boot,
     consts::{
         self, address_space::K_SEG_PHY_MEM_BEG, device::MAX_PHYSICAL_MEMORY, device::PHYMEM_START,
         HUGE_PAGE_SIZE,
@@ -63,7 +64,7 @@ pub fn unmap_boot_seg() {
         // Lower half is user space
         boot_pagetable[i] = PageTableEntry::EMPTY;
     }
-    unsafe { riscv::asm::sfence_vma_all() };
+    arch::flush_tlb_all();
 }
 
 /// Switch to global kernel boot pagetable
@@ -116,6 +117,7 @@ impl PageTable {
     /// map_page maps a physical page to a virtual address
     /// PTE::V is guaranteed to be set, so no need to set PTE::V
     pub fn map_page(&mut self, vaddr: VirtAddr4K, paddr: PhysAddr4K, flags: PTEFlags) {
+        debug_assert!(paddr.is_valid());
         let new_pte = pte::PageTableEntry::new(paddr, PTEFlags::V | flags);
         // Get entry by vaddr
         let entry = self.get_entry_mut_or_create(vaddr.into());
@@ -124,6 +126,7 @@ impl PageTable {
     }
     /// remap_page allows remapping valid page
     pub fn remap_page(&mut self, vaddr: VirtAddr4K, paddr: PhysAddr4K, flags: PTEFlags) {
+        debug_assert!(paddr.is_valid());
         let new_pte = pte::PageTableEntry::new(paddr, PTEFlags::V | flags);
         // Get entry by vaddr
         let entry = self.get_entry_mut_or_create(vaddr.into());
@@ -134,14 +137,6 @@ impl PageTable {
         let paddr = entry.paddr();
         debug_assert!(entry.is_valid(), "Unmapping a invalid page table entry");
         entry.clear();
-        paddr
-    }
-    pub fn unmap_and_dealloc_page(&mut self, vaddr: VirtAddr4K) -> PhysAddr4K {
-        let entry = self.get_entry_mut(vaddr.into());
-        let paddr = entry.paddr();
-        debug_assert!(entry.is_valid(), "Unmapping a invalid page table entry");
-        entry.clear();
-        frame::dealloc_frame(paddr);
         paddr
     }
 
@@ -174,7 +169,7 @@ impl PageTable {
         }
     }
 
-    pub fn unmap_region(&mut self, vaddr: VirtAddr4K, size: usize, dealloc: bool) {
+    pub fn unmap_region(&mut self, vaddr: VirtAddr4K, size: usize) {
         trace!(
             "unmap_region({:#x}) [{:#x}, {:#x})",
             self.root_paddr(),
@@ -184,11 +179,7 @@ impl PageTable {
         let mut vaddr = vaddr;
         let mut size = size;
         while size > 0 {
-            if dealloc {
-                self.unmap_and_dealloc_page(vaddr);
-            } else {
-                self.unmap_page(vaddr);
-            }
+            self.unmap_page(vaddr);
             vaddr.offset_to_next_page();
             size -= consts::PAGE_SIZE;
         }
@@ -357,7 +348,8 @@ impl Drop for PageTable {
         // First
         // shared kernel segment pagetable is not in intrm_tables
         // so no extra things should be done
-        for frame in &self.intrm_tables {
+        for (i, frame) in self.intrm_tables.iter().enumerate() {
+            log::trace!("Drop pagetable page {:#x} ({})", frame, i);
             cfg_if::cfg_if! {
                 // Debug sanity check
                 if #[cfg(debug_assertions)] {
@@ -375,9 +367,10 @@ impl Drop for PageTable {
                         }
                     }
                     // Clear dealloc page when in debug
-                    unsafe { frame.as_mut_page_slice().fill(0) };
+                    unsafe { frame.as_mut_page_slice().fill(0x5) };
                 }
             }
+            debug_assert!(frame.is_valid());
             frame.page_num().decrease();
             frame::dealloc_frame(*frame);
         }

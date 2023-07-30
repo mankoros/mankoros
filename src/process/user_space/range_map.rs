@@ -249,16 +249,6 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
             .into_iter()
             .for_each(|(n_start, node)| release(node.value, n_start..node.end));
     }
-    /// 如果条件对变量返回true, 这个段将从容器中被移除
-    pub fn clear_if(
-        &mut self,
-        mut condition: impl FnMut(&V, Range<U>) -> bool,
-        mut release: impl FnMut(V, Range<U>),
-    ) {
-        self.0
-            .drain_filter(|&n_start, v| condition(&v.value, n_start..v.end))
-            .for_each(|(n_start, node)| release(node.value, n_start..node.end))
-    }
     /// f return (A, B)
     ///
     /// if A is Some will set current into A, else do nothing.

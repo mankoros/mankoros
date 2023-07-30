@@ -16,7 +16,7 @@ use crate::consts::address_space::{
     U_SEG_FILE_BEG, U_SEG_FILE_END, U_SEG_HEAP_BEG, U_SEG_STACK_BEG, U_SEG_STACK_END,
 };
 
-use crate::arch::get_curr_page_table_addr;
+use crate::arch::{flush_tlb, get_curr_page_table_addr};
 
 use super::shm_mgr::{Shm, ShmId};
 use crate::executor::block_on;
@@ -307,7 +307,7 @@ impl UserArea {
         debug_assert!(frame != 0);
         // remap the frame
         page_table.remap_page(access_vpn.addr(), frame, self.perm().into());
-        unsafe { riscv::asm::sfence_vma(0, access_vpn.addr().bits()) };
+        flush_tlb(access_vpn.addr().bits());
         Ok(())
     }
 
@@ -586,6 +586,7 @@ impl UserAreaManager {
         }
         // 释放被删除的段
         iter_vpn(range, |vpn| {
+            log::trace!("release vpn: {:x?}", vpn);
             let pte = page_table.get_pte_copied_from_vpn(vpn);
             if pte.is_none() {
                 return;
@@ -595,6 +596,7 @@ impl UserAreaManager {
             page_table.unmap_page(vpn.addr());
             // Decrement the reference count of the page and try to deallocate it.
             pte.ppn().decrease_and_try_dealloc();
+            flush_tlb(vpn.addr().bits());
         })
     }
 }

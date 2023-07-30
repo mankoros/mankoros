@@ -277,7 +277,8 @@ impl LightProcess {
         switch_page_table(page_table_paddr.bits());
 
         // Drop old userspace
-        *self.memory.lock(here!()) = new_userspace;
+        self.with_mut_memory(|m| *m = new_userspace);
+        log::debug!("do_exec: new userspace switched");
 
         // 把 elf 的 segment 映射到用户空间
         let (entry_point, auxv) = self.with_mut_memory(|m| m.parse_and_map_elf_file(elf_file));
@@ -347,8 +348,9 @@ impl LightProcess {
             // 这里应该可以优化
             // Noop, 这里不能优化，如果延迟cow，其他线程如果对vm做了修改，不能保证符合clone的语意
             memory = new_shared(self.with_mut_memory(|m| m.clone_cow()));
-            unsafe { riscv::asm::sfence_vma_all() }; // Flush both old and new process
-                                                     // TODO: avoid flushing global entries like kernel mappings
+            // Flush both old and new process
+            arch::flush_tlb_all();
+            // TODO: avoid flushing global entries like kernel mappings
         }
         let old_memory = self.memory.lock(here!());
         let mut new_memory = memory.lock(here!());

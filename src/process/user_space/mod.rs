@@ -5,7 +5,7 @@ pub mod user_area;
 use alloc::{string::String, sync::Arc, vec::Vec};
 
 use crate::{
-    arch::{get_curr_page_table_addr, within_sum},
+    arch::{flush_tlb, get_curr_page_table_addr, within_sum},
     consts::{PAGE_MASK, PAGE_SIZE},
     executor::block_on,
     fs::new_vfs::top::VfsFileRef,
@@ -346,7 +346,7 @@ impl UserSpace {
         iter_vpn(range, |vpn| {
             let paddr = self.page_table.unmap_page(vpn.addr());
             paddr.page_num().decrease_and_try_dealloc();
-            unsafe { riscv::asm::sfence_vma(0, vpn.addr().bits()) };
+            flush_tlb(vaddr.bits());
         });
         Ok(())
     }
@@ -398,5 +398,6 @@ impl Drop for UserSpace {
 
         drop(areas);
         drop(page_table);
+        log::debug!("drop user space done")
     }
 }

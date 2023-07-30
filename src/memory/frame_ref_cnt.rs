@@ -6,7 +6,7 @@ use crate::{
     memory::{address::PhysPageNum, frame::dealloc_frame},
 };
 use alloc::alloc::alloc;
-use core::{alloc::Layout, intrinsics};
+use core::{alloc::Layout, intrinsics, panic};
 
 static mut FRAME_REF_CNT_PTR: *mut u32 = 0 as _;
 
@@ -44,6 +44,7 @@ impl PhysPageNum {
                 }
             }
         }
+        debug_assert!(self.addr().is_valid());
         unsafe { FRAME_REF_CNT_PTR.add(self.bits()) }
     }
 
@@ -85,26 +86,32 @@ impl PhysPageNum {
     }
 
     pub fn increase(self) {
+        log::trace!("increase_frame {:?}", self.addr());
         self.add_ref_cnt(1);
     }
     pub fn decrease(self) {
-        debug_assert!(self.get_ref_cnt() != 0);
+        assert_ne!(self.get_ref_cnt(), 0);
+        log::trace!("decrease_frame {:?} and not release", self.addr());
         self.add_ref_cnt(-1);
     }
     pub fn decrease_and_try_dealloc(self) {
+        log::trace!("decrease_frame_try {:?}", self.addr());
+
         // if previous value is 1, then we can dealloc this frame
         if self.add_ref_cnt(-1) == 1 {
             // Fill the page with zeroes when in debug mode
+            log::trace!("dealloc_frame_try {:?} by ref count == 0", self.addr());
             cfg_if::cfg_if! {
                 if #[cfg(debug_assertions)] {
-                    unsafe { self.addr().as_mut_page_slice().fill(0) };
-                    log::debug!("dealloc_frame {:?} by ref count == 0", self.addr())
+                    unsafe { self.addr().as_mut_page_slice().fill(0x5) };
                 }
             }
             dealloc_frame(self.addr());
         }
     }
     pub fn decrease_and_must_dealloc(self) {
+        log::trace!("decrease_frame_must {:?} and not release", self.addr());
+
         let prev = self.add_ref_cnt(-1);
         if prev != 1 {
             panic!(

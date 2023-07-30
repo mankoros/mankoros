@@ -12,9 +12,7 @@
 #![allow(dead_code)]
 #![allow(mutable_transmutes)]
 #![feature(map_try_insert)]
-#![feature(btree_drain_filter)]
 #![feature(let_chains)]
-#![feature(const_convert)]
 #![feature(get_mut_unchecked)] // VFS workaround
 #![feature(negative_impls)]
 #![feature(pointer_byte_offsets)]
@@ -66,7 +64,7 @@ use crate::boot::boot_pagetable_paddr;
 use crate::consts::address_space::K_SEG_PHY_MEM_BEG;
 use crate::utils::SerialWrapper;
 
-use crate::arch::init_hart_local_info;
+use crate::arch::{flush_tlb_all, init_hart_local_info};
 use crate::executor::block_on;
 use crate::memory::address::kernel_virt_text_to_phys;
 use crate::memory::frame_ref_cnt::init_frame_ref_cnt;
@@ -200,9 +198,6 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
 
     // Remove low memory mappings
     pagetable::pagetable::unmap_boot_seg();
-    unsafe {
-        riscv::asm::sfence_vma_all();
-    }
     info!("Boot memory unmapped");
 
     fs::init_filesystems(manager.disks()[0].clone());

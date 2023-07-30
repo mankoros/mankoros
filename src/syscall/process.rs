@@ -101,9 +101,9 @@ impl<'a> Syscall<'a> {
             pid, wstatus, options
         );
 
-        if self.lproc.signal().contains(signal::SignalSet::SIGCHLD) {
-            return Err(SysError::EINTR);
-        }
+        // if self.lproc.signal().contains(signal::SignalSet::SIGCHLD) {
+        //     return Err(SysError::EINTR);
+        // }
 
         let result_lproc = loop {
             yield_now().await;
