@@ -573,6 +573,10 @@ impl FdTable {
             false
         })
     }
+
+    pub fn len(&self) -> usize {
+        self.table.len()
+    }
 }
 
 impl Drop for FdTable {

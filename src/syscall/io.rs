@@ -2,6 +2,7 @@ use log::{debug, info};
 
 use crate::{
     arch::within_sum,
+    consts::MAX_OPEN_FILES,
     executor::util_futures::{within_sum_async, AnyFuture},
     fs::{
         self,
@@ -93,6 +94,14 @@ impl Syscall<'_> {
         info!("Open path: {}", path);
         let path = Path::from_string(path).expect("Error parsing path");
 
+        // 1. check if too many open files
+        self.lproc.with_fdtable(|table| {
+            if table.len() >= MAX_OPEN_FILES {
+                return Err(SysError::EMFILE);
+            }
+            Ok(())
+        })?;
+
         let dir = if path.is_absolute() {
             fs::root::get_root_dir()
         } else if dir_fd == AT_FDCWD {
@@ -130,7 +139,7 @@ impl Syscall<'_> {
             }
         };
 
-        self.lproc.with_mut_fdtable(|f| Ok(f.alloc(file)))
+        self.lproc.with_mut_fdtable(|table| Ok(table.alloc(file)))
     }
 
     /// 创建管道，在 *pipe 记录读管道的 fd，在 *(pipe+1) 记录写管道的 fd。
