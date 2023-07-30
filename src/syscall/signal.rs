@@ -28,6 +28,6 @@ impl<'a> Syscall<'a> {
             yield_now().await;
         }
         warn!("sigwait: timeout");
-        Err(LinuxError::EDEADLK)
+        Err(LinuxError::EAGAIN)
     }
 }

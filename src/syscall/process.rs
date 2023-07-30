@@ -317,4 +317,21 @@ impl<'a> Syscall<'a> {
         let tid: usize = self.lproc.id().into();
         Ok(tid)
     }
+
+    pub fn sys_getrlimit(&self) -> SyscallResult {
+        info!("Syscall: getrlimit");
+        let args = self.cx.syscall_args();
+        info!("type: {}", args[0]);
+        Ok(0)
+    }
+
+    pub fn sys_prlimit(&mut self) -> SyscallResult {
+        info!("Syscall: prlimit");
+        let args = self.cx.syscall_args();
+        info!("pid: {}", args[0]);
+        info!("type: {}", args[1]);
+        info!("new limit: 0x{:0}", args[2]);
+        info!("old limit: 0x{:0}", args[3]);
+        Ok(0)
+    }
 }
