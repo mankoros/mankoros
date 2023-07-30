@@ -75,6 +75,7 @@ impl Syscall<'_> {
     }
 
     pub async fn sys_openat(&mut self) -> SyscallResult {
+        // TODO: refactor using `at_helper`
         let args = self.cx.syscall_args();
         let (dir_fd, path, raw_flags, _user_mode) =
             (args[0], args[1], args[2] as u32, args[3] as i32);
@@ -158,15 +159,14 @@ impl Syscall<'_> {
         let fd = args[0];
         info!("Syscall: close: fd: {}", fd);
 
-        self.lproc.with_mut_fdtable(|m| {
-            if let Some(_) = m.remove(fd) {
-                // close() returns zero on success.  On error, -1 is returned
-                // https://man7.org/linux/man-pages/man2/close.2.html
-                Ok(0)
-            } else {
-                Err(SysError::EBADF)
-            }
-        })
+        let fd_opt = self.lproc.with_mut_fdtable(|f| f.remove(fd));
+        if let Some(_) = fd_opt {
+            // close() returns zero on success.  On error, -1 is returned
+            // https://man7.org/linux/man-pages/man2/close.2.html
+            Ok(0)
+        } else {
+            Err(SysError::EBADF)
+        }
     }
 
     pub async fn sys_lseek(&mut self) -> SyscallResult {

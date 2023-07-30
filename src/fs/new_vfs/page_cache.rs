@@ -41,6 +41,11 @@ impl<F: ConcreteFile> VfsFile for PageCacheFile<F> {
 
     fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
         dyn_future(async move {
+            log::debug!(
+                "PageCacheFile::read_at: offset={}, buf.len={}",
+                offset,
+                buf.len()
+            );
             let mut mgr = self.mgr.lock().await;
             mgr.perpare_range(&self.file, offset, buf.len()).await?;
             Ok(mgr.cached_read(offset, buf))
@@ -49,6 +54,11 @@ impl<F: ConcreteFile> VfsFile for PageCacheFile<F> {
 
     fn write_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> ASysResult<usize> {
         dyn_future(async move {
+            log::debug!(
+                "PageCacheFile::write_at: offset={}, buf.len={}",
+                offset,
+                buf.len()
+            );
             let page_addr = PhysAddr::from(offset).round_down().bits();
             let mut mgr = self.mgr.lock().await;
             mgr.perpare_range(&self.file, page_addr, 1).await?;
@@ -222,6 +232,7 @@ impl<F: ConcreteFile> PageManager<F> {
     /// 写入数据到缓存中, 必定能全部写入
     /// 要求文件 offset 所在的页范围中的内容必须已经在缓存中或本来就不存在, 以避免使用 async 读
     pub fn cached_write(&mut self, offset: usize, buf: &[u8]) {
+        let mut total_offset = offset; // 写入的总偏移
         let mut target_buf = buf; // 目标区域, 会随着写入逐渐向后取
         let mut page_buf;
         let mut page_addr = PhysAddr::from(offset).round_down().bits();
@@ -235,15 +246,21 @@ impl<F: ConcreteFile> PageManager<F> {
             if target_len > PAGE_SIZE {
                 page_buf.set_len(PAGE_SIZE);
                 page_buf.as_mut_slice().copy_from_slice(&target_buf[..PAGE_SIZE]);
+
+                total_offset += PAGE_SIZE;
                 target_buf = &target_buf[PAGE_SIZE..];
                 page_buf = self.get_or_alloc(page_addr);
                 page_addr += PAGE_SIZE;
             } else {
-                if page_buf.len() < target_len {
+                let curr_buf_addr = page_addr - PAGE_SIZE;
+                let curr_buf_offset = total_offset - curr_buf_addr;
+                let curr_buf_new_len = curr_buf_offset + target_len;
+                if page_buf.len() < curr_buf_new_len {
                     // TODO: 找一个更靠谱的方式更新文件长度
-                    page_buf.set_len(target_len);
+                    page_buf.set_len(curr_buf_new_len);
                 }
-                page_buf.as_mut_slice()[..target_len].copy_from_slice(target_buf);
+                page_buf.as_mut_slice()[curr_buf_offset..curr_buf_new_len]
+                    .copy_from_slice(target_buf);
                 return;
             }
         }
