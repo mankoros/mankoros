@@ -108,19 +108,16 @@ impl VfsFile for Pipe {
                     Arc::strong_count(&self.data)
                 );
 
-                if data.len() >= buf.len() {
-                    for i in 0..buf.len() {
+                let data_len = min(data.len(), buf.len());
+                if data_len > 0 {
+                    // If anythin is in the pipe, we shoudl return
+                    // See https://man7.org/linux/man-pages/man2/read.2.html
+                    for i in 0..data_len {
                         buf[i] = data.dequeue().unwrap();
                     }
-                    return Ok(buf.len());
+                    return Ok(data_len);
                 } else if self.is_hang_up() {
-                    // return leftover data
-                    // must save len first here
-                    let read_len = data.len();
-                    for i in 0..data.len() {
-                        buf[i] = data.dequeue().unwrap();
-                    }
-                    return Ok(read_len);
+                    return Ok(0);
                 } else {
                     // wait for next round
                     drop(data);

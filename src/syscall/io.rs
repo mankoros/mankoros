@@ -26,9 +26,12 @@ use alloc::{collections::BTreeMap, vec::Vec};
 impl Syscall<'_> {
     pub async fn sys_write(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (fd, buf, len) = (args[0], UserWritePtr::from_usize(args[1]), args[2]);
+        let (fd, buf, len) = (args[0], UserReadPtr::from_usize(args[1]), args[2]);
 
         info!("Syscall: write, fd {fd}, len: {len}");
+
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+        let _ = user_check.checked_read(buf.raw_ptr());
 
         let buf = unsafe { core::slice::from_raw_parts(buf.raw_ptr(), len) };
         let fd = self.lproc.with_mut_fdtable(|f| f.get(fd));

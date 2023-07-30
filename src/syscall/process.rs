@@ -191,7 +191,7 @@ impl<'a> Syscall<'a> {
         let new_lproc = old_lproc.do_clone(flags, stack_begin);
 
         if flags.contains(CloneFlags::CHILD_CLEARTID) {
-            todo!("clear child tid, wait for signal subsystem");
+            warn!("clear child tid, wait for signal subsystem");
         }
 
         let checked_write_u32 = |ptr, value| -> SysResult<()> {
