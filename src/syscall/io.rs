@@ -177,13 +177,24 @@ impl Syscall<'_> {
         let args = self.cx.syscall_args();
         let (fd, offset, whence) = (args[0], args[1], args[2]);
 
+        let whence_str = match whence {
+            SEEK_SET => "SEEK_SET",
+            SEEK_CUR => "SEEK_CUR",
+            SEEK_END => "SEEK_END",
+            _ => "UNKNOWN",
+        };
+        info!(
+            "Syscall: lseek: fd: {}, offset: {}, whence: {}",
+            fd, offset, whence_str
+        );
+
         let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
         match whence {
             SEEK_SET => {
                 fd.set_curr(offset);
             }
             SEEK_CUR => {
-                fd.set_curr(fd.curr() + offset);
+                fd.set_curr((fd.curr() as isize + offset as isize) as usize);
             }
             SEEK_END => {
                 let size = fd.file.attr().await?.byte_size;
