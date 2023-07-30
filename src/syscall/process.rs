@@ -101,7 +101,7 @@ impl<'a> Syscall<'a> {
             pid, wstatus, options
         );
 
-        if self.lproc.signal().contains(signal::SignalSet::SIGCHLD) {
+        if self.lproc.signal().contains(signal::SignalSet::SIGCHLD.complement()) {
             return Err(SysError::EINTR);
         }
 
