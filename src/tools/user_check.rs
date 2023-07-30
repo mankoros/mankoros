@@ -42,6 +42,7 @@ impl<'a> UserCheck<'a> {
             }
             unsafe { Ok(ptr.read()) }
         } else {
+            log::info!("checked_read failed: {:x?}", vaddr);
             Err(SysError::EFAULT)
         }
     }
@@ -58,11 +59,10 @@ impl<'a> UserCheck<'a> {
                     .with_mut_memory(|m| m.handle_pagefault(vaddr, PageFaultAccessType::RW))
                     .expect("Copy-on-write failed");
             }
-            unsafe {
-                ptr.write(val);
-            }
+            unsafe { ptr.write(val) };
             Ok(())
         } else {
+            log::info!("checked_read failed: {:x?}", vaddr);
             Err(SysError::EFAULT)
         }
     }

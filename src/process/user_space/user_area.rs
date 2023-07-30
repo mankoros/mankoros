@@ -338,6 +338,15 @@ impl UserArea {
             Shm { id: _, shm: _ } => panic!("shm should never be split"),
         }
     }
+
+    /// debug only
+    pub fn kind(&self) -> &'static str {
+        match self.kind {
+            UserAreaType::MmapAnonymous => "anonymous",
+            UserAreaType::MmapPrivate { .. } => "private",
+            UserAreaType::Shm { .. } => "shm",
+        }
+    }
 }
 
 /// 管理整个用户虚拟地址空间的虚拟地址分配
@@ -463,21 +472,37 @@ impl UserAreaManager {
         self.insert_shm_at(begin, perm, id, shm)
     }
 
+    fn insert_at(
+        &mut self,
+        begin: VirtAddr,
+        size: usize,
+        area: UserArea,
+    ) -> SysResult<(VirtAddrRange, &UserArea)> {
+        let range = VirtAddrRange {
+            start: begin,
+            end: begin + size,
+        };
+
+        log::debug!(
+            "try insert_at: {:?}, perm: {:?}, type: {}",
+            range,
+            area.perm(),
+            area.kind()
+        );
+
+        self.map
+            .try_insert(range.clone(), area)
+            .map(|v| (range, &*v))
+            .map_err(|_| SysError::ENOMEM)
+    }
+
     pub fn insert_mmap_anonymous_at(
         &mut self,
         begin_vaddr: VirtAddr,
         size: usize,
         perm: UserAreaPerm,
     ) -> SysResult<(VirtAddrRange, &UserArea)> {
-        let range = VirtAddrRange {
-            start: begin_vaddr,
-            end: begin_vaddr + size,
-        };
-        let area = UserArea::new_anonymous(perm);
-        self.map
-            .try_insert(range.clone(), area)
-            .map(|v| (range, &*v))
-            .map_err(|_| SysError::ENOMEM)
+        self.insert_at(begin_vaddr, size, UserArea::new_anonymous(perm))
     }
 
     pub fn insert_mmap_private_at(
@@ -488,15 +513,7 @@ impl UserAreaManager {
         file: VfsFileRef,
         offset: usize,
     ) -> SysResult<(VirtAddrRange, &UserArea)> {
-        let range = VirtAddrRange {
-            start: begin_vaddr,
-            end: begin_vaddr + size,
-        };
-        let area = UserArea::new_private(perm, file, offset);
-        self.map
-            .try_insert(range.clone(), area)
-            .map(|v| (range, &*v))
-            .map_err(|_| SysError::ENOMEM)
+        self.insert_at(begin_vaddr, size, UserArea::new_private(perm, file, offset))
     }
 
     pub fn insert_shm_at(
@@ -506,15 +523,7 @@ impl UserAreaManager {
         id: ShmId,
         shm: Arc<Shm>,
     ) -> SysResult<(VirtAddrRange, &UserArea)> {
-        let range = VirtAddrRange {
-            start: begin_vaddr,
-            end: begin_vaddr + shm.size(),
-        };
-        let area = UserArea::new_shm(perm, id, shm);
-        self.map
-            .try_insert(range.clone(), area)
-            .map(|v| (range, &*v))
-            .map_err(|_| SysError::ENOMEM)
+        self.insert_at(begin_vaddr, shm.size(), UserArea::new_shm(perm, id, shm))
     }
 
     pub fn page_fault(

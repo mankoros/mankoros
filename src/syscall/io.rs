@@ -12,11 +12,11 @@ use crate::{
         },
         pipe::Pipe,
     },
-    memory::{address::VirtAddr, UserReadPtr, UserWritePtr},
+    memory::{address::VirtAddr, UserInOutPtr, UserReadPtr, UserWritePtr},
     syscall::fs::AT_FDCWD,
     tools::{
         errors::{dyn_future, Async, SysError, SysResult},
-        user_check::UserCheck,
+        user_check::{self, UserCheck},
     },
 };
 
@@ -285,6 +285,114 @@ impl Syscall<'_> {
 
         // Return value is the number of file descriptors that were ready.
         // Currently, this is always 1.
+        Ok(1)
+    }
+
+    pub async fn sys_pselect(&mut self) -> SyscallResult {
+        #[repr(C)]
+        #[derive(Debug, Copy, Clone)]
+        struct FdSet {
+            fds_bits: [u64; 1024 / 64],
+        }
+        impl FdSet {
+            pub fn zero() -> Self {
+                Self {
+                    fds_bits: [0; 1024 / 64],
+                }
+            }
+
+            pub fn clear(&mut self) {
+                for i in 0..self.fds_bits.len() {
+                    self.fds_bits[i] = 0;
+                }
+            }
+
+            pub fn set(&mut self, fd: usize) {
+                let idx = fd / 64;
+                let bit = fd % 64;
+                let mask = 1 << bit;
+                self.fds_bits[idx] |= mask;
+            }
+
+            pub fn is_set(&self, fd: usize) -> bool {
+                let idx = fd / 64;
+                let bit = fd % 64;
+                let mask = 1 << bit;
+                self.fds_bits[idx] & mask != 0
+            }
+        }
+
+        let args = self.cx.syscall_args();
+        let (maxfdp1, readfds_ptr, writefds_ptr, exceptfds_ptr, _tsptr, _sigmask) = (
+            args[0],
+            UserInOutPtr::<FdSet>::from_usize(args[1]),
+            UserInOutPtr::<FdSet>::from_usize(args[2]),
+            UserInOutPtr::<FdSet>::from_usize(args[3]),
+            args[4],
+            args[5],
+        );
+
+        info!(
+            "Syscall: pselect, maxfdp1: {}, readfds: 0x{:x}, writefds: 0x{:x}, exceptfds: 0x{:x}, tsptr: {:x}, sigmask: {}",
+            maxfdp1,
+            readfds_ptr.as_usize(),
+            writefds_ptr.as_usize(),
+            exceptfds_ptr.as_usize(),
+            _tsptr,
+            _sigmask,
+        );
+
+        if maxfdp1 == 0 {
+            // avoid reading read/write/except fds when maxfdp1 is 0
+            return Ok(0);
+        }
+
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+        let mut readfds = user_check.checked_read(readfds_ptr.raw_ptr())?;
+        let mut writefds = user_check.checked_read(writefds_ptr.raw_ptr())?;
+
+        // future_idx -> (fd_idx, event)
+        let mut mapping = BTreeMap::<usize, (usize, PollKind)>::new();
+        let mut futures = Vec::<Async<SysResult<usize>>>::new();
+        for fd in 0..maxfdp1 {
+            let fd_file = self.lproc.with_fdtable(|f| f.get(fd as usize));
+            let fd_file = match fd_file {
+                Some(f) => f,
+                None => continue,
+            };
+
+            if readfds.is_set(fd) {
+                let copy_fd = fd_file.clone();
+                let future =
+                    async move { copy_fd.file.poll_ready(copy_fd.curr(), 1, PollKind::Read).await };
+                futures.push(dyn_future(future));
+                mapping.insert(futures.len() - 1, (fd as usize, PollKind::Read));
+            }
+            if writefds.is_set(fd) {
+                let copy_fd = fd_file.clone();
+                let future = async move {
+                    copy_fd.file.poll_ready(copy_fd.curr(), 1, PollKind::Write).await
+                };
+                futures.push(dyn_future(future));
+                mapping.insert(futures.len() - 1, (fd as usize, PollKind::Write));
+            }
+        }
+
+        readfds.clear();
+        writefds.clear();
+
+        let (future_id, _) = AnyFuture::new_with(futures).await;
+        let (fd_idx, event) = mapping.remove(&future_id).unwrap();
+
+        match event {
+            PollKind::Read => readfds.set(fd_idx),
+            PollKind::Write => writefds.set(fd_idx),
+        }
+
+        user_check.checked_write(readfds_ptr.raw_ptr_mut(), readfds)?;
+        user_check.checked_write(writefds_ptr.raw_ptr_mut(), writefds)?;
+        user_check.checked_write(exceptfds_ptr.raw_ptr_mut(), FdSet::zero())?;
+
         Ok(1)
     }
 
