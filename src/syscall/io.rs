@@ -379,8 +379,17 @@ impl Syscall<'_> {
         }
 
         let user_check = UserCheck::new_with_sum(&self.lproc);
-        let mut readfds = user_check.checked_read(readfds_ptr.raw_ptr())?;
-        let mut writefds = user_check.checked_read(writefds_ptr.raw_ptr())?;
+
+        let mut readfds = if readfds_ptr.is_null() {
+            FdSet::zero()
+        } else {
+            user_check.checked_read(readfds_ptr.raw_ptr())?
+        };
+        let mut writefds = if writefds_ptr.is_null() {
+            FdSet::zero()
+        } else {
+            user_check.checked_read(writefds_ptr.raw_ptr())?
+        };
 
         // future_idx -> (fd_idx, event)
         let mut mapping = BTreeMap::<usize, (usize, PollKind)>::new();

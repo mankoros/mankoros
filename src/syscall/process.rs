@@ -165,14 +165,16 @@ impl<'a> Syscall<'a> {
     }
 
     pub fn sys_clone(&mut self) -> SyscallResult {
-        info!("syscall: clone");
         let args = self.cx.syscall_args();
         let (flags, child_stack, parent_tid_ptr, child_tid_ptr, _new_thread_local_storage_ptr) =
             (args[0] as u32, args[1], args[2], args[3], args[4]);
 
         let flags = CloneFlags::from_bits(flags & !0xff).ok_or(SysError::EINVAL)?;
 
-        debug!("clone flags: {:?}", flags);
+        info!(
+            "syscall: clone: flags: {:?}, child_stack: {:#x}, parent_tid_ptr: {:#x}, child_tid_ptr: {:#x}",
+            flags, child_stack, parent_tid_ptr, child_tid_ptr
+        );
 
         let stack_begin = if child_stack != 0 {
             if child_stack % 16 != 0 {
@@ -194,7 +196,7 @@ impl<'a> Syscall<'a> {
             warn!("clear child tid, wait for signal subsystem");
         }
 
-        let checked_write_u32 = |ptr, value| -> SysResult<()> {
+        let checked_write_u32 = |ptr: usize, value| -> SysResult<()> {
             let vaddr = VirtAddr::from(ptr);
             let writeable = new_lproc.with_memory(|m| m.has_perm(vaddr, UserAreaPerm::WRITE));
 
@@ -210,12 +212,12 @@ impl<'a> Syscall<'a> {
             Ok(())
         };
 
-        if flags.contains(CloneFlags::CHILD_SETTID) {
+        if flags.contains(CloneFlags::CHILD_SETTID) && child_tid_ptr != 0 {
             let tid = Into::<usize>::into(new_lproc.id()) as u32;
             checked_write_u32(child_tid_ptr, tid)?;
         }
 
-        if flags.contains(CloneFlags::PARENT_SETTID) {
+        if flags.contains(CloneFlags::PARENT_SETTID) && parent_tid_ptr != 0 {
             let parent_tid = Into::<usize>::into(new_lproc.parent_id()) as u32;
             checked_write_u32(parent_tid_ptr, parent_tid)?;
         }
