@@ -103,18 +103,22 @@ impl Syscall<'_> {
 
         let (dir, file_name) = self.at_helper(dir_fd, path.clone(), 0).await?;
 
-        let file = match dir.lookup(&file_name).await {
-            Ok(file) => file,
-            Err(SysError::ENOENT) => {
-                // Check if CREATE flag is set
-                if !flags.contains(OpenFlags::CREATE) {
-                    return Err(SysError::ENOENT);
+        let file = if file_name == "" {
+            dir
+        } else {
+            match dir.lookup(&file_name).await {
+                Ok(file) => file,
+                Err(SysError::ENOENT) => {
+                    // Check if CREATE flag is set
+                    if !flags.contains(OpenFlags::CREATE) {
+                        return Err(SysError::ENOENT);
+                    }
+                    // Create file
+                    dir.create(&file_name, VfsFileKind::RegularFile).await?
                 }
-                // Create file
-                dir.create(&file_name, VfsFileKind::RegularFile).await?
-            }
-            Err(e) => {
-                return Err(e);
+                Err(e) => {
+                    return Err(e);
+                }
             }
         };
 
