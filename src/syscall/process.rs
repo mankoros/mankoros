@@ -245,6 +245,7 @@ impl<'a> Syscall<'a> {
 
         let path_str = user_check.checked_read_cstr(path as *const u8)?;
         let path = Path::from_string(path_str)?;
+        let path = self.lproc.with_fsinfo(|f| f.cwd.append(&path));
         let filename = path.last().clone();
 
         let mut argv = user_check.checked_read_2d_cstr(argv as *const *const u8)?;
