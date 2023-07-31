@@ -29,3 +29,5 @@ pub const PTE_PPN_MASK_SV39: usize = ((1usize << 54) - 1) & !PTE_FLAGS_MASK;
 pub const MAX_SUPPORTED_CPUS: usize = 32;
 
 pub const MAX_PIPE_SIZE: usize = 4 * 1024; // use 4k for now
+
+pub const MAX_OPEN_FILES: usize = 512;

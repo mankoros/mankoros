@@ -101,9 +101,9 @@ impl<'a> Syscall<'a> {
             pid, wstatus, options
         );
 
-        // if self.lproc.signal().contains(signal::SignalSet::SIGCHLD) {
-        //     return Err(SysError::EINTR);
-        // }
+        if self.lproc.signal().intersects(signal::SignalSet::SIGCHLD.complement()) {
+            return Err(SysError::EINTR);
+        }
 
         let result_lproc = loop {
             yield_now().await;
@@ -191,7 +191,7 @@ impl<'a> Syscall<'a> {
         let new_lproc = old_lproc.do_clone(flags, stack_begin);
 
         if flags.contains(CloneFlags::CHILD_CLEARTID) {
-            todo!("clear child tid, wait for signal subsystem");
+            warn!("clear child tid, wait for signal subsystem");
         }
 
         let checked_write_u32 = |ptr, value| -> SysResult<()> {
@@ -316,5 +316,22 @@ impl<'a> Syscall<'a> {
 
         let tid: usize = self.lproc.id().into();
         Ok(tid)
+    }
+
+    pub fn sys_getrlimit(&self) -> SyscallResult {
+        info!("Syscall: getrlimit");
+        let args = self.cx.syscall_args();
+        info!("type: {}", args[0]);
+        Ok(0)
+    }
+
+    pub fn sys_prlimit(&mut self) -> SyscallResult {
+        info!("Syscall: prlimit");
+        let args = self.cx.syscall_args();
+        info!("pid: {}", args[0]);
+        info!("type: {}", args[1]);
+        info!("new limit: 0x{:0}", args[2]);
+        info!("old limit: 0x{:0}", args[3]);
+        Ok(0)
     }
 }
