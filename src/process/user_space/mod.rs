@@ -363,6 +363,15 @@ impl UserSpace {
         self.areas.force_map_range(&mut self.page_table, range, perm);
     }
 
+    pub fn force_map_buf(&mut self, buf: &[u8], perm: UserAreaPerm) {
+        if buf.len() == 0 {
+            return;
+        }
+        let begin = VirtAddr::from(buf.as_ptr() as usize);
+        let end = begin + buf.len();
+        self.force_map_range(begin..end, perm)
+    }
+
     /// 将 vaddr 所在的区域的所有页强制分配
     pub fn force_map_area(&mut self, vaddr: VirtAddr) {
         let (range, area) = self.areas.get(vaddr).unwrap();

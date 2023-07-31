@@ -13,6 +13,7 @@ use crate::{
         pipe::Pipe,
     },
     memory::{address::VirtAddr, UserInOutPtr, UserReadPtr, UserWritePtr},
+    process::user_space::user_area::UserAreaPerm,
     syscall::fs::AT_FDCWD,
     tools::{
         errors::{dyn_future, Async, SysError, SysResult},
@@ -26,7 +27,7 @@ use alloc::{collections::BTreeMap, vec::Vec};
 impl Syscall<'_> {
     pub async fn sys_write(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (fd, buf, len) = (args[0], UserWritePtr::from_usize(args[1]), args[2]);
+        let (fd, buf, len) = (args[0], UserReadPtr::from_usize(args[1]), args[2]);
 
         info!("Syscall: write, fd {fd}, len: {len}");
 
@@ -34,6 +35,7 @@ impl Syscall<'_> {
         let fd = self.lproc.with_mut_fdtable(|f| f.get(fd));
         // TODO: is it safe ?
         if let Some(fd) = fd {
+            self.lproc.with_mut_memory(|m| m.force_map_buf(buf, UserAreaPerm::READ));
             let write_len = within_sum_async(fd.file.write_at(fd.curr(), buf)).await?;
             fd.add_curr(write_len);
             Ok(write_len)
@@ -57,6 +59,7 @@ impl Syscall<'_> {
 
         let fd = self.lproc.with_mut_fdtable(|f| f.get(fd));
         if let Some(fd) = fd {
+            self.lproc.with_mut_memory(|m| m.force_map_buf(buf, UserAreaPerm::WRITE));
             let read_len = within_sum_async(fd.file.read_at(fd.curr(), buf)).await?;
             if args[0] == 0 && read_len == 1 {
                 within_sum(|| {
@@ -443,6 +446,7 @@ impl Syscall<'_> {
             );
             // TODO: 检查用户给的指针是不是合法的
             let buf = unsafe { VirtAddr::from(iov.base).as_slice(iov.len) };
+            self.lproc.with_mut_memory(|m| m.force_map_buf(buf, UserAreaPerm::READ));
             let write_len = file.write_at(offset, buf).await?;
             total_len += write_len;
             offset += write_len;
@@ -481,6 +485,7 @@ impl Syscall<'_> {
             );
             // TODO: 检查用户给的指针是不是合法的
             let buf = unsafe { VirtAddr::from(iov.base).as_mut_slice(iov.len) };
+            self.lproc.with_mut_memory(|m| m.force_map_buf(buf, UserAreaPerm::WRITE));
             let read_len = file.read_at(offset, buf).await?;
             total_len += read_len;
             offset += read_len;

@@ -60,6 +60,21 @@ bitflags! {
     }
 }
 
+impl PTEFlags {
+    pub fn match_area_perm(self, perm: UserAreaPerm) -> bool {
+        if perm.contains(UserAreaPerm::READ) && !self.contains(PTEFlags::R) {
+            return false;
+        }
+        if perm.contains(UserAreaPerm::WRITE) && !self.contains(PTEFlags::W) {
+            return false;
+        }
+        if perm.contains(UserAreaPerm::EXECUTE) && !self.contains(PTEFlags::X) {
+            return false;
+        }
+        true
+    }
+}
+
 impl From<UserAreaPerm> for PTEFlags {
     fn from(val: UserAreaPerm) -> Self {
         let mut pte_flag = PTEFlags::V | PTEFlags::U;
@@ -248,6 +263,15 @@ impl UserArea {
         let pte = page_table.get_pte_mut_from_vpn(access_vpn);
         if let Some(pte) = pte {
             // PTE valid is ensured
+
+            log::debug!("pte flags: {:?}", pte.flags());
+            if pte.flags().match_area_perm(self.perm()) {
+                // 一次假的缺页异常
+                // 当我们不确定某个范围是否被映射了, 我们可以强行调一次 page_fault
+                // 如果它已经被映射了, 那么就会进入这个分支
+                // 目前应该只有 syscall 中的 read/write 用它来确保 buffer 范围内的页都被映射了
+                return Ok(());
+            }
 
             // must be CoW
             let pte_flags = pte.flags();
