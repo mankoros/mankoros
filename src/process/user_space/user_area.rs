@@ -1,7 +1,7 @@
 use bitflags::bitflags;
 
 use super::range_map::RangeMap;
-use crate::memory::address::VirtAddr;
+use crate::memory::address::{VirtAddr, VirtAddr4K};
 
 use crate::memory::{
     address::VirtPageNum,
@@ -32,26 +32,23 @@ pub type VirtAddrRange = Range<VirtAddr>;
 #[inline(always)]
 ///! 用于迭代虚拟地址范围内的所有页, 如果首尾不是页对齐的就 panic
 pub(super) fn iter_vpn(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum)) {
-    let start_vpn = range.start.assert_4k().page_num();
-    let end_vpn = range.end.round_up().page_num(); // End vaddr may not be 4k aligned
-    let mut vpn = start_vpn;
-    while vpn < end_vpn {
+    let range = round_range_vpn(range);
+    let mut vpn = range.start;
+    while vpn < range.end {
         f(vpn);
         vpn += 1;
     }
 }
 
-#[inline(always)]
-///! 用于迭代虚拟地址范围内的所有页, 如果首尾不是页对齐的, 会自动向前或向后扩展到页对齐.
-///! 不知道有没有用, 先留着吧
-pub(super) fn iter_vpn_extend(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum)) {
-    let start_vpn = range.start.round_down().page_num();
-    let end_vpn = range.end.round_up().page_num();
-    let mut vpn = start_vpn;
-    while vpn <= end_vpn {
-        f(vpn);
-        vpn += 1;
-    }
+pub fn round_range(range: VirtAddrRange) -> VirtAddrRange {
+    range.start.round_down().into()..(range.end - 1).round_up().into()
+}
+pub fn round_range_4k(range: VirtAddrRange) -> Range<VirtAddr4K> {
+    range.start.round_down()..(range.end - 1).round_up()
+}
+pub fn round_range_vpn(range: VirtAddrRange) -> Range<VirtPageNum> {
+    let range = round_range_4k(range);
+    range.start.page_num()..range.end.page_num()
 }
 
 bitflags! {
@@ -560,15 +557,9 @@ impl UserAreaManager {
         perm: UserAreaPerm,
     ) {
         debug!("force map range: {:?}, perm: {:?}", range, perm);
-
-        let vpn_begin = range.start.assert_4k().page_num();
-        let vpn_end = range.end.assert_4k().page_num();
-
-        let mut vpn = vpn_begin;
-        while vpn < vpn_end {
+        iter_vpn(range, |vpn| {
             self.page_fault(page_table, vpn, perm.into()).unwrap();
-            vpn += 1;
-        }
+        });
     }
 
     pub fn remove_shm(&mut self, vaddr: VirtAddr) -> SysResult<VirtAddrRange> {
@@ -592,14 +583,6 @@ impl UserAreaManager {
     /// **注意**: 只释放物理页，不会管分段
     pub fn release_range(page_table: &mut PageTable, range: VirtAddrRange) {
         debug!("release range: {:?}", range);
-        let mut range = range;
-        if range.start.round_down().bits() != range.start.bits() {
-            warn!("Not aligned range start: {:x?}", range.start);
-            range = Range {
-                start: range.start.round_down().bits().into(),
-                end: range.end.round_up().bits().into(),
-            }
-        }
         // 释放被删除的段
         iter_vpn(range, |vpn| {
             log::trace!("release vpn: {:x?}", vpn);

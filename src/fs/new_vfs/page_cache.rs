@@ -144,7 +144,7 @@ impl<F: ConcreteFile> PageManager<F> {
         len: usize,
     ) -> SysResult<usize> {
         let begin = PhysAddr::from(offset).round_down().bits();
-        let end = PhysAddr::from(offset + len).round_up().bits();
+        let end = PhysAddr::from(offset + len - 1).round_up().bits();
 
         let mut total_len = 0;
         for page_begin in (begin..end).step_by(PAGE_SIZE) {

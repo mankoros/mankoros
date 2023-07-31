@@ -242,7 +242,7 @@ impl UserSpace {
                 let begin_offset = area_begin.bits() - begin;
                 let begin_residual = PAGE_SIZE - begin_offset;
                 let file_end = area_begin + file_size;
-                let end = (area_begin + area_size).round_up().bits();
+                let end = (area_begin + area_size - 1).round_up().bits();
                 let end_residual = (area_begin.bits() + file_size) & PAGE_MASK;
                 let mut read_size = 0;
                 for vaddr in (begin..end).step_by(PAGE_SIZE) {
