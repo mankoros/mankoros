@@ -5,17 +5,16 @@ use crate::{
     consts::MAX_OPEN_FILES,
     executor::util_futures::{within_sum_async, yield_now, AnyFuture},
     fs::{
-        self,
         new_vfs::{
             path::Path,
             top::{PollKind, VfsFileRef},
             VfsFileKind,
         },
         pipe::Pipe,
+        root::get_root_dir,
     },
     memory::{address::VirtAddr, UserInOutPtr, UserReadPtr, UserWritePtr},
     process::user_space::user_area::UserAreaPerm,
-    syscall::fs::AT_FDCWD,
     tools::{
         errors::{dyn_future, Async, SysError, SysResult},
         user_check::UserCheck,
@@ -23,7 +22,7 @@ use crate::{
 };
 
 use super::{Syscall, SyscallResult};
-use alloc::{collections::BTreeMap, vec::Vec};
+use alloc::{boxed::Box, collections::BTreeMap, vec::Vec};
 
 impl Syscall<'_> {
     pub async fn sys_write(&mut self) -> SyscallResult {
@@ -92,8 +91,7 @@ impl Syscall<'_> {
         let user_check = UserCheck::new_with_sum(&self.lproc);
         let path = user_check.checked_read_cstr(path as *const u8)?;
 
-        info!("Open path: {}", path);
-        let path = Path::from_string(path).expect("Error parsing path");
+        info!("Open path: {path}, flags: {:x}", flags);
 
         // 1. check if too many open files
         self.lproc.with_fdtable(|table| {
@@ -103,24 +101,9 @@ impl Syscall<'_> {
             Ok(())
         })?;
 
-        let dir = if path.is_absolute() {
-            fs::root::get_root_dir()
-        } else if dir_fd == AT_FDCWD {
-            let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone());
-            fs::root::get_root_dir().resolve(&cwd).await?
-        } else {
-            let file = self
-                .lproc
-                .with_mut_fdtable(|f| f.get(dir_fd))
-                .map(|fd| fd.file.clone())
-                .ok_or(SysError::EBADF)?;
-            if file.attr().await?.kind != VfsFileKind::Directory {
-                return Err(SysError::ENOTDIR);
-            }
-            file
-        };
+        let (dir, file_name) = self.at_helper(dir_fd, path.clone(), 0).await?;
 
-        let file = match dir.resolve(&path).await {
+        let file = match dir.lookup(&file_name).await {
             Ok(file) => file,
             Err(SysError::ENOENT) => {
                 // Check if CREATE flag is set
@@ -128,21 +111,68 @@ impl Syscall<'_> {
                     return Err(SysError::ENOENT);
                 }
                 // Create file
-                // 1. ensure file dir exists
-                let (dir_path, file_name) = path.split_dir_file();
-                let direct_dir = dir.resolve(&dir_path).await?;
-                // 2. create file
-
-                direct_dir.create(&file_name, VfsFileKind::RegularFile).await?
+                dir.create(&file_name, VfsFileKind::RegularFile).await?
             }
             Err(e) => {
                 return Err(e);
             }
         };
 
-        self.lproc.with_mut_fdtable(|table| Ok(table.alloc(file)))
+        let final_file = if !flags.contains(OpenFlags::NOFOLLOW) {
+            let mut file = file;
+            let mut curr_path = Path::from_string(path)?;
+            loop {
+                // 递归跟随符号链接
+                if file.attr().await?.kind == VfsFileKind::SymbolLink {
+                    let mut buf = Box::new([0u8; 512]);
+                    let read_len = file.read_at(0, &mut *buf).await?;
+                    if read_len == 512 {
+                        panic!("openat: path in symbol file too long");
+                    }
+                    let next_path_str = core::str::from_utf8(&buf[..read_len])
+                        .expect("invalid path in symbol file");
+                    let next_path = Path::from_str(next_path_str)?;
+
+                    curr_path = if next_path.is_absolute() {
+                        next_path
+                    } else {
+                        curr_path.append(&next_path)
+                    };
+                    file = get_root_dir().resolve(&curr_path).await?;
+                } else {
+                    break file.clone();
+                };
+            }
+        } else {
+            file
+        };
+
+        self.lproc.with_mut_fdtable(|table| Ok(table.alloc(final_file)))
     }
 
+    pub async fn sys_readlinkat(&self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (dir_fd, path, buf, buf_len) = (args[0], args[1], args[2], args[3]);
+
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+        let path = user_check.checked_read_cstr(path as *const u8)?;
+
+        info!(
+            "Syscall: readlinkat, dir_fd: {}, path: {:?}, buf: {:x}, buf_len: {}",
+            dir_fd, path, buf, buf_len
+        );
+
+        let (dir, file_name) = self.at_helper(dir_fd, path, 0).await?;
+
+        let file = dir.lookup(&file_name).await?;
+        if file.attr().await?.kind != VfsFileKind::SymbolLink {
+            Err(SysError::EINVAL)
+        } else {
+            let buf = unsafe { VirtAddr::from(buf).as_mut_slice(buf_len) };
+            self.lproc.with_mut_memory(|m| m.force_map_buf(buf, UserAreaPerm::WRITE));
+            file.read_at(0, buf).await
+        }
+    }
     /// 创建管道，在 *pipe 记录读管道的 fd，在 *(pipe+1) 记录写管道的 fd。
     /// 成功时返回 0，失败则返回 -1
     pub fn sys_pipe(&mut self) -> SyscallResult {
