@@ -50,16 +50,14 @@ pub fn kernel_phys_to_virt(addr: usize) -> usize {
     }
     trace!("Kernel physical address 0x{:x} to virtual addr", addr);
 
-    let offset = addr.checked_sub(unsafe { consts::device::PHYMEM_START });
+    let offset = addr.checked_sub(consts::device::phymem_start());
     if offset.is_none() {
         panic!("Physical address 0x{:x} is out of range", addr);
     }
     let offset = offset.unwrap();
     let virt_addr = offset.checked_add(consts::address_space::K_SEG_PHY_MEM_BEG);
     if virt_addr.is_none() {
-        debug!("phymem_start: 0x{:x}", unsafe {
-            consts::device::PHYMEM_START
-        });
+        debug!("phymem_start: 0x{:x}", consts::device::phymem_start());
         panic!("Physical memory offset 0x{:x} is out of range", offset);
     }
     virt_addr.unwrap()
@@ -72,7 +70,7 @@ pub fn kernel_virt_text_to_phys(addr: usize) -> usize {
         warn!("Virtual address 0x{:x} is not in kernel text segment", addr);
         return addr;
     }
-    addr - consts::address_space::K_SEG_DATA_BEG + unsafe { consts::device::PLATFORM_BOOT_PC }
+    addr - consts::address_space::K_SEG_DATA_BEG + consts::device::platform_boot_pc()
 }
 
 // Kernel Virt to Phy function
@@ -85,7 +83,7 @@ pub fn kernel_virt_to_phys(addr: usize) -> usize {
     }
     trace!("Kernel virtual address 0x{:x} to physical addr", addr);
 
-    addr - consts::address_space::K_SEG_PHY_MEM_BEG + unsafe { consts::device::PHYMEM_START }
+    addr - consts::address_space::K_SEG_PHY_MEM_BEG + consts::device::phymem_start()
 }
 // Kernel Phyical device addr to Virt function
 //

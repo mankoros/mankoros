@@ -1,6 +1,6 @@
 use crate::{
     consts::{
-        device::{MAX_PHYSICAL_MEMORY, PHYMEM_START},
+        device::{max_physical_memory, phymem_start},
         PAGE_SIZE,
     },
     memory::{address::PhysPageNum, frame::dealloc_frame},
@@ -12,7 +12,7 @@ static mut FRAME_REF_CNT_PTR: *mut u32 = 0 as _;
 
 /// need to be called after device tree parse and kernel memory management
 pub fn init_frame_ref_cnt() {
-    let physis_memory_size = unsafe { MAX_PHYSICAL_MEMORY - PHYMEM_START };
+    let physis_memory_size = max_physical_memory() - phymem_start();
     let frame_ref_cnt_size = physis_memory_size / PAGE_SIZE;
 
     let frame_ref_cnt_memory = unsafe {
@@ -38,7 +38,7 @@ impl PhysPageNum {
     fn get_ref_cnt_ptr(self) -> *mut u32 {
         cfg_if::cfg_if! {
             if #[cfg(debug_assertions)] {
-                let max_ppn = unsafe { MAX_PHYSICAL_MEMORY / PAGE_SIZE };
+                let max_ppn = max_physical_memory() / PAGE_SIZE;
                 if self.bits() >= max_ppn {
                     panic!("get_ref_cnt_ptr: ppn out of range");
                 }

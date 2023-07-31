@@ -4,13 +4,13 @@
 //!
 //!
 //!
-use crate::consts::device::MAX_PHYSICAL_MEMORY;
+use crate::consts::device::max_physical_memory;
 use crate::here;
 
 use bitmap_allocator::BitAlloc;
 
 use crate::consts::memlayout;
-use crate::consts::{device::PHYMEM_START, PAGE_SIZE};
+use crate::consts::{device::phymem_start, PAGE_SIZE};
 use crate::sync::SpinNoIrqLock;
 use log::*;
 
@@ -33,7 +33,7 @@ impl GlobalFrameAlloc {
         let ret = FRAME_ALLOCATOR
             .lock(here!())
             .alloc()
-            .map(|id| id * PAGE_SIZE + unsafe { PHYMEM_START })
+            .map(|id| id * PAGE_SIZE + phymem_start())
             .map(PhysAddr4K::from);
         trace!("Allocate frame: {:x?}", ret);
         ret
@@ -43,7 +43,7 @@ impl GlobalFrameAlloc {
         let ret = FRAME_ALLOCATOR
             .lock(here!())
             .alloc_contiguous(size, align_log2)
-            .map(|id| id * PAGE_SIZE + unsafe { PHYMEM_START })
+            .map(|id| id * PAGE_SIZE + phymem_start())
             .map(PhysAddr4K::from);
         trace!("Allocate frame: {:x?}", ret);
         ret
@@ -51,21 +51,17 @@ impl GlobalFrameAlloc {
     fn dealloc(&self, target: PhysAddr4K) {
         trace!("Deallocate frame: {:x}", target);
         let target: usize = target.bits();
-        FRAME_ALLOCATOR
-            .lock(here!())
-            .dealloc((target - unsafe { PHYMEM_START }) / PAGE_SIZE);
+        FRAME_ALLOCATOR.lock(here!()).dealloc((target - phymem_start()) / PAGE_SIZE);
     }
 }
 
 pub fn init() {
     // Insert frames into allocator
-    FRAME_ALLOCATOR
-        .lock(here!())
-        .insert(0..(unsafe { MAX_PHYSICAL_MEMORY } / PAGE_SIZE));
+    FRAME_ALLOCATOR.lock(here!()).insert(0..(max_physical_memory() / PAGE_SIZE));
     // Remove kernel occupied
     let kernel_end = memlayout::kernel_end as usize;
     let kernel_end = kernel_virt_text_to_phys(kernel_end);
-    let kernel_end = (kernel_end - unsafe { PHYMEM_START }) / PAGE_SIZE;
+    let kernel_end = (kernel_end - phymem_start()) / PAGE_SIZE;
     FRAME_ALLOCATOR.lock(here!()).remove(0..kernel_end);
 }
 

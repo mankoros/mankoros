@@ -1,6 +1,6 @@
 use core::ops::Add;
 
-use super::NSEC_PER_SEC;
+use crate::consts;
 
 // copy from linux sys/times.h
 // struct timespec {
@@ -20,7 +20,7 @@ pub struct TimeSpec {
 impl TimeSpec {
     pub fn new(seconds: f64) -> Self {
         let tv_sec = seconds as usize;
-        let tv_nsec = ((seconds - tv_sec as f64) * NSEC_PER_SEC as f64) as usize;
+        let tv_nsec = ((seconds - tv_sec as f64) * consts::time::NSEC_PER_SEC as f64) as usize;
         Self { tv_sec, tv_nsec }
     }
 
@@ -31,7 +31,7 @@ impl TimeSpec {
 
     /// 返回以秒为单位的时间
     pub fn time_in_sec(&self) -> f64 {
-        self.tv_sec as f64 + self.tv_nsec as f64 / NSEC_PER_SEC as f64
+        self.tv_sec as f64 + self.tv_nsec as f64 / consts::time::NSEC_PER_SEC as f64
     }
 }
 
@@ -42,9 +42,9 @@ impl Add for TimeSpec {
             tv_sec: self.tv_sec + other.tv_sec,
             tv_nsec: self.tv_nsec + other.tv_nsec,
         };
-        if new_ts.tv_nsec >= super::NSEC_PER_SEC {
+        if new_ts.tv_nsec >= consts::time::NSEC_PER_SEC {
             new_ts.tv_sec += 1;
-            new_ts.tv_nsec -= super::NSEC_PER_SEC;
+            new_ts.tv_nsec -= consts::time::NSEC_PER_SEC;
         }
         new_ts
     }

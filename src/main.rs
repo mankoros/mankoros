@@ -90,7 +90,7 @@ pub static mut UART0: SpinNoIrqLock<Option<Box<dyn Write>>> = SpinNoIrqLock::new
 pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     // Clear BSS before anything else
     boot::clear_bss();
-    unsafe { consts::device::PLATFORM_BOOT_PC = boot_pc };
+    consts::device::set_platform_boot_pc(boot_pc);
 
     // Print boot message
     boot::print_boot_msg();
@@ -110,9 +110,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
         humansize::SizeFormatter::new(device_tree.total_size(), humansize::BINARY);
     info!("Device tree size: {}", device_tree_size);
 
-    info!("UART start address: {:#x}", unsafe {
-        consts::device::UART0_BASE
-    });
+    info!("UART start address: {:#x}", consts::device::uart0_base());
     for memory_region in device_tree.memory().regions() {
         let memory_size =
             humansize::SizeFormatter::new(memory_region.size.unwrap_or(0), humansize::BINARY);
@@ -146,7 +144,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     info!(
         "Physical memory mapped {:#x} -> {:#x}",
         K_SEG_PHY_MEM_BEG,
-        unsafe { consts::device::PHYMEM_START }
+        consts::device::phymem_start()
     );
 
     // Next stage device initialization
