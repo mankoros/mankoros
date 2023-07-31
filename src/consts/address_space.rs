@@ -21,7 +21,11 @@ pub const U_SEG_STACK_END: usize = 0x0000_0002_0000_0000;
 pub const U_SEG_FILE_BEG: usize = 0x0000_0002_0000_0000;
 pub const U_SEG_FILE_END: usize = 0x0000_0004_0000_0000;
 
-pub const U_SEG_END: usize = 0x0000_0004_0000_0000;
+// 共享内存段 (128 GiB)
+pub const U_SEG_SHARE_BEG: usize = 0x0000_0004_0000_0000;
+pub const U_SEG_SHARE_END: usize = 0x0000_0006_0000_0000;
+
+pub const U_SEG_END: usize = 0x0000_0006_0000_0000;
 
 // =========== 内核段 ===========
 pub const K_SEG_BEG: usize = 0xffff_ffc0_0000_0000;
