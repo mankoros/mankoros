@@ -5,7 +5,7 @@ use buddy_system_allocator::LockedHeap;
 // Given an 8 GiB physis memory & 4k page size,
 // the frame reference count will cost 8 MiB memory.
 // So we need larger than 8 MiB heap.
-const KERNEL_HEAP_SIZE: usize = 12 * 1024 * 1024;
+const KERNEL_HEAP_SIZE: usize = 16 * 1024 * 1024;
 
 #[global_allocator]
 static HEAP_ALLOCATOR: LockedHeap<32> = LockedHeap::<32>::empty();

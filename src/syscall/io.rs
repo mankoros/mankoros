@@ -32,9 +32,6 @@ impl Syscall<'_> {
 
         info!("Syscall: write, fd {fd}, len: {len}");
 
-        let user_check = UserCheck::new_with_sum(&self.lproc);
-        let _ = user_check.checked_read(buf.raw_ptr());
-
         let buf = unsafe { core::slice::from_raw_parts(buf.raw_ptr(), len) };
         let fd = self.lproc.with_mut_fdtable(|f| f.get(fd));
         // TODO: is it safe ?
@@ -456,7 +453,6 @@ impl Syscall<'_> {
                 iov_ptr.as_usize(),
                 iov.len
             );
-            // TODO: 检查用户给的指针是不是合法的
             let buf = unsafe { VirtAddr::from(iov.base).as_slice(iov.len) };
             self.lproc.with_mut_memory(|m| m.force_map_buf(buf, UserAreaPerm::READ));
             let write_len = file.write_at(offset, buf).await?;
