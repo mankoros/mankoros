@@ -13,8 +13,8 @@ use crate::{
         memfs::zero::ZeroDev,
         new_vfs::{path::Path, top::VfsFileRef, VfsFileKind},
     },
-    memory::{UserReadPtr, UserWritePtr},
-    process::lproc::NewFdRequirement,
+    memory::{address::VirtAddr, UserReadPtr, UserWritePtr},
+    process::{lproc::NewFdRequirement, user_space::user_area::UserAreaPerm},
     tools::{
         errors::{SysError, SysResult},
         user_check::UserCheck,
@@ -164,38 +164,6 @@ impl<'a> Syscall<'a> {
         });
 
         Ok(0)
-    }
-
-    pub async fn sys_readlink(&self) -> SyscallResult {
-        let args = self.cx.syscall_args();
-        let (path, buf, buf_len) = (UserReadPtr::<u8>::from(args[0]), args[1], args[2]);
-
-        let user_check = UserCheck::new_with_sum(&self.lproc);
-        let path = user_check.checked_read_cstr(path.raw_ptr())?;
-
-        info!(
-            "Syscall: readlink, path: {:?}, buf: {:x}, buf_len: {}",
-            path, buf, buf_len
-        );
-
-        // currently not support symlink
-        Err(SysError::EINVAL)
-    }
-
-    pub async fn sys_readlinkat(&self) -> SyscallResult {
-        let args = self.cx.syscall_args();
-        let (dir_fd, path, buf, buf_len) = (args[0], args[1], args[2], args[3]);
-
-        let user_check = UserCheck::new_with_sum(&self.lproc);
-        let path = user_check.checked_read_cstr(path as *const u8)?;
-
-        info!(
-            "Syscall: readlinkat, dir_fd: {}, path: {:?}, buf: {:x}, buf_len: {}",
-            dir_fd, path, buf, buf_len
-        );
-
-        // currently not support symlink
-        Err(SysError::EINVAL)
     }
 
     pub async fn sys_fturncate(&self) -> SyscallResult {
@@ -403,7 +371,8 @@ impl<'a> Syscall<'a> {
     }
 
     /// Path resolve helper for __at syscall
-    async fn at_helper(
+    /// return (dir, filename)
+    pub(super) async fn at_helper(
         &self,
         dir_fd: usize,
         path_name: String,
