@@ -1,7 +1,10 @@
 use self::{lproc::LightProcess, userloop::OutermostFuture};
 use crate::{
     executor::{self, block_on},
-    fs::{self, new_vfs::top::VfsFileRef},
+    fs::{
+        self,
+        new_vfs::{path::Path, top::VfsFileRef},
+    },
 };
 use alloc::{
     string::{String, ToString},
@@ -11,14 +14,16 @@ use alloc::{
 
 pub mod aux_vector;
 pub mod lproc;
+pub mod lproc_mgr;
 pub mod pid;
 pub mod user_space;
 pub mod userloop;
 
-pub fn spawn_proc_from_file(file: VfsFileRef) {
+pub fn spawn_proc_from_file(path: Path, file: VfsFileRef) {
     let lproc = LightProcess::new();
 
     lproc.clone().do_exec(file, Vec::new(), Vec::new());
+    lproc.with_mut_procfs_info(|info| info.exe_path = Some(path));
     spawn_proc(lproc);
 }
 
@@ -56,6 +61,7 @@ pub fn spawn_init() {
 
     let lproc = LightProcess::new();
     lproc.clone().do_exec(busybox, args, envp);
+    lproc.with_mut_procfs_info(|info| info.exe_path = Some(Path::from("/busybox")));
     spawn_proc(lproc);
 }
 

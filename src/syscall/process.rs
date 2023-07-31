@@ -284,7 +284,10 @@ impl<'a> Syscall<'a> {
             fs::root::get_root_dir().resolve(&path).await?
         };
 
-        self.lproc.clone().do_exec(file, argv, envp);
+        self.lproc.do_exec(file, argv, envp);
+        self.lproc.with_mut_procfs_info(|info| {
+            info.exe_path = Some(path);
+        });
         Ok(0)
     }
 
