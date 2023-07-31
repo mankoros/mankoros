@@ -7,7 +7,7 @@ mod const_register;
 
 use const_register::register_const;
 
-register_const!(KERNEL_LINK_ADDR, usize, address_space::K_SEG_DATA_BEG);
+register_const!(KERNEL_LINK_ADDR, usize, address_space::K_SEG_TEXT_BEG);
 
 register_const!(PAGE_SIZE_BITS, usize, 12);
 

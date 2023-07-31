@@ -32,9 +32,9 @@ register_const!(U_SEG_END, usize, 0x0000_0006_0000_0000);
 // =========== 内核段 ===========
 register_const!(K_SEG_BEG, usize, 0xffff_ffc0_0000_0000);
 
-// 虚拟内存映射 (64 GiB)
-register_const!(K_SEG_VIRT_MEM_BEG, usize, 0xffff_ffc0_0000_0000);
-register_const!(K_SEG_VIRT_MEM_END, usize, 0xffff_ffd0_0000_0000);
+// 内核堆段 (64 GiB)
+register_const!(K_SEG_HEAP_BEG, usize, 0xffff_ffc0_0000_0000);
+register_const!(K_SEG_HEAP_END, usize, 0xffff_ffd0_0000_0000);
 
 // 文件映射 (64 GiB)
 register_const!(K_SEG_FILE_BEG, usize, 0xffff_ffd0_0000_0000);
@@ -44,9 +44,9 @@ register_const!(K_SEG_FILE_END, usize, 0xffff_ffe0_0000_0000);
 register_const!(K_SEG_PHY_MEM_BEG, usize, 0xffff_fff0_0000_0000);
 register_const!(K_SEG_PHY_MEM_END, usize, 0xffff_ffff_8000_0000);
 
-// 内核数据段 (1 GiB)
-register_const!(K_SEG_DATA_BEG, usize, 0xffff_ffff_8000_0000);
-register_const!(K_SEG_DATA_END, usize, 0xffff_ffff_c000_0000);
+// 内核映像段 (1 GiB)
+register_const!(K_SEG_TEXT_BEG, usize, 0xffff_ffff_8000_0000);
+register_const!(K_SEG_TEXT_END, usize, 0xffff_ffff_c000_0000);
 
 // 硬件 IO 地址 (750 MiB)
 register_const!(K_SEG_HARDWARE_BEG, usize, 0xffff_ffff_c000_0000);

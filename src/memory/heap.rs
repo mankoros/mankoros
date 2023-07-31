@@ -3,7 +3,7 @@ use log::warn;
 
 use crate::{
     boot,
-    consts::{self, address_space::K_SEG_VIRT_MEM_BEG, PAGE_MASK},
+    consts::{self, address_space::K_SEG_HEAP_BEG, PAGE_MASK},
 };
 
 use super::{
@@ -21,7 +21,7 @@ static HEAP_ALLOCATOR: LockedHeapWithRescue<32> =
 
 static mut HEAP_SPACE: [u8; KERNEL_HEAP_SIZE] = [0; KERNEL_HEAP_SIZE];
 
-static mut KERNEL_HEAP_TOP: usize = K_SEG_VIRT_MEM_BEG;
+static mut KERNEL_HEAP_TOP: usize = K_SEG_HEAP_BEG;
 
 pub fn init() {
     unsafe {
