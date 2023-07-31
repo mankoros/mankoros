@@ -3,7 +3,7 @@ use log::{debug, info};
 use crate::{
     arch::within_sum,
     consts::MAX_OPEN_FILES,
-    executor::util_futures::{within_sum_async, AnyFuture},
+    executor::util_futures::{within_sum_async, yield_now, AnyFuture},
     fs::{
         self,
         new_vfs::{
@@ -17,7 +17,7 @@ use crate::{
     syscall::fs::AT_FDCWD,
     tools::{
         errors::{dyn_future, Async, SysError, SysResult},
-        user_check::{self, UserCheck},
+        user_check::UserCheck,
     },
 };
 
@@ -349,7 +349,7 @@ impl Syscall<'_> {
         }
 
         let args = self.cx.syscall_args();
-        let (maxfdp1, readfds_ptr, writefds_ptr, exceptfds_ptr, _tsptr, _sigmask) = (
+        let (maxfdp1, readfds_ptr, writefds_ptr, exceptfds_ptr, tsptr, _sigmask) = (
             args[0],
             UserInOutPtr::<FdSet>::from_usize(args[1]),
             UserInOutPtr::<FdSet>::from_usize(args[2]),
@@ -364,12 +364,17 @@ impl Syscall<'_> {
             readfds_ptr.as_usize(),
             writefds_ptr.as_usize(),
             exceptfds_ptr.as_usize(),
-            _tsptr,
+            tsptr,
             _sigmask,
         );
 
         if maxfdp1 == 0 {
             // avoid reading read/write/except fds when maxfdp1 is 0
+            if tsptr != 0 {
+                // when all fds are empty, we should sleep for the time specified by tsptr
+                // if not sleep, we may starvate other processes
+                yield_now().await;
+            }
             return Ok(0);
         }
 

@@ -13,7 +13,8 @@ use core::fmt::Debug;
 use riscv::register::scause;
 
 use crate::consts::address_space::{
-    U_SEG_FILE_BEG, U_SEG_FILE_END, U_SEG_HEAP_BEG, U_SEG_STACK_BEG, U_SEG_STACK_END,
+    U_SEG_FILE_BEG, U_SEG_FILE_END, U_SEG_HEAP_BEG, U_SEG_SHARE_BEG, U_SEG_SHARE_END,
+    U_SEG_STACK_BEG, U_SEG_STACK_END,
 };
 
 use crate::arch::{flush_tlb, get_curr_page_table_addr};
@@ -340,7 +341,7 @@ impl UserArea {
     }
 
     /// debug only
-    pub fn kind(&self) -> &'static str {
+    pub fn kind_str(&self) -> &'static str {
         match self.kind {
             UserAreaType::MmapAnonymous => "anonymous",
             UserAreaType::MmapPrivate { .. } => "private",
@@ -362,6 +363,8 @@ impl UserAreaManager {
         VirtAddr::from(U_SEG_STACK_BEG)..VirtAddr::from(U_SEG_STACK_END);
     const MMAP_RANGE: VirtAddrRange =
         VirtAddr::from(U_SEG_FILE_BEG)..VirtAddr::from(U_SEG_FILE_END);
+    const SHARE_RANGE: VirtAddrRange =
+        VirtAddr::from(U_SEG_SHARE_BEG)..VirtAddr::from(U_SEG_SHARE_END);
 
     pub fn new() -> Self {
         Self {
@@ -435,9 +438,18 @@ impl UserAreaManager {
         }
     }
 
+    /// for mmap private / mmap anonymous
     fn find_free_mmap_area(&self, size: usize) -> SysResult<(VirtAddr, usize)> {
         self.map
             .find_free_range(Self::MMAP_RANGE, size, |va, n| (va + n).round_up().into())
+            .map(|r| (r.start, r.end - r.start))
+            .ok_or(SysError::ENOMEM)
+    }
+
+    /// for mmap shared / shm
+    fn find_free_share_area(&self, size: usize) -> SysResult<(VirtAddr, usize)> {
+        self.map
+            .find_free_range(Self::SHARE_RANGE, size, |va, n| (va + n).round_up().into())
             .map(|r| (r.start, r.end - r.start))
             .ok_or(SysError::ENOMEM)
     }
@@ -468,7 +480,7 @@ impl UserAreaManager {
         id: ShmId,
         shm: Arc<Shm>,
     ) -> SysResult<(VirtAddrRange, &UserArea)> {
-        let (begin, _) = self.find_free_mmap_area(shm.size())?;
+        let (begin, _) = self.find_free_share_area(shm.size())?;
         self.insert_shm_at(begin, perm, id, shm)
     }
 
@@ -487,7 +499,7 @@ impl UserAreaManager {
             "try insert_at: {:?}, perm: {:?}, type: {}",
             range,
             area.perm(),
-            area.kind()
+            area.kind_str()
         );
 
         self.map
@@ -523,6 +535,10 @@ impl UserAreaManager {
         id: ShmId,
         shm: Arc<Shm>,
     ) -> SysResult<(VirtAddrRange, &UserArea)> {
+        assert!(
+            Self::SHARE_RANGE.contains(&begin_vaddr),
+            "shm must be in share range"
+        );
         self.insert_at(begin_vaddr, shm.size(), UserArea::new_shm(perm, id, shm))
     }
 

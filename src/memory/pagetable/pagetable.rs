@@ -8,7 +8,10 @@ use crate::{
     arch::{self},
     boot,
     consts::{
-        self, address_space::K_SEG_PHY_MEM_BEG, device::max_physical_memory, device::phymem_start,
+        self,
+        address_space::{K_SEG_PHY_MEM_BEG, U_SEG_SHARE_BEG, U_SEG_SHARE_END},
+        device::max_physical_memory,
+        device::phymem_start,
         HUGE_PAGE_SIZE,
     },
     memory::{self, address::VirtPageNum},
@@ -203,7 +206,7 @@ impl PageTable {
         let op1_iter = old.table_of_mut(old.root_paddr).iter_mut();
         let np1_iter = new.table_of_mut(new.root_paddr).iter_mut();
 
-        for (_idx, (op1, np1)) in Iterator::zip(op1_iter, np1_iter).enumerate() {
+        for (idx1, (op1, np1)) in Iterator::zip(op1_iter, np1_iter).enumerate() {
             if op1.is_leaf() {
                 // Huge Page
                 *np1 = *op1;
@@ -216,7 +219,7 @@ impl PageTable {
             let op2_iter = op2t.unwrap().iter_mut();
             let np2_iter = new.next_table_mut_or_create(np1).iter_mut();
 
-            for (op2, np2) in Iterator::zip(op2_iter, np2_iter) {
+            for (idx2, (op2, np2)) in Iterator::zip(op2_iter, np2_iter).enumerate() {
                 if op2.is_leaf() {
                     // Huge Page
                     *np2 = *op2;
@@ -229,14 +232,20 @@ impl PageTable {
                 let op3_iter = op3t.unwrap().iter_mut();
                 let np3_iter = new.next_table_mut_or_create(np2).iter_mut();
 
-                for (op3, np3) in Iterator::zip(op3_iter, np3_iter) {
+                for (idx3, (op3, np3)) in Iterator::zip(op3_iter, np3_iter).enumerate() {
+                    let vaddr = (idx1 << 18 | idx2 << 9 | idx3) << 12;
+                    let in_share_seg = U_SEG_SHARE_BEG <= vaddr && vaddr < U_SEG_SHARE_END;
+
                     if op3.is_valid() {
                         debug_assert!(op3.is_leaf());
                         if op3.is_user() {
                             // Only user page need CoW
                             do_with_frame(op3.paddr());
-                            op3.clear_writable();
-                            op3.set_shared(); // Allow sharing already shared page
+                            if !in_share_seg {
+                                // Do CoW
+                                op3.clear_writable();
+                                op3.set_shared();
+                            }
                         }
                         *np3 = *op3;
                     }
