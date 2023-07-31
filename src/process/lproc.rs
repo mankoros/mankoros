@@ -1,4 +1,5 @@
 use super::{
+    lproc_mgr::GlobalLProcManager,
     pid::{alloc_pid, Pid, PidHandler},
     user_space::{
         shm_mgr::{Shm, ShmId},
@@ -80,6 +81,7 @@ pub struct LightProcess {
 
     // Per thread information
     private_info: SpinNoIrqLock<PrivateInfo>,
+    procfs_info: SpinNoIrqLock<ProcFSInfo>,
 
     // 下面的数据可能被多个 LightProcess 共享
     group: Shared<ThreadGroup>,
@@ -88,6 +90,30 @@ pub struct LightProcess {
     fdtable: Shared<FdTable>,
     // TODO: use a signal manager
     signal: SpinNoIrqLock<signal::SignalSet>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProcFSInfo {
+    pub exe_path: Option<Path>,
+}
+
+impl ProcFSInfo {
+    pub fn empty() -> Self {
+        Self { exe_path: None }
+    }
+}
+
+macro_rules! with_ {
+    ($name:ident, $ty:ty) => {
+        paste::paste! {
+            pub fn [<with_ $name>]<T>(&self, f: impl FnOnce(&$ty) -> T) -> T {
+                f(& self.$name.lock(here!()))
+            }
+            pub fn [<with_mut_ $name>]<T>(&self, f: impl FnOnce(&mut $ty) -> T) -> T {
+                f(&mut self.$name.lock(here!()))
+            }
+        }
+    };
 }
 
 impl LightProcess {
@@ -190,52 +216,13 @@ impl LightProcess {
         self.with_mut_fdtable(|f| f.release_all());
     }
 
-    pub fn with_group<T>(&self, f: impl FnOnce(&ThreadGroup) -> T) -> T {
-        f(&self.group.lock(here!()))
-    }
-
-    pub fn with_mut_group<T>(&self, f: impl FnOnce(&mut ThreadGroup) -> T) -> T {
-        f(&mut self.group.lock(here!()))
-    }
-
-    pub fn with_memory<T>(&self, f: impl FnOnce(&UserSpace) -> T) -> T {
-        f(&self.memory.lock(here!()))
-    }
-
-    pub fn with_mut_memory<T>(&self, f: impl FnOnce(&mut UserSpace) -> T) -> T {
-        f(&mut self.memory.lock(here!()))
-    }
-
-    pub fn with_fsinfo<T>(&self, f: impl FnOnce(&FsInfo) -> T) -> T {
-        f(&self.fsinfo.lock(here!()))
-    }
-
-    pub fn with_mut_fsinfo<T>(&self, f: impl FnOnce(&mut FsInfo) -> T) -> T {
-        f(&mut self.fsinfo.lock(here!()))
-    }
-
-    pub fn with_fdtable<T>(&self, f: impl FnOnce(&FdTable) -> T) -> T {
-        f(&self.fdtable.lock(here!()))
-    }
-
-    pub fn with_mut_fdtable<T>(&self, f: impl FnOnce(&mut FdTable) -> T) -> T {
-        f(&mut self.fdtable.lock(here!()))
-    }
-
-    pub fn with_private_info<T>(&self, f: impl FnOnce(&PrivateInfo) -> T) -> T {
-        f(&self.private_info.lock(here!()))
-    }
-
-    pub fn with_mut_private_info<T>(&self, f: impl FnOnce(&mut PrivateInfo) -> T) -> T {
-        f(&mut self.private_info.lock(here!()))
-    }
-
-    pub fn with_shm_table<T>(&self, f: impl FnOnce(&ShmTable) -> T) -> T {
-        f(&self.shm_table.lock(here!()))
-    }
-    pub fn with_mut_shm_table<T>(&self, f: impl FnOnce(&mut ShmTable) -> T) -> T {
-        f(&mut self.shm_table.lock(here!()))
-    }
+    with_!(group, ThreadGroup);
+    with_!(memory, UserSpace);
+    with_!(fsinfo, FsInfo);
+    with_!(fdtable, FdTable);
+    with_!(private_info, PrivateInfo);
+    with_!(procfs_info, ProcFSInfo);
+    with_!(shm_table, ShmTable);
 
     pub fn is_exit(&self) -> bool {
         self.status() == ProcessStatus::ZOMBIE
@@ -258,14 +245,16 @@ impl LightProcess {
             fdtable: new_shared(FdTable::new_with_std()),
             signal: SpinNoIrqLock::new(signal::SignalSet::empty()),
             private_info: SpinNoIrqLock::new(PrivateInfo::new()),
+            procfs_info: SpinNoIrqLock::new(ProcFSInfo::empty()),
         });
         // I am the group leader
         new.group.lock(here!()).push_leader(new.clone());
+        GlobalLProcManager::put(&new);
         new
     }
 
-    pub fn do_exec(self: Arc<Self>, elf_file: VfsFileRef, args: Vec<String>, envp: Vec<String>) {
-        // Create new userspace
+    // Create new userspace
+    pub fn do_exec(self: &Arc<Self>, elf_file: VfsFileRef, args: Vec<String>, envp: Vec<String>) {
         let new_userspace = UserSpace::new();
 
         let page_table_paddr = new_userspace.page_table.root_paddr();
@@ -419,6 +408,8 @@ impl LightProcess {
 
         // TODO: signal handler
 
+        let procfs_info = SpinNoIrqLock::new(self.with_procfs_info(Clone::clone));
+
         let new = Self {
             id,
             parent,
@@ -434,9 +425,11 @@ impl LightProcess {
             fdtable,
             signal: SpinNoIrqLock::new(signal::SignalSet::empty()),
             private_info: SpinNoIrqLock::new(PrivateInfo::new()), // TODO: verify if new or need to check FLAG
+            procfs_info,
         };
 
         let new = Arc::new(new);
+        GlobalLProcManager::put(&new);
 
         if flags.contains(CloneFlags::THREAD) {
             new.with_mut_group(|g| g.push(new.clone()));

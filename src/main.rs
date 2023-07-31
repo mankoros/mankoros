@@ -70,6 +70,8 @@ use crate::executor::block_on;
 use crate::memory::address::kernel_virt_text_to_phys;
 use crate::memory::frame_ref_cnt::init_frame_ref_cnt;
 use crate::memory::pagetable;
+use alloc::borrow::ToOwned;
+use fs::new_vfs::path::Path;
 
 // use trap::ticks;
 
@@ -280,7 +282,8 @@ fn run_preliminary_test() {
         if test_case.is_err() {
             break;
         }
-        process::spawn_proc_from_file(test_case.unwrap());
+        let path = Path::from_string("/".to_owned() + case_name).unwrap();
+        process::spawn_proc_from_file(path, test_case.unwrap());
         executor::run_until_idle();
     }
 }

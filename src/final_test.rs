@@ -5,7 +5,7 @@ use alloc::{
 
 use crate::{
     executor::block_on,
-    fs,
+    fs::{self, new_vfs::path::Path},
     process::{lproc::LightProcess, spawn_proc},
 };
 
@@ -71,15 +71,18 @@ fn run_script(name: &str) {
 
     let lproc = LightProcess::new();
     lproc.clone().do_exec(busybox, args, envp);
+    lproc.with_mut_procfs_info(|info| info.exe_path = Some(Path::from("/busybox")));
     spawn_proc(lproc);
 }
 
 fn run_binary(path: &str, args: Vec<String>) {
+    let path = Path::from(path);
     let root_dir = fs::root::get_root_dir();
-    let bin = block_on(root_dir.lookup(path)).expect("Read binary failed");
+    let bin = block_on(root_dir.resolve(&path)).expect("Read binary failed");
 
     // Some necessary environment variables.
     let lproc = LightProcess::new();
     lproc.clone().do_exec(bin, args, Vec::new());
+    lproc.with_mut_procfs_info(|info| info.exe_path = Some(path));
     spawn_proc(lproc);
 }
