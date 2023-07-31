@@ -49,6 +49,10 @@ impl<'a> Syscall<'a> {
             SYSCALL_WRITEV => self.sys_writev().await,
             SYSCALL_READV => self.sys_readv().await,
             SYSCALL_LSEEK => self.sys_lseek().await,
+            SYSCALL_PREAD => self.sys_pread().await,
+            SYSCALL_PWRITE => self.sys_pwrite().await,
+            SYSCALL_PREADV => self.sys_preadv().await,
+            SYSCALL_PWRITEV => self.sys_pwritev().await,
 
             // FS related
             SYSCALL_NEWFSTAT => self.sys_fstat().await,
@@ -170,6 +174,8 @@ pub const SYSCALL_READV: usize = 65;
 pub const SYSCALL_WRITEV: usize = 66;
 pub const SYSCALL_PREAD: usize = 67;
 pub const SYSCALL_PWRITE: usize = 68;
+pub const SYSCALL_PREADV: usize = 69;
+pub const SYSCALL_PWRITEV: usize = 70;
 pub const SYSCALL_SENDFILE: usize = 71;
 pub const SYSCALL_PSELECT: usize = 72;
 pub const SYSCALL_PPOLL: usize = 73;

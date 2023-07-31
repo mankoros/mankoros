@@ -495,7 +495,6 @@ impl Syscall<'_> {
                 iov_ptr.as_usize(),
                 iov.len
             );
-            // TODO: 检查用户给的指针是不是合法的
             let buf = unsafe { VirtAddr::from(iov.base).as_mut_slice(iov.len) };
             self.lproc.with_mut_memory(|m| m.force_map_buf(buf, UserAreaPerm::WRITE));
             let read_len = file.read_at(offset, buf).await?;
@@ -505,6 +504,136 @@ impl Syscall<'_> {
         }
 
         fd.add_curr(total_len);
+        Ok(total_len)
+    }
+
+    pub async fn sys_pread(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (fd, buf, count, offset) =
+            (args[0], UserWritePtr::<u8>::from(args[1]), args[2], args[3]);
+
+        info!(
+            "Syscall: pread, fd: {}, buf: 0x{:x}, count: {}, offset: {}",
+            fd,
+            buf.as_usize(),
+            count,
+            offset
+        );
+
+        let buf = unsafe { VirtAddr::from(buf.as_usize()).as_mut_slice(count) };
+        let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
+
+        self.lproc.with_mut_memory(|m| m.force_map_buf(buf, UserAreaPerm::WRITE));
+        let read_len = within_sum_async(fd.file.read_at(offset, buf)).await?;
+
+        Ok(read_len)
+    }
+
+    pub async fn sys_pwrite(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (fd, buf, count, offset) =
+            (args[0], UserReadPtr::<u8>::from(args[1]), args[2], args[3]);
+
+        info!(
+            "Syscall: pwrite, fd: {}, buf: 0x{:x}, count: {}, offset: {}",
+            fd,
+            buf.as_usize(),
+            count,
+            offset
+        );
+
+        let buf = unsafe { VirtAddr::from(buf.as_usize()).as_slice(count) };
+        let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
+
+        self.lproc.with_mut_memory(|m| m.force_map_buf(buf, UserAreaPerm::READ));
+        let write_len = within_sum_async(fd.file.write_at(offset, buf)).await?;
+
+        Ok(write_len)
+    }
+
+    pub async fn sys_preadv(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (fd, iov, iovcnt, offset) = (
+            args[0],
+            UserWritePtr::<IoVec>::from(args[1]),
+            args[2],
+            args[3],
+        );
+
+        info!(
+            "Syscall: preadv, fd: {}, iov: 0x{:x}, iovcnt: {}, offset: {}",
+            fd,
+            iov.as_usize(),
+            iovcnt,
+            offset
+        );
+
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+        let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
+        let file = fd.file.clone();
+
+        let mut offset = offset;
+        let mut total_len = 0;
+        let mut iov_ptr = iov;
+        for i in 0..iovcnt {
+            let iov = user_check.checked_read(iov_ptr.raw_ptr())?;
+            log::debug!(
+                "syscall preadv: iov #{}: iov_ptr: 0x{:x}, len: {}",
+                i,
+                iov_ptr.as_usize(),
+                iov.len
+            );
+            let buf = unsafe { VirtAddr::from(iov.base).as_mut_slice(iov.len) };
+            self.lproc.with_mut_memory(|m| m.force_map_buf(buf, UserAreaPerm::WRITE));
+            let read_len = file.read_at(offset, buf).await?;
+            total_len += read_len;
+            offset += read_len;
+            iov_ptr = iov_ptr.add(1);
+        }
+
+        Ok(total_len)
+    }
+
+    pub async fn sys_pwritev(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (fd, iov, iovcnt, offset) = (
+            args[0],
+            UserReadPtr::<IoVec>::from(args[1]),
+            args[2],
+            args[3],
+        );
+
+        info!(
+            "Syscall: pwritev, fd: {}, iov: 0x{:x}, iovcnt: {}, offset: {}",
+            fd,
+            iov.as_usize(),
+            iovcnt,
+            offset
+        );
+
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+        let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
+        let file = fd.file.clone();
+
+        let mut offset = offset;
+        let mut total_len = 0;
+        let mut iov_ptr = iov;
+        for i in 0..iovcnt {
+            let iov = user_check.checked_read(iov_ptr.raw_ptr())?;
+            log::debug!(
+                "syscall pwritev: iov #{}: iov_ptr: 0x{:x}, len: {}",
+                i,
+                iov_ptr.as_usize(),
+                iov.len
+            );
+            let buf = unsafe { VirtAddr::from(iov.base).as_slice(iov.len) };
+            self.lproc.with_mut_memory(|m| m.force_map_buf(buf, UserAreaPerm::READ));
+            let write_len = file.write_at(offset, buf).await?;
+            total_len += write_len;
+            offset += write_len;
+            iov_ptr = iov_ptr.add(1);
+        }
+
         Ok(total_len)
     }
 }
