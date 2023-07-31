@@ -85,6 +85,18 @@ impl Path {
         format!("{:?}", self)
     }
 
+    pub fn append(&self, other: &Self) -> Self {
+        // TODO: 考虑 other 中有 .. 的情况
+        debug_assert!(!other.is_absolute);
+        let mut new = self.components.clone();
+        new.extend(other.components.iter().cloned());
+        Self {
+            is_absolute: self.is_absolute,
+            is_current: self.is_current && other.is_current,
+            components: new,
+        }
+    }
+
     pub fn is_absolute(&self) -> bool {
         self.is_absolute
     }
