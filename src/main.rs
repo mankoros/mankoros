@@ -47,6 +47,7 @@ mod utils;
 mod xdebug;
 mod device_tree;
 mod executor;
+mod final_test;
 mod lazy_init;
 mod process;
 mod signal;
@@ -205,8 +206,17 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
 
     #[cfg(feature = "final")]
     {
-        run_busybox_test();
-        run_time_test();
+        final_test::run_busybox_test();
+        executor::run_until_idle();
+        final_test::run_time_test();
+        executor::run_until_idle();
+        final_test::run_libc_static();
+        executor::run_until_idle();
+        final_test::run_libc_dynamic();
+        executor::run_until_idle();
+        final_test::run_libc_bench();
+        executor::run_until_idle();
+        final_test::run_lua();
         executor::run_until_idle();
         println!("!TEST FINISH!");
     }
@@ -225,55 +235,6 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::NoReason);
 
     unreachable!();
-}
-
-/// Execute final competition tests
-///
-fn run_busybox_test() {
-    let root_dir = fs::root::get_root_dir();
-    let busybox = block_on(root_dir.lookup("busybox")).expect("Read busybox failed");
-
-    let args = ["busybox", "sh", "busybox_testcode.sh"]
-        .to_vec()
-        .into_iter()
-        .map(|s: &str| s.to_string())
-        .collect::<Vec<_>>();
-
-    // Some necessary environment variables.
-    let mut envp = Vec::new();
-    envp.push(String::from("LD_LIBRARY_PATH=."));
-    envp.push(String::from("SHELL=/busybox"));
-    envp.push(String::from("PWD=/"));
-    envp.push(String::from("USER=root"));
-    envp.push(String::from("MOTD_SHOWN=pam"));
-    envp.push(String::from("LANG=C.UTF-8"));
-    envp.push(String::from(
-        "INVOCATION_ID=e9500a871cf044d9886a157f53826684",
-    ));
-    envp.push(String::from("TERM=vt220"));
-    envp.push(String::from("SHLVL=2"));
-    envp.push(String::from("JOURNAL_STREAM=8:9265"));
-    envp.push(String::from("OLDPWD=/root"));
-    envp.push(String::from("_=busybox"));
-    envp.push(String::from("LOGNAME=root"));
-    envp.push(String::from("HOME=/"));
-    envp.push(String::from("PATH=/"));
-
-    let lproc = LightProcess::new();
-    lproc.clone().do_exec(busybox, args, envp);
-    spawn_proc(lproc);
-}
-
-fn run_time_test() {
-    let root_dir = fs::root::get_root_dir();
-    let bin = block_on(root_dir.lookup("time-test")).expect("Read binary failed");
-
-    let args = Vec::new();
-
-    // Some necessary environment variables.
-    let lproc = LightProcess::new();
-    lproc.clone().do_exec(bin, args, Vec::new());
-    spawn_proc(lproc);
 }
 
 fn run_preliminary_test() {

@@ -2,5 +2,9 @@
     "rust-analyzer.check.allTargets": false,
     "rust-analyzer.check.targets": [
         "riscv64gc-unknown-none-elf",
+    ],
+    "rust-analyzer.cargo.features": [
+        "final",
+        "shell",
     ]
 }
