@@ -25,6 +25,7 @@ impl UsizePool {
     }
 
     pub fn release(&mut self, pid: usize) {
+        debug_assert!(!self.recycled.contains(&pid));
         self.recycled.push(pid);
     }
 }

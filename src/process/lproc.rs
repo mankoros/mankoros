@@ -574,8 +574,10 @@ impl FdTable {
     }
 
     pub fn remove(&mut self, fd: usize) -> Option<Arc<FileDescriptor>> {
-        self.pool.release(fd);
-        self.table.remove(&fd)
+        self.table.remove(&fd).map(|file| {
+            self.pool.release(fd);
+            file
+        })
     }
 
     pub fn get(&self, fd: usize) -> Option<Arc<FileDescriptor>> {
@@ -621,8 +623,10 @@ impl ShmTable {
     }
 
     pub fn remove(&mut self, id: ShmId) -> Option<Arc<Shm>> {
-        self.pool.release(id);
-        self.table.remove(&id)
+        self.table.remove(&id).map(|shm| {
+            self.pool.release(id);
+            shm
+        })
     }
 
     pub fn release_all(&mut self) {
