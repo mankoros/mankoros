@@ -91,7 +91,7 @@ pub static mut UART0: SpinNoIrqLock<Option<Box<dyn Write>>> = SpinNoIrqLock::new
 pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     // Clear BSS before anything else
     boot::clear_bss();
-    consts::device::set_platform_boot_pc(boot_pc);
+    consts::platform::set_platform_boot_pc(boot_pc);
 
     // Print boot message
     boot::print_boot_msg();
@@ -111,7 +111,7 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
         humansize::SizeFormatter::new(device_tree.total_size(), humansize::BINARY);
     info!("Device tree size: {}", device_tree_size);
 
-    info!("UART start address: {:#x}", consts::device::uart0_base());
+    info!("UART start address: {:#x}", consts::platform::uart0_base());
     for memory_region in device_tree.memory().regions() {
         let memory_size =
             humansize::SizeFormatter::new(memory_region.size.unwrap_or(0), humansize::BINARY);
@@ -127,7 +127,6 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     // Initial memory system
     frame::init();
     heap::init();
-    init_frame_ref_cnt();
 
     // Initialize interrupt controller
     trap::trap::init();
@@ -145,8 +144,10 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     info!(
         "Physical memory mapped {:#x} -> {:#x}",
         K_SEG_PHY_MEM_BEG,
-        consts::device::phymem_start()
+        consts::platform::phymem_start()
     );
+
+    init_frame_ref_cnt();
 
     // Next stage device initialization
     device_tree::device_init();

@@ -172,7 +172,7 @@ pub unsafe extern "C" fn alt_entry(hartid: usize, boot_pgtbl: usize) -> ! {
         ",
         set_stack = sym set_stack,
         set_boot_pgtbl = sym set_boot_pgtbl,
-        boot_pc_addr = sym consts::device::PLATFORM_BOOT_PC,
+        boot_pc_addr = sym consts::platform::PLATFORM_BOOT_PC,
         options(noreturn),
     )
 }

@@ -5,7 +5,11 @@ use alloc::sync::Arc;
 use log::warn;
 use virtio_drivers::transport;
 
+use crate::arch::get_curr_page_table_addr;
+use crate::consts::address_space::{K_SEG_VIRT_MEM_BEG, K_SEG_VIRT_MEM_END};
+use crate::consts::PAGE_SIZE;
 use crate::drivers::{BlockDevice, DevError, DevResult, Device, DeviceType};
+use crate::memory::pagetable::pagetable::PageTable;
 use crate::{
     consts::address_space::{K_SEG_DATA_BEG, K_SEG_DATA_END, K_SEG_PHY_MEM_BEG, K_SEG_PHY_MEM_END},
     memory::{frame, kernel_phys_to_virt, kernel_virt_text_to_phys, kernel_virt_to_phys},
@@ -184,10 +188,16 @@ unsafe impl virtio_drivers::Hal for VirtIoHalImpl {
         _direction: virtio_drivers::BufferDirection,
     ) -> virtio_drivers::PhysAddr {
         let vaddr = buffer.as_ptr() as *mut u8 as usize;
+        debug_assert!(buffer.len() <= PAGE_SIZE);
         if (K_SEG_PHY_MEM_BEG..K_SEG_PHY_MEM_END).contains(&vaddr) {
             kernel_virt_to_phys(vaddr)
         } else if (K_SEG_DATA_BEG..K_SEG_DATA_END).contains(&vaddr) {
             kernel_virt_text_to_phys(vaddr)
+        } else if (K_SEG_VIRT_MEM_BEG..K_SEG_VIRT_MEM_END).contains(&vaddr) {
+            // Walk current pagetable
+            let pagetable =
+                PageTable::new_with_paddr_no_heap_alloc(get_curr_page_table_addr().into());
+            pagetable.get_paddr_from_vaddr(vaddr.into()).bits()
         } else {
             warn!(
                 "VirtIO shares a buffer not in kernel text or phymem, vaddr: {:#x}",

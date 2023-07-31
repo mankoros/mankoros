@@ -4,18 +4,17 @@
 //!
 //!
 //!
-use crate::consts::device::max_physical_memory;
+use crate::consts::platform::max_physical_memory;
 use crate::here;
 
 use bitmap_allocator::BitAlloc;
 
 use crate::consts::memlayout;
-use crate::consts::{device::phymem_start, PAGE_SIZE};
+use crate::consts::{platform::phymem_start, PAGE_SIZE};
 use crate::sync::SpinNoIrqLock;
 use log::*;
 
 use super::address::{kernel_virt_text_to_phys, PhysAddr4K};
-use crate::memory::address::PhysAddr;
 use crate::memory::frame_ref_cnt::is_frame_ref_cnt_inited;
 
 // Support 64GiB (?)
@@ -77,11 +76,12 @@ pub fn alloc_frame() -> Option<PhysAddr4K> {
         }
     }
 
-    debug_assert!(is_frame_ref_cnt_inited());
     if let Some(paddr) = paddr {
         debug_assert!(paddr.is_valid());
-        debug_assert!(paddr.page_num().is_free());
-        paddr.page_num().increase();
+        if is_frame_ref_cnt_inited() {
+            debug_assert!(paddr.page_num().is_free());
+            paddr.page_num().increase();
+        }
         Some(paddr)
     } else {
         None

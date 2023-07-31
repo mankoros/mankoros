@@ -1,18 +1,19 @@
 use crate::{
     consts::{
-        device::{max_physical_memory, phymem_start},
+        platform::{max_physical_memory, phymem_start},
         PAGE_SIZE,
     },
     memory::{address::PhysPageNum, frame::dealloc_frame},
 };
 use alloc::alloc::alloc;
 use core::{alloc::Layout, intrinsics, panic};
+use log::info;
 
 static mut FRAME_REF_CNT_PTR: *mut u32 = 0 as _;
 
 /// need to be called after device tree parse and kernel memory management
 pub fn init_frame_ref_cnt() {
-    let physis_memory_size = max_physical_memory() - phymem_start();
+    let physis_memory_size = max_physical_memory();
     let frame_ref_cnt_size = physis_memory_size / PAGE_SIZE;
 
     let frame_ref_cnt_memory = unsafe {
@@ -22,6 +23,11 @@ pub fn init_frame_ref_cnt() {
             panic!("frame_ref_cnt_memory alloc failed");
         }
         ptr.write_bytes(0, layout.size());
+        info!(
+            "Reference count memory: {:#x}, size: 0x{:x}",
+            ptr as usize,
+            layout.size()
+        );
         ptr as *mut u32
     };
 

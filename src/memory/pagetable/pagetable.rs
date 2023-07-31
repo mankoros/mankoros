@@ -10,8 +10,8 @@ use crate::{
     consts::{
         self,
         address_space::{K_SEG_PHY_MEM_BEG, U_SEG_SHARE_BEG, U_SEG_SHARE_END},
-        device::max_physical_memory,
-        device::phymem_start,
+        platform::max_physical_memory,
+        platform::phymem_start,
         HUGE_PAGE_SIZE,
     },
     memory::{self, address::VirtPageNum},
@@ -79,6 +79,7 @@ pub fn enable_boot_pagetable() {
 pub struct PageTable {
     root_paddr: PhysAddr4K,
     intrm_tables: Vec<PhysAddr4K>,
+    no_alloc: bool,
 }
 
 impl PageTable {
@@ -89,6 +90,7 @@ impl PageTable {
         PageTable {
             root_paddr,
             intrm_tables: vec![root_paddr],
+            no_alloc: false,
         }
     }
 
@@ -103,6 +105,7 @@ impl PageTable {
         PageTable {
             root_paddr,
             intrm_tables: vec![root_paddr],
+            no_alloc: false,
         }
     }
 
@@ -110,6 +113,15 @@ impl PageTable {
         PageTable {
             root_paddr: paddr,
             intrm_tables: vec![paddr],
+            no_alloc: false,
+        }
+    }
+
+    pub fn new_with_paddr_no_heap_alloc(paddr: PhysAddr4K) -> Self {
+        PageTable {
+            root_paddr: paddr,
+            intrm_tables: Vec::new(),
+            no_alloc: true,
         }
     }
 
@@ -153,7 +165,7 @@ impl PageTable {
         flags: PTEFlags,
     ) {
         trace!(
-            "map_region({:#x}): [{:#x}, {:#x}) -> [{:#x}, {:#x}) ({:#?})",
+            "map_region({:#x}): [{:#x}, {:#x}) -> [{:#x}, {:#x}) ({:?})",
             self.root_paddr(),
             vaddr,
             vaddr.into() + size,
@@ -309,7 +321,10 @@ impl PageTable {
     ) -> &'a mut [PageTableEntry] {
         if !pte.is_valid() {
             let paddr = Self::alloc_table();
-            self.intrm_tables.push(paddr);
+            // Sometimes we don't want to allocate on heap
+            if !self.no_alloc {
+                self.intrm_tables.push(paddr);
+            }
             *pte = PageTableEntry::new(paddr, PTEFlags::V);
             self.table_of_mut(paddr)
         } else {

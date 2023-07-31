@@ -1,6 +1,6 @@
 pub mod address_space;
-pub mod device;
 pub mod memlayout;
+pub mod platform;
 pub mod time;
 
 mod const_register;

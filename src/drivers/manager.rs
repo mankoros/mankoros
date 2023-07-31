@@ -86,7 +86,7 @@ impl DeviceManager {
 
     pub fn map_devices(&self) {
         let mut kernel_page_table = memory::pagetable::pagetable::PageTable::new_with_paddr(
-            (boot::boot_pagetable_paddr()).into(),
+            boot::boot_pagetable_paddr().into(),
         );
 
         // Map probed devices
