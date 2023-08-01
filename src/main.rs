@@ -223,7 +223,6 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
         executor::run_until_idle();
         final_test::run_iozone();
         executor::run_until_idle();
-
         println!("!TEST FINISH!");
     }
 

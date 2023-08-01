@@ -361,7 +361,7 @@ impl MMC {
                 info!("Clock cmd done");
                 return None;
             }
-            info!(
+            debug!(
                 "CMD{} done: {:?}, dma: {:?}",
                 cmd.cmd_index(),
                 rinsts.status(),
