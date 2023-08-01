@@ -70,6 +70,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_READLINKAT => self.sys_readlinkat().await,
             SYSCALL_RENAMEAT2 => self.sys_renameat2().await,
             SYSCALL_UTIMENSAT => self.sys_utimensat().await,
+            SYSCALL_FACCESSAT => self.sys_faccessat().await,
 
             // Process related
             SYSCALL_GETCWD => self.sys_getcwd(),

@@ -442,6 +442,25 @@ impl<'a> Syscall<'a> {
         dir.remove(&file_name).await.map(|_| 0)
     }
 
+    pub async fn sys_faccessat(&self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (dir_fd, path_name, mode, flags) = (args[0], args[1], args[2], args[3]);
+
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+        let path_name = user_check.checked_read_cstr(path_name as *const u8)?;
+
+        info!(
+            "faccessat: dir_fd: {:?}, path_name: {:?}, mode: {:?}, flags: {:?}",
+            dir_fd, path_name, mode, flags
+        );
+
+        let (dir, file_name) = self.at_helper(dir_fd, path_name, flags).await?;
+
+        // only to ensure file exists
+        let _file = dir.lookup(&file_name).await?;
+        Ok(0)
+    }
+
     /// Path resolve helper for __at syscall
     /// return (dir, filename)
     pub(super) async fn at_helper(
