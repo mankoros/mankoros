@@ -35,6 +35,10 @@ pub fn run_libc_bench() {
     run_binary("libc-bench", Vec::new());
 }
 
+pub fn run_iozone() {
+    run_script("iozone_testcode.sh");
+}
+
 fn run_script(name: &str) {
     let root_dir = fs::root::get_root_dir();
     let busybox = block_on(root_dir.lookup("busybox")).expect("Read busybox failed");
