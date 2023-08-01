@@ -135,7 +135,7 @@ impl VfsFile for Pipe {
     ) -> ASysResult<crate::memory::address::PhysAddr4K> {
         unimplemented!("Should never get page for a pipe")
     }
-    fn truncate(&self, length: usize) -> ASysResult {
+    fn truncate(&self, _length: usize) -> ASysResult {
         unimplemented!("Should never truncate a pipe")
     }
 

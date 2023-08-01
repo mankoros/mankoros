@@ -246,7 +246,7 @@ impl PageTable {
 
                 for (idx3, (op3, np3)) in Iterator::zip(op3_iter, np3_iter).enumerate() {
                     let vaddr = (idx1 << 18 | idx2 << 9 | idx3) << 12;
-                    let in_share_seg = U_SEG_SHARE_BEG <= vaddr && vaddr < U_SEG_SHARE_END;
+                    let in_share_seg = (U_SEG_SHARE_BEG..U_SEG_SHARE_END).contains(&vaddr);
 
                     if op3.is_valid() {
                         debug_assert!(op3.is_leaf());

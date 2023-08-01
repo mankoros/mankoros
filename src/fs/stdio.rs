@@ -51,7 +51,7 @@ impl VfsFile for Stdin {
     ) -> ASysResult<crate::memory::address::PhysAddr4K> {
         unimplemented!("Stdin::get_page")
     }
-    fn truncate(&self, length: usize) -> ASysResult {
+    fn truncate(&self, _length: usize) -> ASysResult {
         unimplemented!("Stdin::truncate")
     }
 
@@ -116,7 +116,7 @@ impl VfsFile for Stdout {
     ) -> ASysResult<crate::memory::address::PhysAddr4K> {
         unimplemented!("Stdout::get_page")
     }
-    fn truncate(&self, length: usize) -> ASysResult {
+    fn truncate(&self, _length: usize) -> ASysResult {
         unimplemented!("Stdout::truncate")
     }
 
@@ -195,7 +195,7 @@ impl VfsFile for Stderr {
     ) -> ASysResult<crate::memory::address::PhysAddr4K> {
         unimplemented!("stderr::get_page")
     }
-    fn truncate(&self, length: usize) -> ASysResult {
+    fn truncate(&self, _length: usize) -> ASysResult {
         unimplemented!("stderr::truncate")
     }
 

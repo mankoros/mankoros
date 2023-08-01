@@ -1,8 +1,5 @@
 use crate::{
-    consts::{
-        platform::{max_physical_memory, phymem_start},
-        PAGE_SIZE,
-    },
+    consts::{platform::max_physical_memory, PAGE_SIZE},
     memory::{address::PhysPageNum, frame::dealloc_frame},
 };
 use alloc::alloc::alloc;

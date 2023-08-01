@@ -107,7 +107,7 @@ impl Syscall<'_> {
 
         let (dir, file_name) = self.at_helper(dir_fd, path.clone(), 0).await?;
 
-        let file = if file_name == "" {
+        let file = if file_name.is_empty() {
             dir
         } else {
             match dir.lookup(&file_name).await {
@@ -433,7 +433,7 @@ impl Syscall<'_> {
         let mut mapping = BTreeMap::<usize, (usize, PollKind)>::new();
         let mut futures = Vec::<Async<SysResult<usize>>>::new();
         for fd in 0..maxfdp1 {
-            let fd_file = self.lproc.with_fdtable(|f| f.get(fd as usize));
+            let fd_file = self.lproc.with_fdtable(|f| f.get(fd));
             let fd_file = match fd_file {
                 Some(f) => f,
                 None => continue,
@@ -444,7 +444,7 @@ impl Syscall<'_> {
                 let future =
                     async move { copy_fd.file.poll_ready(copy_fd.curr(), 1, PollKind::Read).await };
                 futures.push(dyn_future(future));
-                mapping.insert(futures.len() - 1, (fd as usize, PollKind::Read));
+                mapping.insert(futures.len() - 1, (fd, PollKind::Read));
             }
             if writefds.is_set(fd) {
                 let copy_fd = fd_file.clone();
@@ -452,7 +452,7 @@ impl Syscall<'_> {
                     copy_fd.file.poll_ready(copy_fd.curr(), 1, PollKind::Write).await
                 };
                 futures.push(dyn_future(future));
-                mapping.insert(futures.len() - 1, (fd as usize, PollKind::Write));
+                mapping.insert(futures.len() - 1, (fd, PollKind::Write));
             }
         }
 

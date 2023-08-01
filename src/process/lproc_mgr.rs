@@ -1,5 +1,5 @@
 use super::{lproc::LightProcess, pid::Pid};
-use crate::{consts, sync::SpinNoIrqLock};
+use crate::sync::SpinNoIrqLock;
 use alloc::{
     collections::BTreeMap,
     sync::{Arc, Weak},

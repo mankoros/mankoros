@@ -6,7 +6,7 @@ use log::info;
 
 use crate::{
     consts::PAGE_MASK,
-    memory::{address::VirtAddr, pagetable::pte::PTEFlags, UserPtr, UserReadPtr, UserWritePtr},
+    memory::{address::VirtAddr, pagetable::pte::PTEFlags, UserWritePtr},
     process::user_space::{
         shm_mgr::{global_shm_mgr, ShmId},
         user_area::UserAreaPerm,
@@ -193,8 +193,8 @@ impl<'a> Syscall<'a> {
             }
 
             let key = if key == IPC_PRIVATE { None } else { Some(key) };
-            let shm = mgr.create(key, size, self.lproc.id())?;
-            shm
+
+            mgr.create(key, size, self.lproc.id())?
         };
 
         let id = self.lproc.with_mut_shm_table(|f| f.alloc(shm));

@@ -25,7 +25,7 @@ use crate::fs::new_vfs::top::{MmapKind, VfsFileRef};
 use crate::tools::errors::{SysError, SysResult};
 use alloc::sync::Arc;
 use core::ops::Range;
-use log::{debug, warn};
+use log::debug;
 
 pub type VirtAddrRange = Range<VirtAddr>;
 
@@ -187,9 +187,9 @@ impl Debug for UserAreaType {
         match self {
             UserAreaType::MmapAnonymous => write!(f, "MmapAnonymous"),
             UserAreaType::MmapPrivate { file: _, offset } => {
-                write!(f, "MmapPrivate {{ offset: {} }}", offset)
+                write!(f, "MmapPrivate {{ offset: {offset} }}")
             }
-            UserAreaType::Shm { id, shm: _ } => write!(f, "Shm {{ id: {} }}", id),
+            UserAreaType::Shm { id, shm: _ } => write!(f, "Shm {{ id: {id} }}"),
         }
     }
 }

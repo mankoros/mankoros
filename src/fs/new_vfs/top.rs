@@ -144,7 +144,7 @@ macro_rules! impl_vfs_default_non_dir {
         ) -> $crate::tools::errors::ASysResult<$crate::fs::new_vfs::top::VfsFileRef> {
             unimplemented!(concat!(stringify!($ty), "::create"))
         }
-        fn remove(&self, _name: &str) -> crate::tools::errors::ASysResult {
+        fn remove(&self, _name: &str) -> $crate::tools::errors::ASysResult {
             unimplemented!(concat!(stringify!($ty), "::remove"))
         }
         fn detach(
@@ -219,7 +219,7 @@ macro_rules! impl_vfs_forward_dir {
         fn create<'a>(&'a self, name: &'a str, kind: $crate::fs::new_vfs::VfsFileKind) -> $crate::tools::errors::ASysResult<$crate::fs::new_vfs::top::VfsFileRef> {
             self.$($e)+.create(name, kind)
         }
-        fn remove<'a>(&'a self, name: &'a str) -> crate::tools::errors::ASysResult {
+        fn remove<'a>(&'a self, name: &'a str) -> $crate::tools::errors::ASysResult {
             self.$($e)+.remove(name)
         }
         fn detach<'a>(&'a self, name: &'a str) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {

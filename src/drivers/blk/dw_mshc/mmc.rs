@@ -311,7 +311,7 @@ impl MMC {
         // Wait for data transfer complete if data expected
         if cmd.data_expected() {
             let buffer = // TODO: dirty
-                buffer.unwrap_or(unsafe { core::slice::from_raw_parts_mut(core::ptr::null_mut::<usize>(), 64) });
+                buffer.unwrap_or(unsafe { core::slice::from_raw_parts_mut(core::ptr::NonNull::dangling().as_ptr(), 64) });
             assert!(buffer_offset == 0);
             if is_read {
                 wait_for!({

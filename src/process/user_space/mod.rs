@@ -19,7 +19,7 @@ use crate::{
         aux_vector::AuxElement,
         user_space::user_area::{iter_vpn, PageFaultAccessType},
     },
-    tools::errors::{SysError, SysResult},
+    tools::errors::SysResult,
 };
 
 use super::{aux_vector::AuxVector, pid::Pid};
@@ -364,7 +364,7 @@ impl UserSpace {
     }
 
     pub fn force_map_buf(&mut self, buf: &[u8], perm: UserAreaPerm) {
-        if buf.len() == 0 {
+        if buf.is_empty() {
             return;
         }
         let begin = VirtAddr::from(buf.as_ptr() as usize);

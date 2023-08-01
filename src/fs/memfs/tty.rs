@@ -41,7 +41,7 @@ impl VfsFile for TTY {
     fn get_page(&self, _offset: usize, _kind: MmapKind) -> ASysResult<PhysAddr4K> {
         dyn_future(async move { unimplemented!() })
     }
-    fn truncate(&self, length: usize) -> ASysResult {
+    fn truncate(&self, _length: usize) -> ASysResult {
         dyn_future(async move { unimplemented!() })
     }
 

@@ -24,7 +24,7 @@ impl Debug for Path {
             if idx > 0 {
                 write!(f, "/")?;
             }
-            write!(f, "{}", p)?;
+            write!(f, "{p}")?;
         }
         Ok(())
     }
@@ -85,7 +85,7 @@ impl Path {
     }
 
     pub fn to_string(&self) -> String {
-        format!("{:?}", self)
+        format!("{self:?}")
     }
 
     pub fn append(&self, other: &Self) -> Self {

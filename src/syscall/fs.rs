@@ -13,8 +13,8 @@ use crate::{
         memfs::zero::ZeroDev,
         new_vfs::{path::Path, top::VfsFileRef, VfsFileKind},
     },
-    memory::{address::VirtAddr, UserReadPtr, UserWritePtr},
-    process::{lproc::NewFdRequirement, user_space::user_area::UserAreaPerm},
+    memory::{UserReadPtr, UserWritePtr},
+    process::lproc::NewFdRequirement,
     tools::{
         errors::{SysError, SysResult},
         user_check::UserCheck,
@@ -233,7 +233,7 @@ impl<'a> Syscall<'a> {
             Ok(new_file) => {
                 if new_file.is_dir().await? {
                     let subdirs = new_file.list().await?;
-                    if subdirs.len() > 0 {
+                    if !subdirs.is_empty() {
                         return Err(SysError::ENOTEMPTY);
                     }
                     // replace
@@ -521,7 +521,7 @@ impl<'a> Syscall<'a> {
         dir: VfsFileRef,
         file_name: &str,
     ) -> SysResult<VfsFileRef> {
-        if file_name == "" {
+        if file_name.is_empty() {
             Ok(dir)
         } else {
             dir.lookup(file_name).await

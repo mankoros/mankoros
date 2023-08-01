@@ -107,9 +107,7 @@ pub fn test_first_frame() {
     let kernel_end = kernel_virt_text_to_phys(kernel_end);
     assert!(
         first_frame.bits() == kernel_end,
-        "first_frame: 0x{:x}, kernel_end: 0x{:x}",
-        first_frame,
-        kernel_end
+        "first_frame: 0x{first_frame:x}, kernel_end: 0x{kernel_end:x}"
     );
     info!("Frame allocator self test passed.");
     info!("First available frame: 0x{:x}", first_frame);
