@@ -95,6 +95,23 @@ impl VfsFileRef {
         Self(Arc::new(file))
     }
 
+    pub async fn kind(&self) -> SysResult<VfsFileKind> {
+        self.attr().await.map(|attr| attr.kind)
+    }
+    pub async fn size(&self) -> SysResult<usize> {
+        self.attr().await.map(|attr| attr.byte_size)
+    }
+
+    pub async fn is_dir(&self) -> SysResult<bool> {
+        Ok(self.kind().await? == VfsFileKind::Directory)
+    }
+    pub async fn is_file(&self) -> SysResult<bool> {
+        Ok(self.kind().await? == VfsFileKind::RegularFile)
+    }
+    pub async fn is_symlink(&self) -> SysResult<bool> {
+        Ok(self.kind().await? == VfsFileKind::SymbolLink)
+    }
+
     pub async fn resolve(&self, path: &Path) -> SysResult<Self> {
         let mut cur = self.clone();
         for name in path.iter() {

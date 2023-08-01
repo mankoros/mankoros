@@ -68,6 +68,8 @@ impl<'a> Syscall<'a> {
             SYSCALL_FSYNC => self.sys_do_nothing("fsync"),
             SYSCALL_FTURNCATE => self.sys_fturncate().await,
             SYSCALL_READLINKAT => self.sys_readlinkat().await,
+            SYSCALL_RENAMEAT2 => self.sys_renameat2().await,
+            SYSCALL_UTIMENSAT => self.sys_utimensat().await,
 
             // Process related
             SYSCALL_GETCWD => self.sys_getcwd(),
