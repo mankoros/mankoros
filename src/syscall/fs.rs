@@ -200,6 +200,78 @@ impl<'a> Syscall<'a> {
         Ok(0)
     }
 
+    pub async fn sys_renameat2(&self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (old_dir_fd, old_path, new_dir_fd, new_path) = (
+            args[0],
+            UserReadPtr::<u8>::from(args[1]),
+            args[2],
+            UserReadPtr::<u8>::from(args[3]),
+        );
+
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+        let old_path = user_check.checked_read_cstr(old_path.raw_ptr())?;
+        let new_path = user_check.checked_read_cstr(new_path.raw_ptr())?;
+
+        let (old_dir, old_file_name) = self.at_helper(old_dir_fd, old_path, 0).await?;
+        let (new_dir, new_file_name) = self.at_helper(new_dir_fd, new_path, 0).await?;
+
+        if old_dir.attr().await?.kind != VfsFileKind::Directory {
+            return Err(SysError::ENOTDIR);
+        }
+        if new_dir.attr().await?.kind != VfsFileKind::Directory {
+            return Err(SysError::ENOTDIR);
+        }
+
+        // TODO: check:
+        // EINVAL:
+        //      The new pathname contained a path prefix of the old, or, more generally,
+        //      an attempt was made to make a directory a subdirectory of itself.
+
+        let new_file_result = self.lookup_helper(new_dir.clone(), &new_file_name).await;
+        match new_file_result {
+            Ok(new_file) => {
+                if new_file.is_dir().await? {
+                    let subdirs = new_file.list().await?;
+                    if subdirs.len() > 0 {
+                        return Err(SysError::ENOTEMPTY);
+                    }
+                    // replace
+                    let old_file = old_dir.detach(&old_file_name).await?;
+                    new_dir.remove(&new_file_name).await?;
+                    new_dir.attach(&new_file_name, old_file).await?;
+                }
+            }
+            Err(SysError::ENOENT) => {
+                let old_file = old_dir.detach(&old_file_name).await?;
+                new_dir.attach(&new_file_name, old_file).await?;
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        }
+
+        Ok(0)
+    }
+
+    pub async fn sys_utimensat(&self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (dir_fd, path, _times, _flags) =
+            (args[0], UserReadPtr::<u8>::from(args[1]), args[2], args[3]);
+
+        let user_check = UserCheck::new_with_sum(&self.lproc);
+        let path = user_check.checked_read_cstr(path.raw_ptr())?;
+
+        let (dir, file_name) = self.at_helper(dir_fd, path, 0).await?;
+        if !dir.is_dir().await? {
+            return Err(SysError::ENOTDIR);
+        }
+
+        log::warn!("utimensat: do NOT update the time, just check the file exists");
+        let _file = self.lookup_helper(dir.clone(), &file_name).await?;
+        Ok(0)
+    }
+
     pub fn sys_dup(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
         let fd = args[0];
@@ -383,6 +455,13 @@ impl<'a> Syscall<'a> {
 
         let path = Path::from_string(path_name)?;
 
+        log::warn!(
+            "path: {:?} (is_absolute: {}, is_current: {})",
+            path,
+            path.is_absolute(),
+            path.is_current()
+        );
+
         if path.is_absolute() {
             if path.is_root() {
                 // 处理在根目录下解析 "/" 的情况
@@ -416,6 +495,19 @@ impl<'a> Syscall<'a> {
         }
 
         Ok((dir, file_name))
+    }
+
+    /// if file_name is "", return dir; otherwise, return dir/file_name
+    pub(super) async fn lookup_helper(
+        &self,
+        dir: VfsFileRef,
+        file_name: &str,
+    ) -> SysResult<VfsFileRef> {
+        if file_name == "" {
+            Ok(dir)
+        } else {
+            dir.lookup(file_name).await
+        }
     }
 
     pub fn sys_fcntl(&mut self) -> SyscallResult {

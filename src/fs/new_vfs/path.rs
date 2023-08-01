@@ -54,7 +54,7 @@ impl Path {
     pub fn from_string(path: String) -> SysResult<Self> {
         // TODO: 找到到底哪里有可能使得路径解析失败了
         let is_absolute = path.starts_with('/');
-        let is_current = path == ".";
+        let mut is_current = path == ".";
         let mut components = VecDeque::new();
         for part in path.split('/') {
             match part {
@@ -69,6 +69,9 @@ impl Path {
                 }
             }
         }
+
+        // for "././././."
+        is_current |= components.is_empty();
 
         Ok(Self {
             components,
@@ -333,6 +336,14 @@ pub fn path_test() {
     );
     debug_assert_eq!(
         Path::from_string(String::from(".")).unwrap().to_string(),
+        ""
+    );
+    debug_assert_eq!(
+        Path::from_string(String::from("./")).unwrap().to_string(),
+        ""
+    );
+    debug_assert_eq!(
+        Path::from_string(String::from("././././././.")).unwrap().to_string(),
         ""
     );
 }
