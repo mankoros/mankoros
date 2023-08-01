@@ -454,8 +454,7 @@ impl<'a> Syscall<'a> {
         let file_name;
 
         let path = Path::from_string(path_name)?;
-
-        log::warn!(
+        log::trace!(
             "path: {:?} (is_absolute: {}, is_current: {})",
             path,
             path.is_absolute(),

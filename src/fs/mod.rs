@@ -39,6 +39,7 @@ async fn mount_all_fs() -> SysResult<()> {
     // Mount devfs
     let dev_dir = VfsFileRef::new(TmpDir::new());
     root_dir.attach("dev", dev_dir.clone()).await?;
+    dev_dir.attach("null", VfsFileRef::new(ZeroDev)).await?;
     dev_dir.attach("zero", VfsFileRef::new(ZeroDev)).await?;
     dev_dir.attach("vda2", VfsFileRef::new(ZeroDev)).await?;
     dev_dir.attach("tty", VfsFileRef::new(TTY)).await?;

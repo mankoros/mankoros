@@ -29,7 +29,10 @@ impl Syscall<'_> {
         let args = self.cx.syscall_args();
         let (fd, buf, len) = (args[0], UserReadPtr::from_usize(args[1]), args[2]);
 
-        info!("Syscall: write, fd {fd}, len: {len}");
+        info!(
+            "Syscall: write, fd {fd}, len: {len}, pid: {:?}",
+            self.lproc.id()
+        );
 
         let buf = unsafe { core::slice::from_raw_parts(buf.raw_ptr(), len) };
         let fd = self.lproc.with_mut_fdtable(|f| f.get(fd));
@@ -48,10 +51,11 @@ impl Syscall<'_> {
         let (fd, buf, len) = (args[0], UserWritePtr::from_usize(args[1]), args[2]);
 
         info!(
-            "Syscall: read, fd {}, buf: {:x}, len: {}",
+            "Syscall: read, fd {}, buf: {:x}, len: {}, pid: {:?}",
             fd,
             buf.as_usize(),
-            len
+            len,
+            self.lproc.id()
         );
 
         // *mut u8 does not implement Send
