@@ -1,4 +1,5 @@
 use super::new_vfs::{
+    mount::MountManager,
     top::{MmapKind, PollKind, VfsFS, VfsFile, VfsFileRef},
     VfsFileAttr, VfsFileKind,
 };
@@ -70,6 +71,24 @@ impl VfsFS for ProcFS {
 
 pub struct ProcFSRootDir;
 
+impl ProcFSRootDir {
+    fn create_mounts(&self) -> VfsFileRef {
+        VfsFileRef::new(ProcFSStandaloneFile {
+            kind: VfsFileKind::RegularFile,
+            f: || {
+                concat!(
+                    "procfs /proc procfs rw 0 0\n",
+                    "devfs /dev devfs rw 0 0\n",
+                    "/dev/sda / fat32 rw 0 0\n"
+                )
+                .to_string()
+                .as_bytes()
+                .into()
+            },
+        })
+    }
+}
+
 impl VfsFile for ProcFSRootDir {
     impl_vfs_default_non_file!(ProcFSRootDir);
     impl_proc_dir_default!();
@@ -92,6 +111,11 @@ impl VfsFile for ProcFSRootDir {
                 let file = VfsFileRef::new(ProcFSProcDir::new(curr_proc));
                 ret.push(("self".into(), file));
             }
+            {
+                // add mounts
+                let file = self.create_mounts();
+                ret.push(("mounts".into(), file));
+            }
 
             Ok(ret)
         })
@@ -99,6 +123,10 @@ impl VfsFile for ProcFSRootDir {
 
     fn lookup<'a>(&'a self, name: &'a str) -> ASysResult<VfsFileRef> {
         dyn_future(async move {
+            if name == "mounts" {
+                return Ok(self.create_mounts());
+            }
+
             let lproc = if name == "self" {
                 get_curr_lproc().ok_or(SysError::ENOENT)?
             } else {
@@ -184,6 +212,64 @@ impl VfsFile for ProcFSNormalFile {
     fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
         dyn_future(async move {
             let data = (self.f)(&self.lproc);
+            let len = core::cmp::min(data.len() - offset, buf.len());
+            buf[..len].copy_from_slice(&data[offset..offset + len]);
+            Ok(len)
+        })
+    }
+
+    fn write_at<'a>(&'a self, _offset: usize, _buf: &'a [u8]) -> ASysResult<usize> {
+        dyn_future(async { Err(SysError::EPERM) })
+    }
+    fn truncate(&self, _length: usize) -> ASysResult {
+        dyn_future(async { Err(SysError::EPERM) })
+    }
+
+    fn get_page(&self, _offset: usize, _kind: MmapKind) -> ASysResult<PhysAddr4K> {
+        todo!()
+    }
+    fn poll_ready(&self, _offset: usize, _len: usize, _kind: PollKind) -> ASysResult<usize> {
+        todo!()
+    }
+    fn poll_read(&self, _offset: usize, _buf: &mut [u8]) -> usize {
+        todo!()
+    }
+    fn poll_write(&self, _offset: usize, _buf: &[u8]) -> usize {
+        todo!()
+    }
+    fn as_any(&self) -> &dyn core::any::Any {
+        todo!()
+    }
+}
+
+pub type GetStandardaloneStringInfoFn = fn() -> Box<[u8]>;
+
+pub struct ProcFSStandaloneFile {
+    kind: VfsFileKind,
+    f: GetStandardaloneStringInfoFn,
+}
+
+impl VfsFile for ProcFSStandaloneFile {
+    impl_vfs_default_non_dir!(ProcFSStandaloneFile);
+
+    fn attr(&self) -> ASysResult<VfsFileAttr> {
+        dyn_future(async {
+            Ok(VfsFileAttr {
+                kind: self.kind,
+                device_id: 0,
+                self_device_id: 0,
+                byte_size: (self.f)().len(),
+                block_count: 0,
+                access_time: 0,
+                modify_time: 0,
+                create_time: 0,
+            })
+        })
+    }
+
+    fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
+        dyn_future(async move {
+            let data = (self.f)();
             let len = core::cmp::min(data.len() - offset, buf.len());
             buf[..len].copy_from_slice(&data[offset..offset + len]);
             Ok(len)
