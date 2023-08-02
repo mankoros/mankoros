@@ -179,7 +179,7 @@ impl<'a> Syscall<'a> {
         let path = path.read_cstr(&self.lproc)?;
         let mut path = Path::from_string(path).expect("Error parsing path");
 
-        let root_fs = fs::root::get_root_dir();
+        let root_fs = fs::get_root_dir();
 
         if !path.is_absolute() {
             // FIXME: us dir_fd to determine current dir
@@ -448,6 +448,38 @@ impl<'a> Syscall<'a> {
         Ok(0)
     }
 
+    pub async fn sys_statfs(&self) -> SyscallResult {
+        #[repr(C)]
+        struct StatFS {
+            /// Type of filesystem (see below)
+            f_type: i64,
+            /// Optimal transfer block size
+            f_bsize: i64,
+            /// Total data blocks in filesystem
+            f_blocks: u64,
+            /// Free blocks in filesystem
+            f_bfree: u64,
+            /// Free blocks available to
+            f_bavail: u64,
+            /// Total file nodes in filesystem
+            f_files: u64,
+            /// Free file nodes in filesystem
+            f_ffree: u64,
+            /// Filesystem ID
+            f_fsid: [i32; 2],
+            /// Maximum length of filenames
+            f_namelen: i64,
+            /// Fragment size (since Linux 2.6)
+            f_frsize: i64,
+            /// Mount flags of filesystem
+            f_flags: i64,
+            /// Padding bytes reserved for future use
+            f_spare: [i64; 4],
+        }
+
+        todo!()
+    }
+
     /// Path resolve helper for __at syscall
     /// return (dir, filename)
     pub(super) async fn at_helper(
@@ -470,20 +502,20 @@ impl<'a> Syscall<'a> {
         if path.is_absolute() {
             if path.is_root() {
                 // 处理在根目录下解析 "/" 的情况
-                dir = fs::root::get_root_dir();
+                dir = fs::get_root_dir();
                 file_name = String::from("");
             } else {
                 let dir_path = path.remove_tail();
-                dir = fs::root::get_root_dir().resolve(&dir_path).await?;
+                dir = fs::get_root_dir().resolve(&dir_path).await?;
                 file_name = path.last().clone();
             }
         } else {
             let fd_dir = if dir_fd == AT_FDCWD {
                 let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone());
                 if cwd.is_root() {
-                    fs::root::get_root_dir()
+                    fs::get_root_dir()
                 } else {
-                    fs::root::get_root_dir().resolve(&cwd).await?
+                    fs::get_root_dir().resolve(&cwd).await?
                 }
             } else {
                 self.lproc.with_fdtable(|f| f.get(dir_fd)).ok_or(SysError::EBADF)?.file.clone()
@@ -573,7 +605,7 @@ impl<'a> Syscall<'a> {
         }
 
         let (path, name) = mount_point.split_dir_file();
-        let dir = fs::root::get_root_dir().resolve(&path).await?;
+        let dir = fs::get_root_dir().resolve(&path).await?;
         if dir.lookup(&name).await.is_err() {
             warn!("mount: user gives a non-exist dir: {:?}", path);
             warn!("mount: to pass the test, we create it");
@@ -596,7 +628,7 @@ impl<'a> Syscall<'a> {
         // Canonicalize path
         let mount_point = Path::from_string(mount_point)?;
         let (dir_path, file_name) = mount_point.split_dir_file();
-        fs::root::get_root_dir().resolve(&dir_path).await?.detach(&file_name).await?;
+        fs::get_root_dir().resolve(&dir_path).await?.detach(&file_name).await?;
         Ok(0)
     }
 }

@@ -271,7 +271,7 @@ fn run_preliminary_test() {
         "sleep",
     ];
 
-    let root_dir = fs::root::get_root_dir();
+    let root_dir = fs::get_root_dir();
     for case_name in cases.into_iter() {
         let test_case = block_on(root_dir.lookup(case_name));
         if test_case.is_err() {

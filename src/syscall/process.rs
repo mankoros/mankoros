@@ -62,7 +62,7 @@ impl<'a> Syscall<'a> {
         let path = Path::from_string(path)?;
 
         // check whether the path is a directory
-        let root_fs = fs::root::get_root_dir();
+        let root_fs = fs::get_root_dir();
         let file = root_fs.resolve(&path).await?;
         if !file.is_dir().await? {
             return Err(SysError::ENOTDIR);
@@ -325,9 +325,9 @@ impl<'a> Syscall<'a> {
         let file = if filename.ends_with(".sh") {
             argv.insert(0, String::from("busybox"));
             argv.insert(1, String::from("sh"));
-            fs::root::get_root_dir().lookup("busybox").await?
+            fs::get_root_dir().lookup("busybox").await?
         } else {
-            fs::root::get_root_dir().resolve(&path).await?
+            fs::get_root_dir().resolve(&path).await?
         };
 
         self.lproc.do_exec(file, argv, envp).await;

@@ -1,13 +1,13 @@
 use super::{
     path::Path,
-    top::{VfsFS, VfsFile, VfsFileRef},
+    top::{VfsFSRef, VfsFile, VfsFileRef},
     DeviceID,
 };
-use crate::{impl_vfs_default_non_file, impl_vfs_forward_dir};
-use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
+use crate::{here, impl_vfs_default_non_file, impl_vfs_forward_dir, sync::SpinNoIrqLock};
+use alloc::{collections::BTreeMap, vec::Vec};
 
 pub struct MountPoint {
-    fs: Arc<dyn VfsFS>,
+    fs: VfsFSRef,
     root: VfsFileRef,
 }
 
@@ -15,7 +15,7 @@ unsafe impl Send for MountPoint {}
 unsafe impl Sync for MountPoint {}
 
 impl MountPoint {
-    pub fn new(fs: Arc<dyn VfsFS>) -> Self {
+    fn new(fs: VfsFSRef) -> Self {
         let root = fs.root();
         Self { fs, root }
     }
@@ -34,8 +34,26 @@ impl VfsFile for MountPoint {
     impl_vfs_default_non_file!(MountPoint);
 }
 
-pub struct MountManager {
-    mounted_fs: BTreeMap<DeviceID, Arc<dyn VfsFS>>,
+pub struct GlobalMountManager {
+    mounted_fs: BTreeMap<DeviceID, VfsFSRef>,
     // 按照路径的长度降序排序
-    mount_points: Vec<(Path, MountPoint)>,
+    mount_points: Vec<(Path, VfsFSRef)>,
+}
+
+static MGR: SpinNoIrqLock<GlobalMountManager> = SpinNoIrqLock::new(GlobalMountManager {
+    mounted_fs: BTreeMap::new(),
+    mount_points: Vec::new(),
+});
+
+impl GlobalMountManager {
+    pub fn register(path: Path, fs: VfsFSRef) -> MountPoint {
+        MGR.lock(here!()).mount_points.push((path, fs.clone()));
+        MountPoint::new(fs)
+    }
+    /// just helper function for [[register]]
+    pub fn register_as_file(path: &str, fs: VfsFSRef) -> VfsFileRef {
+        let path = Path::from(path);
+        let mp = Self::register(path, fs);
+        VfsFileRef::new(mp)
+    }
 }

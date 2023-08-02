@@ -1,6 +1,6 @@
 use alloc::sync::Arc;
 
-use crate::process::{lproc::LightProcess, pid::Pid};
+use crate::process::lproc::LightProcess;
 use core::arch::asm;
 
 pub struct HartLocalInfo {

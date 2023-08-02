@@ -10,7 +10,7 @@ use alloc::{boxed::Box, sync::Arc, vec::Vec};
 
 use crate::fs::new_vfs::path_cache::PathCacheDir;
 use crate::fs::new_vfs::sync_attr_file::SyncAttrFile;
-use crate::fs::new_vfs::top::{VfsFS, VfsFileRef};
+use crate::fs::new_vfs::top::{VfsFS, VfsFSAttr, VfsFSKind, VfsFileRef, NORMAL_FILE_NAME_LENGTH};
 
 use core::pin::Pin;
 use core::slice;
@@ -229,6 +229,13 @@ impl FATTableManager {
         self.fat[cid as usize]
     }
 
+    pub fn cluster_count(&self) -> usize {
+        self.fat.len()
+    }
+    pub fn free_cluster_count(&self) -> usize {
+        self.fat.iter().filter(|&&v| v == 0).count()
+    }
+
     pub fn find_first_free(&self) -> ClusterID {
         // TODO: optimize
         for (i, &v) in self.fat.iter().enumerate() {
@@ -335,5 +342,24 @@ impl VfsFS for FatFSWrapper {
             crate::fs::new_vfs::VfsFileKind::Directory,
         );
         VfsFileRef::new(PathCacheDir::new_root(SyncAttrFile::new(cf)))
+    }
+
+    fn attr(&self) -> VfsFSAttr {
+        let (total_cls_cnt, free_cls_cnt) =
+            self.get().with_fat(|f| (f.cluster_count(), f.free_cluster_count()));
+        let cls_size_byte = self.get().cluster_size_byte as usize;
+
+        let total_block_size = total_cls_cnt * cls_size_byte;
+        let free_block_size = free_cls_cnt * cls_size_byte;
+
+        VfsFSAttr {
+            kind: VfsFSKind::Fat,
+            fs_id: self.fs.device_id(),
+            total_block_size,
+            free_block_size,
+            total_file_count: total_cls_cnt,
+            free_file_count: free_cls_cnt,
+            max_file_name_length: NORMAL_FILE_NAME_LENGTH,
+        }
     }
 }

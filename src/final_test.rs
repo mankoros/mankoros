@@ -40,7 +40,7 @@ pub fn run_iozone() {
 }
 
 fn run_script(name: &str) {
-    let root_dir = fs::root::get_root_dir();
+    let root_dir = fs::get_root_dir();
     let busybox = block_on(root_dir.lookup("busybox")).expect("Read busybox failed");
 
     let args = ["busybox", "sh", name]
@@ -77,7 +77,7 @@ fn run_script(name: &str) {
 
 fn run_binary(path: &str, args: Vec<String>) {
     let path = Path::from(path);
-    let root_dir = fs::root::get_root_dir();
+    let root_dir = fs::get_root_dir();
     let bin = block_on(root_dir.resolve(&path)).expect("Read binary failed");
 
     // Some necessary environment variables.

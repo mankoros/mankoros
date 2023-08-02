@@ -9,8 +9,48 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
+pub enum VfsFSKind {
+    Fat,
+    Dev,
+    Tmp,
+    Proc,
+}
+
+pub struct VfsFSAttr {
+    pub kind: VfsFSKind,
+    pub fs_id: usize,
+
+    pub total_block_size: usize,
+    pub free_block_size: usize,
+
+    // will be the fat count for fat32
+    pub total_file_count: usize,
+    // will be the free fat count for fat32
+    pub free_file_count: usize,
+
+    pub max_file_name_length: usize,
+}
+
+impl VfsFSAttr {
+    pub fn default_mem(kind: VfsFSKind, id: usize) -> Self {
+        Self {
+            kind,
+            fs_id: id,
+            total_block_size: 0,
+            free_block_size: 0,
+            total_file_count: 0,
+            free_file_count: 0,
+            max_file_name_length: NORMAL_FILE_NAME_LENGTH,
+        }
+    }
+}
+
+/// 如果理论上一个 FS 能支持无限长的文件名, 那么它可以取这个典型值
+pub const NORMAL_FILE_NAME_LENGTH: usize = 511;
+
 pub trait VfsFS {
     fn root(&self) -> VfsFileRef;
+    fn attr(&self) -> VfsFSAttr;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,6 +158,31 @@ impl VfsFileRef {
             cur = cur.lookup(name).await?;
         }
         Ok(cur)
+    }
+}
+
+#[derive(Clone)]
+pub struct VfsFSRef(Arc<dyn VfsFS>);
+
+unsafe impl Send for VfsFSRef {}
+unsafe impl Sync for VfsFSRef {}
+
+impl VfsFSRef {
+    pub fn new<T: VfsFS + 'static>(fs: T) -> Self {
+        Self(Arc::new(fs))
+    }
+}
+
+impl Deref for VfsFSRef {
+    type Target = dyn VfsFS;
+    fn deref(&self) -> &Self::Target {
+        &*self.0
+    }
+}
+
+impl DerefMut for VfsFSRef {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        Arc::get_mut(&mut self.0).expect("VfsFileRef is not unique")
     }
 }
 

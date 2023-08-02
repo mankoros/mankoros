@@ -4,13 +4,13 @@ use crate::{
     consts::MAX_OPEN_FILES,
     executor::util_futures::AnyFuture,
     fs::{
+        self,
         new_vfs::{
             path::Path,
             top::{PollKind, VfsFileRef},
             VfsFileKind,
         },
         pipe::Pipe,
-        root::get_root_dir,
     },
     memory::{address::VirtAddr, UserInOutPtr, UserReadPtr, UserWritePtr},
     process::user_space::user_area::UserAreaPerm,
@@ -132,7 +132,7 @@ impl Syscall<'_> {
                     } else {
                         curr_path.append(&next_path)
                     };
-                    file = get_root_dir().resolve(&curr_path).await?;
+                    file = fs::get_root_dir().resolve(&curr_path).await?;
                 } else {
                     break file.clone();
                 };

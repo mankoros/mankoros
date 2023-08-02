@@ -30,7 +30,7 @@ pub fn spawn_proc_from_file(path: Path, file: VfsFileRef) {
 pub fn spawn_init() {
     // Currently, we use busybox sh as the init process.
 
-    let root_dir = fs::root::get_root_dir();
+    let root_dir = fs::get_root_dir();
     let busybox = block_on(root_dir.lookup("busybox")).expect("Read busybox failed");
 
     let args = ["busybox", "sh"]

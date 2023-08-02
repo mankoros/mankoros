@@ -1,6 +1,9 @@
 use super::new_vfs::{
-    top::{MmapKind, PollKind, VfsFS, VfsFile, VfsFileRef},
-    VfsFileAttr, VfsFileKind,
+    top::{
+        MmapKind, PollKind, VfsFS, VfsFSAttr, VfsFSKind, VfsFile, VfsFileRef,
+        NORMAL_FILE_NAME_LENGTH,
+    },
+    DeviceIDCollection, VfsFileAttr, VfsFileKind,
 };
 use crate::{
     executor::hart_local::get_curr_lproc,
@@ -65,6 +68,9 @@ pub struct ProcFS;
 impl VfsFS for ProcFS {
     fn root(&self) -> VfsFileRef {
         VfsFileRef::new(ProcFSRootDir)
+    }
+    fn attr(&self) -> VfsFSAttr {
+        VfsFSAttr::default_mem(VfsFSKind::Proc, DeviceIDCollection::PROC_FS_ID)
     }
 }
 
