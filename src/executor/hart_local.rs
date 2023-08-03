@@ -65,7 +65,7 @@ pub fn set_curr_lproc(lproc: Arc<LightProcess>) {
 pub fn no_irq_push() {
     let curr = get_curr_hart_info();
     if curr.no_irq_cnt == 0 {
-        unsafe { riscv::interrupt::disable() };
+        unsafe { riscv::register::sstatus::clear_sie() };
     }
     curr.no_irq_cnt += 1;
 }
@@ -103,13 +103,14 @@ impl Drop for AutoSIE {
 pub fn sum_mode_push() {
     let curr = get_curr_hart_info();
     if curr.sum_cnt == 0 {
-        unsafe { riscv::register::sstatus::clear_sie() };
+        unsafe { riscv::register::sstatus::set_sum() };
     }
     curr.sum_cnt += 1;
 }
 
 pub fn sum_mode_pop() {
     let curr = get_curr_hart_info();
+    debug_assert_ne!(curr.sum_cnt, 0);
     if curr.sum_cnt == 1 {
         unsafe { riscv::register::sstatus::clear_sum() };
     }
@@ -123,4 +124,17 @@ pub fn within_sum<T>(f: impl FnOnce() -> T) -> T {
     let ret = f();
     sum_mode_pop();
     ret
+}
+
+pub struct AutoSUM;
+impl AutoSUM {
+    pub fn new() -> Self {
+        sum_mode_push();
+        Self {}
+    }
+}
+impl Drop for AutoSUM {
+    fn drop(&mut self) {
+        sum_mode_pop();
+    }
 }

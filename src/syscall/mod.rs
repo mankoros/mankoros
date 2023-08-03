@@ -11,6 +11,7 @@ use crate::{process::lproc::LightProcess, tools::errors::SysError};
 use alloc::sync::Arc;
 use log::{info, warn};
 
+use crate::executor::hart_local::AutoSUM;
 pub use process::CloneFlags;
 
 pub struct Syscall<'a> {
@@ -30,6 +31,8 @@ impl<'a> Syscall<'a> {
 
     #[inline(always)]
     pub async fn syscall(&mut self) -> bool {
+        let _auto_sum = AutoSUM::new();
+
         // 用作系统调用的 ecall 指令只能是 4 byte 长的, 它没有 C 扩展版本
         self.cx.set_user_pc_to_next(4);
 

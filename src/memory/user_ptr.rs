@@ -5,11 +5,10 @@
 
 #![allow(dead_code)]
 use crate::{
-    executor::hart_local::within_sum,
     memory::address::VirtAddr,
     process::{lproc::LightProcess, user_space::user_area::PageFaultAccessType},
     tools::errors::{SysError, SysResult},
-    trap::trap::will_read_fail,
+    trap::trap::{set_kernel_trap, set_kernel_user_rw_trap, will_read_fail},
 };
 use alloc::{string::String, sync::Arc, vec::Vec};
 use core::{
@@ -54,17 +53,18 @@ unsafe impl<T: Clone + Copy + 'static, P: Policy> Send for UserPtr<T, P> {}
 unsafe impl<T: Clone + Copy + 'static, P: Policy> Sync for UserPtr<T, P> {}
 
 impl<T: Clone + Copy + 'static, P: Policy> UserPtr<T, P> {
-    pub fn null() -> Self {
+    fn new(ptr: *mut T) -> Self {
         Self {
-            ptr: core::ptr::null_mut(),
+            ptr,
             _mark: PhantomData,
         }
     }
+
+    pub fn null() -> Self {
+        Self::new(core::ptr::null_mut())
+    }
     pub fn from_usize(a: usize) -> Self {
-        Self {
-            ptr: a as *mut _,
-            _mark: PhantomData,
-        }
+        Self::new(a as *mut T)
     }
     pub fn is_null(self) -> bool {
         self.ptr.is_null()
@@ -83,22 +83,13 @@ impl<T: Clone + Copy + 'static, P: Policy> UserPtr<T, P> {
         Some(self.ptr)
     }
     pub fn offset(self, count: isize) -> Self {
-        Self {
-            ptr: unsafe { self.ptr.offset(count) },
-            _mark: PhantomData,
-        }
+        Self::new(unsafe { self.ptr.offset(count) })
     }
     pub fn transmute<V: Clone + Copy + 'static>(self) -> UserPtr<V, P> {
-        UserPtr {
-            ptr: self.ptr as *mut V,
-            _mark: PhantomData,
-        }
+        UserPtr::new(self.ptr as *mut V)
     }
     pub fn add(self, count: usize) -> Self {
-        Self {
-            ptr: unsafe { self.ptr.add(count) },
-            _mark: PhantomData,
-        }
+        Self::new(unsafe { self.ptr.add(count) })
     }
 }
 impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
@@ -114,19 +105,19 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
             size_of::<T>(),
             PageFaultAccessType::RO,
         )?;
-        let res = within_sum(|| unsafe { &*self.ptr });
+        let res = unsafe { &*self.ptr };
         Ok(res)
     }
 
     #[must_use]
     pub fn as_slice(self, n: usize, lproc: &Arc<LightProcess>) -> SysResult<&[T]> {
-        debug_assert!(!self.is_null());
+        debug_assert!(n == 0 || !self.is_null());
         lproc.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>() * n,
             PageFaultAccessType::RO,
         )?;
-        let res = within_sum(|| unsafe { core::slice::from_raw_parts(self.ptr, n) });
+        let res = unsafe { core::slice::from_raw_parts(self.ptr, n) };
         Ok(res)
     }
 
@@ -138,13 +129,13 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
             size_of::<T>(),
             PageFaultAccessType::RO,
         )?;
-        let res = within_sum(|| unsafe { core::ptr::read(self.ptr) });
+        let res = unsafe { core::ptr::read(self.ptr) };
         Ok(res)
     }
 
     #[must_use]
     pub fn read_array(self, n: usize, lproc: &Arc<LightProcess>) -> SysResult<Vec<T>> {
-        debug_assert!(!self.is_null());
+        debug_assert!(n == 0 || !self.is_null());
         lproc.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>() * n,
@@ -152,13 +143,12 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
         )?;
 
         let mut res = Vec::with_capacity(n);
-        within_sum(|| unsafe {
-            let mut ptr = self.ptr;
-            for _ in 0..n {
-                res.push(ptr.read());
-                ptr = ptr.offset(1);
+        unsafe {
+            let ptr = self.ptr;
+            for i in 0..n {
+                res.push(ptr.add(i).read());
             }
-        });
+        }
 
         Ok(res)
     }
@@ -167,6 +157,7 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
 impl<P: Read> UserPtr<u8, P> {
     #[must_use]
     pub fn read_cstr(self, lproc: &Arc<LightProcess>) -> SysResult<String> {
+        debug_assert!(!self.is_null());
         let mut str = String::with_capacity(32);
         let mut has_ended = false;
 
@@ -213,19 +204,19 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
             size_of::<T>(),
             PageFaultAccessType::RW,
         )?;
-        let res = within_sum(|| unsafe { &mut *self.ptr });
+        let res = unsafe { &mut *self.ptr };
         Ok(res)
     }
 
     #[must_use]
     pub fn as_mut_slice(self, n: usize, lproc: &Arc<LightProcess>) -> SysResult<&mut [T]> {
-        debug_assert!(!self.is_null());
+        debug_assert!(n == 0 || !self.is_null());
         lproc.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>() * n,
             PageFaultAccessType::RW,
         )?;
-        let res = within_sum(|| unsafe { core::slice::from_raw_parts_mut(self.ptr, n) });
+        let res = unsafe { core::slice::from_raw_parts_mut(self.ptr, n) };
         Ok(res)
     }
 
@@ -237,7 +228,7 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
             size_of::<T>(),
             PageFaultAccessType::RW,
         )?;
-        within_sum(|| unsafe { core::ptr::write(self.ptr, val) });
+        unsafe { core::ptr::write(self.ptr, val) };
         Ok(())
     }
 
@@ -249,13 +240,13 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
             size_of::<T>() * val.len(),
             PageFaultAccessType::RW,
         )?;
-        within_sum(|| unsafe {
+        unsafe {
             let mut ptr = self.ptr;
             for &v in val {
                 ptr.write(v);
                 ptr = ptr.offset(1);
             }
-        });
+        }
         Ok(())
     }
 }
@@ -273,14 +264,14 @@ impl<P: Write> UserPtr<u8, P> {
             PageFaultAccessType::RW,
         )?;
 
-        within_sum(|| unsafe {
+        unsafe {
             let view = core::slice::from_raw_parts(val as *const U as *const u8, len);
             let mut ptr = self.ptr as *mut u8;
             for &c in view {
                 ptr.write(c);
                 ptr = ptr.offset(1);
             }
-        });
+        }
         Ok(())
     }
 
@@ -326,16 +317,13 @@ impl<P: Write> UserPtr<u8, P> {
 
 impl<T: Clone + Copy + 'static, P: Policy> From<usize> for UserPtr<T, P> {
     fn from(a: usize) -> Self {
-        Self {
-            ptr: a as *mut T,
-            _mark: PhantomData,
-        }
+        Self::from_usize(a)
     }
 }
 
 impl<T: Clone + Copy + 'static, P: Policy> Display for UserPtr<T, P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "UserPtr(0x{:#x})", self.as_usize())
+        write!(f, "UserPtr({:#x})", self.as_usize())
     }
 }
 
@@ -359,6 +347,12 @@ impl LightProcess {
         access: PageFaultAccessType,
         mut f: impl FnMut(VirtAddr, usize) -> ControlFlow<Option<SysError>>,
     ) -> SysResult<()> {
+        if len == 0 {
+            return Ok(());
+        }
+
+        unsafe { set_kernel_user_rw_trap() };
+
         let mut curr_vaddr = begin;
         let mut readable_len = 0;
         while readable_len < len {
@@ -379,6 +373,8 @@ impl LightProcess {
             readable_len += len;
             curr_vaddr = next_page_beg;
         }
+
+        unsafe { set_kernel_trap() };
         Ok(())
     }
 }
