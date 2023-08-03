@@ -77,7 +77,7 @@ unsafe fn set_kernel_user_rw_trap() {
 }
 
 #[inline(always)]
-fn will_read_fail(vaddr: usize) -> bool {
+pub fn will_read_fail(vaddr: usize) -> bool {
     when_debug!({
         extern "C" {
             fn __user_rw_trap_entry();
@@ -94,7 +94,7 @@ fn will_read_fail(vaddr: usize) -> bool {
 }
 
 #[inline(always)]
-fn will_write_fail(vaddr: usize) -> bool {
+pub fn will_write_fail(vaddr: usize) -> bool {
     when_debug!({
         extern "C" {
             fn __user_rw_trap_entry();
