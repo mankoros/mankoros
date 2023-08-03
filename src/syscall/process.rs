@@ -2,15 +2,12 @@ use alloc::{string::String, vec::Vec};
 use bitflags::bitflags;
 
 use crate::{
-    executor::{hart_local::within_sum, util_futures::yield_now},
-    fs::new_vfs::{path::Path, VfsFileKind},
-    memory::address::VirtAddr,
+    executor::util_futures::yield_now,
+    fs::new_vfs::path::Path,
+    memory::{address::VirtAddr, UserReadPtr, UserWritePtr},
     process::{self, lproc::ProcessStatus, user_space::user_area::UserAreaPerm},
     signal,
-    tools::{
-        errors::{SysError, SysResult},
-        user_check::UserCheck,
-    },
+    tools::errors::{SysError, SysResult},
 };
 
 use super::super::fs;
@@ -56,16 +53,17 @@ bitflags! {
 impl<'a> Syscall<'a> {
     pub async fn sys_chdir(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let path = args[0];
+        let path = UserReadPtr::<u8>::from(args[0]);
 
-        let user_check = UserCheck::new_with_sum(&self.lproc);
-        let path = user_check.checked_read_cstr(path as *const u8)?;
+        let path = path.read_cstr(&self.lproc)?;
+        info!("Syscall: chdir: {}", path);
+
         let path = Path::from_string(path)?;
 
         // check whether the path is a directory
         let root_fs = fs::root::get_root_dir();
         let file = root_fs.resolve(&path).await?;
-        if file.attr().await?.kind != VfsFileKind::Directory {
+        if !file.is_dir().await? {
             return Err(SysError::ENOTDIR);
         }
 
@@ -77,26 +75,27 @@ impl<'a> Syscall<'a> {
 
     pub fn sys_getcwd(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let buf = args[0] as *mut u8;
-        let len = args[1];
+        let (buf, len) = (UserWritePtr::<u8>::from(args[0]), args[1]);
 
         info!("Syscall: getcwd");
         let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone()).to_string();
         let length = min(cwd.len(), len);
-        within_sum(|| unsafe {
-            core::ptr::copy_nonoverlapping(cwd.as_ptr(), buf, length);
-            *buf.add(length) = 0;
-        });
-        Ok(buf as usize)
+        buf.as_mut_slice(length, &self.lproc)?
+            .copy_from_slice(&cwd.as_bytes()[..length]);
+        Ok(length)
     }
 
     pub async fn sys_wait(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (pid, wstatus, options) = (args[0] as isize, args[1], args[2]);
+        let (pid, wstatus, options) = (
+            args[0] as isize,
+            UserWritePtr::<u32>::from(args[1]),
+            args[2],
+        );
         let options = WaitOptions::from_bits_truncate(options as u32);
 
         info!(
-            "syscall: wait: pid: {}, &wstatus: {:x}, options: {:?}",
+            "syscall: wait: pid: {}, &wstatus: {}, options: {:?}",
             pid, wstatus, options
         );
 
@@ -151,13 +150,11 @@ impl<'a> Syscall<'a> {
             }
         };
 
-        let wstatus = wstatus as *mut u32;
         if !wstatus.is_null() {
             // 末尾 8 位是 SIG 信息，再上 8 位是退出码
             let status = (result_lproc.exit_code() as u32 & 0xff) << 8;
             debug!("wstatus: {:#x}", status);
-            let user_check = UserCheck::new_with_sum(&self.lproc);
-            user_check.checked_write(wstatus, status)?;
+            wstatus.write(&self.lproc, status)?;
         }
 
         Ok(result_lproc.id().into())
@@ -238,11 +235,13 @@ impl<'a> Syscall<'a> {
 
     pub async fn sys_execve(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (path, argv, envp) = (args[0], args[1], args[2]);
+        let (path, argv, envp) = (
+            UserReadPtr::<u8>::from(args[0]),
+            UserReadPtr::<usize>::from(args[1]),
+            UserReadPtr::<usize>::from(args[2]),
+        );
 
-        let user_check = UserCheck::new_with_sum(&self.lproc);
-
-        let path_str = user_check.checked_read_cstr(path as *const u8)?;
+        let path_str = path.read_cstr(&self.lproc)?;
         let path = Path::from_string(path_str)?;
         let path = if path.is_absolute() {
             path
@@ -251,10 +250,25 @@ impl<'a> Syscall<'a> {
         };
         let filename = path.last().clone();
 
-        let mut argv = user_check.checked_read_2d_cstr(argv as *const *const u8)?;
-        let mut envp = user_check.checked_read_2d_cstr(envp as *const *const u8)?;
+        let read_2d_cstr = |mut ptr2d: UserReadPtr<usize>| -> SysResult<Vec<String>> {
+            let mut result = Vec::new();
 
-        drop(user_check);
+            loop {
+                let ptr = ptr2d.read(&self.lproc)?;
+                if ptr == 0 {
+                    break;
+                }
+                let str = UserReadPtr::from(ptr).read_cstr(&self.lproc)?;
+                result.push(str);
+                ptr2d = ptr2d.add(1);
+            }
+
+            Ok(result)
+        };
+
+        let mut argv = read_2d_cstr(argv)?;
+        let mut envp = read_2d_cstr(envp)?;
+
         info!(
             "syscall: execve: path: {:?}, argv: {:?}, envp: {:?}",
             path, argv, envp

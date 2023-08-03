@@ -7,6 +7,7 @@
 // };
 
 #[repr(C)]
+#[derive(Debug, Copy, Clone)]
 pub struct Tms {
     // user time
     pub tms_utime: usize,

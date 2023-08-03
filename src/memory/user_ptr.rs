@@ -12,7 +12,12 @@ use crate::{
     trap::trap::will_read_fail,
 };
 use alloc::{string::String, sync::Arc, vec::Vec};
-use core::{intrinsics::size_of, marker::PhantomData, ops::ControlFlow};
+use core::{
+    fmt::{Display, Formatter},
+    intrinsics::size_of,
+    marker::PhantomData,
+    ops::ControlFlow,
+};
 
 pub trait Policy: Clone + Copy + 'static {}
 
@@ -100,6 +105,32 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
     pub fn nonnull(self) -> Option<Self> {
         (!self.ptr.is_null()).then_some(self)
     }
+
+    #[must_use]
+    pub fn as_ref(self, lproc: &Arc<LightProcess>) -> SysResult<&T> {
+        debug_assert!(!self.is_null());
+        lproc.just_ensure_user_area(
+            VirtAddr::from(self.as_usize()),
+            size_of::<T>(),
+            PageFaultAccessType::RO,
+        )?;
+        let res = within_sum(|| unsafe { &*self.ptr });
+        Ok(res)
+    }
+
+    #[must_use]
+    pub fn as_slice(self, n: usize, lproc: &Arc<LightProcess>) -> SysResult<&[T]> {
+        debug_assert!(!self.is_null());
+        lproc.just_ensure_user_area(
+            VirtAddr::from(self.as_usize()),
+            size_of::<T>() * n,
+            PageFaultAccessType::RO,
+        )?;
+        let res = within_sum(|| unsafe { core::slice::from_raw_parts(self.ptr, n) });
+        Ok(res)
+    }
+
+    #[must_use]
     pub fn read(self, lproc: &Arc<LightProcess>) -> SysResult<T> {
         debug_assert!(!self.is_null());
         lproc.just_ensure_user_area(
@@ -111,6 +142,7 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
         Ok(res)
     }
 
+    #[must_use]
     pub fn read_array(self, n: usize, lproc: &Arc<LightProcess>) -> SysResult<Vec<T>> {
         debug_assert!(!self.is_null());
         lproc.just_ensure_user_area(
@@ -133,6 +165,7 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
 }
 
 impl<P: Read> UserPtr<u8, P> {
+    #[must_use]
     pub fn read_cstr(self, lproc: &Arc<LightProcess>) -> SysResult<String> {
         let mut str = String::with_capacity(32);
         let mut has_ended = false;
@@ -172,6 +205,31 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
         (!self.ptr.is_null()).then_some(self)
     }
 
+    #[must_use]
+    pub fn as_mut(self, lproc: &Arc<LightProcess>) -> SysResult<&mut T> {
+        debug_assert!(!self.is_null());
+        lproc.just_ensure_user_area(
+            VirtAddr::from(self.as_usize()),
+            size_of::<T>(),
+            PageFaultAccessType::RW,
+        )?;
+        let res = within_sum(|| unsafe { &mut *self.ptr });
+        Ok(res)
+    }
+
+    #[must_use]
+    pub fn as_mut_slice(self, n: usize, lproc: &Arc<LightProcess>) -> SysResult<&mut [T]> {
+        debug_assert!(!self.is_null());
+        lproc.just_ensure_user_area(
+            VirtAddr::from(self.as_usize()),
+            size_of::<T>() * n,
+            PageFaultAccessType::RW,
+        )?;
+        let res = within_sum(|| unsafe { core::slice::from_raw_parts_mut(self.ptr, n) });
+        Ok(res)
+    }
+
+    #[must_use]
     pub fn write(self, lproc: &Arc<LightProcess>, val: T) -> SysResult<()> {
         debug_assert!(!self.is_null());
         lproc.just_ensure_user_area(
@@ -182,6 +240,8 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
         within_sum(|| unsafe { core::ptr::write(self.ptr, val) });
         Ok(())
     }
+
+    #[must_use]
     pub fn write_array(self, lproc: &Arc<LightProcess>, val: &[T]) -> SysResult<()> {
         debug_assert!(!self.is_null());
         lproc.just_ensure_user_area(
@@ -201,6 +261,30 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
 }
 
 impl<P: Write> UserPtr<u8, P> {
+    #[must_use]
+    /// should only be used at syscall getdent with dynamic-len structure
+    pub unsafe fn write_as_bytes<U>(self, lproc: &Arc<LightProcess>, val: &U) -> SysResult<()> {
+        debug_assert!(!self.is_null());
+
+        let len = size_of::<U>();
+        lproc.just_ensure_user_area(
+            VirtAddr::from(self.as_usize()),
+            len,
+            PageFaultAccessType::RW,
+        )?;
+
+        within_sum(|| unsafe {
+            let view = core::slice::from_raw_parts(val as *const U as *const u8, len);
+            let mut ptr = self.ptr as *mut u8;
+            for &c in view {
+                ptr.write(c);
+                ptr = ptr.offset(1);
+            }
+        });
+        Ok(())
+    }
+
+    #[must_use]
     pub fn write_cstr(self, lproc: &Arc<LightProcess>, val: &str) -> SysResult<()> {
         debug_assert!(!self.is_null());
 
@@ -246,6 +330,12 @@ impl<T: Clone + Copy + 'static, P: Policy> From<usize> for UserPtr<T, P> {
             ptr: a as *mut T,
             _mark: PhantomData,
         }
+    }
+}
+
+impl<T: Clone + Copy + 'static, P: Policy> Display for UserPtr<T, P> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "UserPtr(0x{:#x})", self.as_usize())
     }
 }
 

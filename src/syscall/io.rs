@@ -2,10 +2,7 @@ use log::{debug, info};
 
 use crate::{
     consts::MAX_OPEN_FILES,
-    executor::{
-        hart_local::within_sum,
-        util_futures::{within_sum_async, yield_now, AnyFuture},
-    },
+    executor::util_futures::{yield_now, AnyFuture},
     fs::{
         new_vfs::{
             path::Path,
@@ -17,10 +14,7 @@ use crate::{
     },
     memory::{address::VirtAddr, UserInOutPtr, UserReadPtr, UserWritePtr},
     process::user_space::user_area::UserAreaPerm,
-    tools::{
-        errors::{dyn_future, Async, SysError, SysResult},
-        user_check::UserCheck,
-    },
+    tools::errors::{dyn_future, Async, SysError, SysResult},
 };
 
 use super::{Syscall, SyscallResult};
@@ -29,19 +23,18 @@ use alloc::{boxed::Box, collections::BTreeMap, vec::Vec};
 impl Syscall<'_> {
     pub async fn sys_write(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (fd, buf, len) = (args[0], UserReadPtr::from_usize(args[1]), args[2]);
+        let (fd, buf, len) = (args[0], UserReadPtr::<u8>::from(args[1]), args[2]);
 
         info!(
             "Syscall: write, fd {fd}, len: {len}, pid: {:?}",
             self.lproc.id()
         );
 
-        let buf = unsafe { core::slice::from_raw_parts(buf.raw_ptr(), len) };
         let fd = self.lproc.with_mut_fdtable(|f| f.get(fd));
         // TODO: is it safe ?
         if let Some(fd) = fd {
-            self.lproc.with_mut_memory(|m| m.force_map_buf(buf, UserAreaPerm::READ));
-            let write_len = within_sum_async(fd.file.write_at(fd.curr(), buf)).await?;
+            let buf = buf.as_slice(len, &self.lproc)?;
+            let write_len = fd.file.write_at(fd.curr(), buf).await?;
             fd.add_curr(write_len);
             Ok(write_len)
         } else {
@@ -60,21 +53,17 @@ impl Syscall<'_> {
             self.lproc.id()
         );
 
-        // *mut u8 does not implement Send
-        let buf = unsafe { core::slice::from_raw_parts_mut(buf.raw_ptr_mut(), len) };
-
         let fd = self.lproc.with_mut_fdtable(|f| f.get(fd));
         if let Some(fd) = fd {
-            self.lproc.with_mut_memory(|m| m.force_map_buf(buf, UserAreaPerm::WRITE));
-            let read_len = within_sum_async(fd.file.read_at(fd.curr(), buf)).await?;
+            let buf = buf.as_mut_slice(len, &self.lproc)?;
+            let read_len = fd.file.read_at(fd.curr(), buf).await?;
+            // Very dirty fix here!!!!!!!!!!!
             if args[0] == 0 && read_len == 1 {
-                within_sum(|| {
-                    // '\r' -> '\n'
-                    if buf[0] == 0xd {
-                        buf[0] = 0xa;
-                        log::warn!("replace \\r -> \\n")
-                    }
-                })
+                // '\r' -> '\n'
+                if buf[0] == 0xd {
+                    buf[0] = 0xa;
+                    log::warn!("replace \\r -> \\n")
+                }
             }
             fd.add_curr(read_len);
             Ok(read_len)
@@ -86,18 +75,17 @@ impl Syscall<'_> {
     pub async fn sys_openat(&mut self) -> SyscallResult {
         // TODO: refactor using `at_helper`
         let args = self.cx.syscall_args();
-        let (dir_fd, path, raw_flags, _user_mode) =
-            (args[0], args[1], args[2] as u32, args[3] as i32);
+        let (dir_fd, path, raw_flags, _user_mode) = (
+            args[0],
+            UserReadPtr::<u8>::from(args[1]),
+            args[2] as u32,
+            args[3] as i32,
+        );
 
-        info!("Syscall: openat");
-
-        // Parse flags
         let flags = OpenFlags::from_bits_truncate(raw_flags);
+        let path = path.read_cstr(&self.lproc)?;
 
-        let user_check = UserCheck::new_with_sum(&self.lproc);
-        let path = user_check.checked_read_cstr(path as *const u8)?;
-
-        info!("Open path: {path}, flags: {:x}", flags);
+        info!("Syscall: openat: dir_fd: {dir_fd}, path: {path}, flags: {flags:x}",);
 
         // 1. check if too many open files
         self.lproc.with_fdtable(|table| {
@@ -108,23 +96,18 @@ impl Syscall<'_> {
         })?;
 
         let (dir, file_name) = self.at_helper(dir_fd, path.clone(), 0).await?;
-
-        let file = if file_name.is_empty() {
-            dir
-        } else {
-            match dir.lookup(&file_name).await {
-                Ok(file) => file,
-                Err(SysError::ENOENT) => {
-                    // Check if CREATE flag is set
-                    if !flags.contains(OpenFlags::CREATE) {
-                        return Err(SysError::ENOENT);
-                    }
-                    // Create file
-                    dir.create(&file_name, VfsFileKind::RegularFile).await?
+        let file = match self.lookup_helper(dir.clone(), &file_name).await {
+            Ok(file) => file,
+            Err(SysError::ENOENT) => {
+                // Check if CREATE flag is set
+                if !flags.contains(OpenFlags::CREATE) {
+                    return Err(SysError::ENOENT);
                 }
-                Err(e) => {
-                    return Err(e);
-                }
+                // Create file
+                dir.create(&file_name, VfsFileKind::RegularFile).await?
+            }
+            Err(e) => {
+                return Err(e);
             }
         };
 
@@ -162,11 +145,10 @@ impl Syscall<'_> {
 
     pub async fn sys_readlinkat(&self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (dir_fd, path, buf, buf_len) = (args[0], args[1], args[2], args[3]);
+        let (dir_fd, path, buf, buf_len) =
+            (args[0], UserReadPtr::<u8>::from(args[1]), args[2], args[3]);
 
-        let user_check = UserCheck::new_with_sum(&self.lproc);
-        let path = user_check.checked_read_cstr(path as *const u8)?;
-
+        let path = path.read_cstr(&self.lproc)?;
         info!(
             "Syscall: readlinkat, dir_fd: {}, path: {:?}, buf: {:x}, buf_len: {}",
             dir_fd, path, buf, buf_len
@@ -187,22 +169,19 @@ impl Syscall<'_> {
     /// 成功时返回 0，失败则返回 -1
     pub fn sys_pipe(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let pipe = UserWritePtr::from(args[0]);
+        let pipe = UserWritePtr::<[u32; 2]>::from(args[0]);
 
         info!("Syscall: pipe");
         let (pipe_read, pipe_write) = Pipe::new_pipe();
-        let _user_check = UserCheck::new_with_sum(&self.lproc);
 
-        self.lproc.with_mut_fdtable(|table| {
+        let r = self.lproc.with_mut_fdtable(|table| {
             let read_fd = table.alloc(VfsFileRef::new(pipe_read));
             let write_fd = table.alloc(VfsFileRef::new(pipe_write));
-
             info!("read_fd: {}, write_fd: {}", read_fd, write_fd);
-
-            // TODO: check user permissions
-            unsafe { *pipe.raw_ptr_mut() = read_fd as u32 }
-            unsafe { *pipe.raw_ptr_mut().add(1) = write_fd as u32 }
+            [read_fd as u32, write_fd as u32]
         });
+
+        pipe.write(&self.lproc, r)?;
         Ok(0)
     }
 
@@ -287,7 +266,7 @@ impl Syscall<'_> {
 
         let args = self.cx.syscall_args();
         let (fds, nfds, timeout_ts, _sigmask) = (
-            UserReadPtr::<PollFd>::from_usize(args[0]),
+            UserInOutPtr::<PollFd>::from_usize(args[0]),
             args[1],
             args[2],
             args[3],
@@ -300,14 +279,12 @@ impl Syscall<'_> {
             timeout_ts,
         );
 
-        let user_check = UserCheck::new_with_sum(&self.lproc);
         // future_idx -> (fd_idx, event)
         let mut mapping = BTreeMap::<usize, (usize, i16)>::new();
         let mut futures = Vec::<Async<SysResult<usize>>>::new();
 
-        let mut poll_fd_ptr = fds;
-        for i in 0..nfds {
-            let poll_fd = user_check.checked_read(poll_fd_ptr.raw_ptr())?;
+        let poll_fds = fds.read_array(nfds, &self.lproc)?;
+        for (i, poll_fd) in poll_fds.iter().enumerate() {
             let fd = poll_fd.fd as usize;
             debug!("ppoll on fd: {}", fd);
             let events = poll_fd.events;
@@ -333,21 +310,20 @@ impl Syscall<'_> {
             if events & !(PollFd::POLLIN | PollFd::POLLOUT) != 0 {
                 log::warn!("Unsupported poll event: {}", events);
             }
-            poll_fd_ptr = poll_fd_ptr.add(1);
         }
 
         let (future_id, _) = AnyFuture::new_with(futures).await;
         let (fd_idx, event) = mapping.remove(&future_id).unwrap();
 
         let ready_poll_fd_ptr = fds.add(fd_idx);
-        let mut ready_poll_fd_value = user_check.checked_read(ready_poll_fd_ptr.raw_ptr())?;
+        let mut ready_poll_fd_value = ready_poll_fd_ptr.read(&self.lproc)?;
         ready_poll_fd_value.revents = match event {
             PollFd::POLLIN => PollFd::POLLIN,
             PollFd::POLLOUT => PollFd::POLLOUT,
             _ => unreachable!(),
         };
         debug!("poll fd: {:?}", ready_poll_fd_value);
-        user_check.checked_write(ready_poll_fd_ptr.raw_ptr() as *mut _, ready_poll_fd_value)?;
+        ready_poll_fd_ptr.write(&self.lproc, ready_poll_fd_value)?;
 
         // Return value is the number of file descriptors that were ready.
         // Currently, this is always 1.
@@ -418,17 +394,15 @@ impl Syscall<'_> {
             return Ok(0);
         }
 
-        let user_check = UserCheck::new_with_sum(&self.lproc);
-
         let mut readfds = if readfds_ptr.is_null() {
             FdSet::zero()
         } else {
-            user_check.checked_read(readfds_ptr.raw_ptr())?
+            readfds_ptr.read(&self.lproc)?
         };
         let mut writefds = if writefds_ptr.is_null() {
             FdSet::zero()
         } else {
-            user_check.checked_read(writefds_ptr.raw_ptr())?
+            writefds_ptr.read(&self.lproc)?
         };
 
         // future_idx -> (fd_idx, event)
@@ -469,9 +443,9 @@ impl Syscall<'_> {
             PollKind::Write => writefds.set(fd_idx),
         }
 
-        user_check.checked_write(readfds_ptr.raw_ptr_mut(), readfds)?;
-        user_check.checked_write(writefds_ptr.raw_ptr_mut(), writefds)?;
-        user_check.checked_write(exceptfds_ptr.raw_ptr_mut(), FdSet::zero())?;
+        readfds_ptr.write(&self.lproc, readfds)?;
+        writefds_ptr.write(&self.lproc, writefds)?;
+        exceptfds_ptr.write(&self.lproc, FdSet::zero())?;
 
         Ok(1)
     }
@@ -481,33 +455,25 @@ impl Syscall<'_> {
         let (fd, iov, iovcnt) = (args[0], UserReadPtr::<IoVec>::from(args[1]), args[2]);
 
         info!(
-            "Syscall: writev, fd: {}, iov: 0x{:x}, iovcnt: {}",
-            fd,
-            iov.as_usize(),
-            iovcnt
+            "Syscall: writev, fd: {}, iov: {}, iovcnt: {}",
+            fd, iov, iovcnt
         );
 
-        let user_check = UserCheck::new_with_sum(&self.lproc);
         let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
         let file = fd.file.clone();
 
         let mut offset = fd.curr();
         let mut total_len = 0;
-        let mut iov_ptr = iov;
-        for i in 0..iovcnt {
-            let iov = user_check.checked_read(iov_ptr.raw_ptr())?;
-            log::debug!(
-                "syscall writev: iov #{}: iov_ptr: 0x{:x}, len: {}",
-                i,
-                iov_ptr.as_usize(),
-                iov.len
-            );
-            let buf = unsafe { VirtAddr::from(iov.base).as_slice(iov.len) };
-            self.lproc.with_mut_memory(|m| m.force_map_buf(buf, UserAreaPerm::READ));
+        let iovs = iov.read_array(iovcnt, &self.lproc)?;
+        for (i, iov) in iovs.iter().enumerate() {
+            let ptr = UserReadPtr::<u8>::from(iov.base);
+            log::trace!("syscall writev: iov #{i}, ptr: {ptr}, len: {}", iov.len);
+
+            let buf = ptr.as_slice(iov.len, &self.lproc)?;
             let write_len = file.write_at(offset, buf).await?;
+
             total_len += write_len;
             offset += write_len;
-            iov_ptr = iov_ptr.add(1);
         }
 
         fd.add_curr(total_len);
@@ -516,36 +482,25 @@ impl Syscall<'_> {
 
     pub async fn sys_readv(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (fd, iov, iovcnt) = (args[0], UserWritePtr::<IoVec>::from(args[1]), args[2]);
+        let (fd, iov, iovcnt) = (args[0], UserReadPtr::<IoVec>::from(args[1]), args[2]);
 
-        info!(
-            "Syscall: readv, fd: {}, iov: 0x{:x}, iovcnt: {}",
-            fd,
-            iov.as_usize(),
-            iovcnt
-        );
+        info!("Syscall: readv, fd: {fd}, iov: {iov}, iovcnt: {iovcnt}",);
 
-        let user_check = UserCheck::new_with_sum(&self.lproc);
         let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
         let file = fd.file.clone();
 
         let mut offset = fd.curr();
         let mut total_len = 0;
-        let mut iov_ptr = iov;
-        for i in 0..iovcnt {
-            let iov = user_check.checked_read(iov_ptr.raw_ptr())?;
-            log::debug!(
-                "syscall readv: iov #{}: iov_ptr: 0x{:x}, len: {}",
-                i,
-                iov_ptr.as_usize(),
-                iov.len
-            );
-            let buf = unsafe { VirtAddr::from(iov.base).as_mut_slice(iov.len) };
-            self.lproc.with_mut_memory(|m| m.force_map_buf(buf, UserAreaPerm::WRITE));
+        let iovs = iov.read_array(iovcnt, &self.lproc)?;
+        for (i, iov) in iovs.iter().enumerate() {
+            let ptr = UserWritePtr::<u8>::from(iov.base);
+            log::trace!("syscall readv: iov #{i}, ptr: {ptr}, len: {}", iov.len);
+
+            let buf = ptr.as_mut_slice(iov.len, &self.lproc)?;
             let read_len = file.read_at(offset, buf).await?;
+
             total_len += read_len;
             offset += read_len;
-            iov_ptr = iov_ptr.add(1);
         }
 
         fd.add_curr(total_len);
@@ -558,20 +513,15 @@ impl Syscall<'_> {
             (args[0], UserWritePtr::<u8>::from(args[1]), args[2], args[3]);
 
         info!(
-            "Syscall: pread, fd: {}, buf: 0x{:x}, count: {}, offset: {}",
-            fd,
-            buf.as_usize(),
-            count,
-            offset
+            "Syscall: pread, fd: {}, buf: {}, count: {}, offset: {}",
+            fd, buf, count, offset
         );
 
-        let buf = unsafe { VirtAddr::from(buf.as_usize()).as_mut_slice(count) };
+        let ptr = UserWritePtr::<u8>::from(buf);
+        let buf = ptr.as_mut_slice(count, &self.lproc)?;
         let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
 
-        self.lproc.with_mut_memory(|m| m.force_map_buf(buf, UserAreaPerm::WRITE));
-        let read_len = within_sum_async(fd.file.read_at(offset, buf)).await?;
-
-        Ok(read_len)
+        fd.file.read_at(offset, buf).await
     }
 
     pub async fn sys_pwrite(&mut self) -> SyscallResult {
@@ -580,60 +530,46 @@ impl Syscall<'_> {
             (args[0], UserReadPtr::<u8>::from(args[1]), args[2], args[3]);
 
         info!(
-            "Syscall: pwrite, fd: {}, buf: 0x{:x}, count: {}, offset: {}",
-            fd,
-            buf.as_usize(),
-            count,
-            offset
+            "Syscall: pwrite, fd: {}, buf: {}, count: {}, offset: {}",
+            fd, buf, count, offset
         );
 
-        let buf = unsafe { VirtAddr::from(buf.as_usize()).as_slice(count) };
+        let ptr = UserReadPtr::<u8>::from(buf);
+        let buf = ptr.as_slice(count, &self.lproc)?;
         let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
 
-        self.lproc.with_mut_memory(|m| m.force_map_buf(buf, UserAreaPerm::READ));
-        let write_len = within_sum_async(fd.file.write_at(offset, buf)).await?;
-
-        Ok(write_len)
+        fd.file.write_at(offset, buf).await
     }
 
     pub async fn sys_preadv(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
         let (fd, iov, iovcnt, offset) = (
             args[0],
-            UserWritePtr::<IoVec>::from(args[1]),
+            UserReadPtr::<IoVec>::from(args[1]),
             args[2],
             args[3],
         );
 
         info!(
-            "Syscall: preadv, fd: {}, iov: 0x{:x}, iovcnt: {}, offset: {}",
-            fd,
-            iov.as_usize(),
-            iovcnt,
-            offset
+            "Syscall: preadv, fd: {}, iov: {}, iovcnt: {}, offset: {}",
+            fd, iov, iovcnt, offset
         );
 
-        let user_check = UserCheck::new_with_sum(&self.lproc);
         let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
         let file = fd.file.clone();
 
         let mut offset = offset;
         let mut total_len = 0;
-        let mut iov_ptr = iov;
-        for i in 0..iovcnt {
-            let iov = user_check.checked_read(iov_ptr.raw_ptr())?;
-            log::debug!(
-                "syscall preadv: iov #{}: iov_ptr: 0x{:x}, len: {}",
-                i,
-                iov_ptr.as_usize(),
-                iov.len
-            );
-            let buf = unsafe { VirtAddr::from(iov.base).as_mut_slice(iov.len) };
-            self.lproc.with_mut_memory(|m| m.force_map_buf(buf, UserAreaPerm::WRITE));
+        let iovs = iov.read_array(iovcnt, &self.lproc)?;
+        for (i, iov) in iovs.iter().enumerate() {
+            let ptr = UserWritePtr::<u8>::from(iov.base);
+            log::trace!("syscall preadv: iov #{i}, ptr: {ptr}, len: {}", iov.len);
+
+            let buf = ptr.as_mut_slice(iov.len, &self.lproc)?;
             let read_len = file.read_at(offset, buf).await?;
+
             total_len += read_len;
             offset += read_len;
-            iov_ptr = iov_ptr.add(1);
         }
 
         Ok(total_len)
@@ -649,34 +585,25 @@ impl Syscall<'_> {
         );
 
         info!(
-            "Syscall: pwritev, fd: {}, iov: 0x{:x}, iovcnt: {}, offset: {}",
-            fd,
-            iov.as_usize(),
-            iovcnt,
-            offset
+            "Syscall: pwritev, fd: {}, iov: {}, iovcnt: {}, offset: {}",
+            fd, iov, iovcnt, offset
         );
 
-        let user_check = UserCheck::new_with_sum(&self.lproc);
         let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
         let file = fd.file.clone();
 
         let mut offset = offset;
         let mut total_len = 0;
-        let mut iov_ptr = iov;
-        for i in 0..iovcnt {
-            let iov = user_check.checked_read(iov_ptr.raw_ptr())?;
-            log::debug!(
-                "syscall pwritev: iov #{}: iov_ptr: 0x{:x}, len: {}",
-                i,
-                iov_ptr.as_usize(),
-                iov.len
-            );
-            let buf = unsafe { VirtAddr::from(iov.base).as_slice(iov.len) };
-            self.lproc.with_mut_memory(|m| m.force_map_buf(buf, UserAreaPerm::READ));
+        let iovs = iov.read_array(iovcnt, &self.lproc)?;
+        for (i, iov) in iovs.iter().enumerate() {
+            let ptr = UserReadPtr::<u8>::from(iov.base);
+            log::trace!("syscall pwritev: iov #{i}, ptr: {ptr}, len: {}", iov.len);
+
+            let buf = ptr.as_slice(iov.len, &self.lproc)?;
             let write_len = file.write_at(offset, buf).await?;
+
             total_len += write_len;
             offset += write_len;
-            iov_ptr = iov_ptr.add(1);
         }
 
         Ok(total_len)

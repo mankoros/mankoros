@@ -1,9 +1,8 @@
 use log::{info, warn};
 
 use crate::{
-    executor::util_futures::yield_now,
-    signal::SignalSet,
-    tools::{errors::LinuxError, user_check::UserCheck},
+    executor::util_futures::yield_now, memory::UserReadPtr, signal::SignalSet,
+    tools::errors::LinuxError,
 };
 
 use super::{Syscall, SyscallResult};
@@ -12,8 +11,7 @@ impl<'a> Syscall<'a> {
     pub async fn sys_sigwait(&self) -> SyscallResult {
         info!("Syscall: sigwait");
         let args = self.cx.syscall_args();
-        let user_check = UserCheck::new_with_sum(&self.lproc);
-        let waiting_sigset: SignalSet = user_check.checked_read(args[0] as _)?;
+        let waiting_sigset = UserReadPtr::<SignalSet>::from(args[0]).read(&self.lproc)?;
 
         let mut timeout = 100000;
 
