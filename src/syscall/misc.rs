@@ -4,20 +4,18 @@
 use log::info;
 
 use crate::{
-    executor::{
-        hart_local::{get_curr_lproc, within_sum},
-        util_futures::yield_now,
-    },
+    executor::util_futures::yield_now,
     here,
     memory::{UserReadPtr, UserWritePtr},
     timer::{get_time_f64, Rusage, TimeSpec, TimeVal, Tms},
-    tools::{errors::SysError, user_check::UserCheck},
+    tools::errors::SysError,
 };
 
 use super::{Syscall, SyscallResult};
 
 // copy from sys/utsname.h
 #[repr(C)]
+#[derive(Debug, Clone, Copy)]
 pub struct UtsName {
     /// Operating system name (e.g., "Linux")
     pub sysname: [u8; 65],
@@ -57,82 +55,62 @@ impl<'a> Syscall<'a> {
     pub fn sys_uname(&mut self) -> SyscallResult {
         info!("Syscall: uname");
         let args = self.cx.syscall_args();
-        let uts = args[0] as *mut UtsName;
-
-        let user_check = UserCheck::new_with_sum(&self.lproc);
-        user_check.checked_write(uts, UtsName::default())?;
-
+        let uts = UserWritePtr::<UtsName>::from(args[0]);
+        uts.write(&self.lproc, UtsName::default())?;
         Ok(0)
     }
 
     pub fn sys_gettimeofday(&mut self) -> SyscallResult {
-        let args = self.cx.syscall_args();
-        let time_val = args[0] as *mut TimeVal;
         info!("Syscall: gettimeofday");
-        within_sum(|| unsafe {
-            (*time_val) = TimeVal::now();
-        });
+        let args = self.cx.syscall_args();
+        let tv = UserWritePtr::<TimeVal>::from(args[0]);
+        tv.write(&self.lproc, TimeVal::now())?;
         Ok(0)
     }
 
     pub fn sys_clockgettime(&mut self) -> SyscallResult {
-        let args = self.cx.syscall_args();
-        let _clock_id = args[0];
-        let time_spec = args[1] as *mut TimeSpec;
         info!("Syscall: clockgettime");
-        within_sum(|| unsafe {
-            (*time_spec) = TimeSpec::now();
-        });
+        let args = self.cx.syscall_args();
+        let (_clock_id, time_spec) = (args[0], UserWritePtr::<TimeSpec>::from(args[1]));
+        time_spec.write(&self.lproc, TimeSpec::now())?;
         Ok(0)
     }
 
     pub fn sys_times(&mut self) -> SyscallResult {
-        let args = self.cx.syscall_args();
-        let tms_ptr = args[0] as *mut Tms;
-
         info!("Syscall: times");
-        match get_curr_lproc() {
-            Some(lproc) => {
-                let (utime, stime) = lproc.timer().lock(here!()).output_us();
+        let args = self.cx.syscall_args();
+        let tms_ptr = UserWritePtr::<Tms>::from(args[0]);
 
-                within_sum(|| {
-                    unsafe {
-                        (*tms_ptr).tms_utime = utime;
-                        (*tms_ptr).tms_stime = stime;
-                        // TODO: childtime calc
-                        (*tms_ptr).tms_cutime = utime;
-                        (*tms_ptr).tms_cstime = stime;
-                    }
-                });
-
-                Ok(0)
-            }
-            None => {
-                panic!("Current hart have no lporc");
-            }
-        }
+        let (utime, stime) = self.lproc.timer().lock(here!()).output_us();
+        let tms = Tms {
+            tms_utime: utime,
+            tms_stime: stime,
+            tms_cutime: utime,
+            tms_cstime: stime,
+        };
+        tms_ptr.write(&self.lproc, tms)?;
+        Ok(0)
     }
 
     pub async fn sys_nanosleep(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (req, rem): (UserReadPtr<TimeSpec>, UserWritePtr<TimeSpec>) = (
-            UserReadPtr::from_usize(args[0]),
-            UserWritePtr::from_usize(args[1]),
+        let (req, rem) = (
+            UserReadPtr::<TimeSpec>::from(args[0]),
+            UserWritePtr::<TimeSpec>::from(args[1]),
         );
 
         info!("Syscall: nanosleep");
         // Calculate end time
-        let end_time = within_sum(|| get_time_f64() + (unsafe { *req.raw_ptr() }).time_in_sec());
+        let time_spec = req.read(&self.lproc)?;
+        let end_time = get_time_f64() + time_spec.time_in_sec();
 
         while get_time_f64() < end_time {
             yield_now().await
         }
         // Sleep is done
         // Update rem if provided
-        if rem.raw_ptr_mut() as usize != 0 {
-            within_sum(|| unsafe {
-                (*rem.raw_ptr_mut()) = TimeSpec::new(0.0);
-            })
+        if !rem.is_null() {
+            rem.write(&self.lproc, TimeSpec::new(0.0))?;
         }
         Ok(0)
     }
@@ -151,28 +129,19 @@ impl<'a> Syscall<'a> {
     pub fn sys_getrusage(&self) -> SyscallResult {
         let args = self.cx.syscall_args();
         let who = args[0] as u32;
-        let usage = args[1] as *mut Rusage;
+        let usage = UserWritePtr::<Rusage>::from(args[1]);
 
-        info!("Syscall: getrusage");
+        info!("Syscall: getrusage, who: {who}, usage: {usage}");
 
-        match get_curr_lproc() {
-            Some(lproc) => {
-                let (utime, stime) = lproc.timer().lock(here!()).output_us();
-
-                match who {
-                    0 | 1 | u32::MAX => {
-                        within_sum(|| unsafe {
-                            (*usage).ru_utime = utime.into();
-                            (*usage).ru_stime = stime.into();
-                        });
-                    }
-                    _ => return Err(SysError::EINVAL),
-                };
-                Ok(0)
-            }
-            None => {
-                panic!("Current hart have no lporc");
-            }
-        }
+        let (utime, stime) = self.lproc.timer().lock(here!()).output_us();
+        let data = match who {
+            0 | 1 | u32::MAX => Rusage {
+                ru_utime: utime.into(),
+                ru_stime: stime.into(),
+            },
+            _ => return Err(SysError::EINVAL),
+        };
+        usage.write(&self.lproc, data)?;
+        Ok(0)
     }
 }

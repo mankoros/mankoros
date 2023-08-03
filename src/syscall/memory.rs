@@ -6,13 +6,13 @@ use log::info;
 
 use crate::{
     consts::PAGE_MASK,
-    memory::{address::VirtAddr, pagetable::pte::PTEFlags, UserPtr, UserReadPtr, UserWritePtr},
+    memory::{address::VirtAddr, pagetable::pte::PTEFlags, UserWritePtr},
     process::user_space::{
         shm_mgr::{global_shm_mgr, ShmId},
         user_area::UserAreaPerm,
     },
     syscall::memory::ipc::{ShmIdDs, IPC_RMID, IPC_SET, IPC_STAT},
-    tools::{errors::SysError, user_check::UserCheck},
+    tools::errors::SysError,
 };
 
 use super::{Syscall, SyscallResult};
@@ -239,18 +239,16 @@ impl<'a> Syscall<'a> {
 
     pub fn sys_shmctl(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (shmid, cmd, buf) = (args[0], args[1], args[2]);
+        let (shmid, cmd, buf) = (args[0], args[1], UserWritePtr::<ShmIdDs>::from(args[2]));
         info!(
             "Syscall shmctl: shmctl shmid={} cmd={} buf={}",
             shmid, cmd, buf
         );
 
         let shm = self.lproc.with_shm_table(|f| f.get(shmid)).ok_or(SysError::EINVAL)?;
-        let user_check = UserCheck::new_with_sum(&self.lproc);
 
         match cmd {
             IPC_STAT => {
-                let buf = UserWritePtr::<ShmIdDs>::from(buf);
                 let data = ShmIdDs {
                     shm_perm: ipc::IPCPerm {
                         __key: shmid as _,
@@ -274,7 +272,7 @@ impl<'a> Syscall<'a> {
                     __glibc_reserved4: 0,
                     __glibc_reserved5: 0,
                 };
-                user_check.checked_write(buf.raw_ptr_mut(), data)?;
+                buf.write(&self.lproc, data)?;
                 Ok(0)
             }
             IPC_SET => {

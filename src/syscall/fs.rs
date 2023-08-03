@@ -6,25 +6,23 @@ use log::{debug, info, warn};
 
 use crate::{
     consts::MAX_OPEN_FILES,
-    executor::hart_local::within_sum,
     fs::{
         self,
         disk::BLOCK_SIZE,
         memfs::zero::ZeroDev,
         new_vfs::{path::Path, top::VfsFileRef, VfsFileKind},
     },
-    memory::{address::VirtAddr, UserReadPtr, UserWritePtr},
-    process::{lproc::NewFdRequirement, user_space::user_area::UserAreaPerm},
-    tools::{
-        errors::{SysError, SysResult},
-        user_check::UserCheck,
-    },
+    memory::{UserReadPtr, UserWritePtr},
+    process::lproc::NewFdRequirement,
+    tools::errors::{SysError, SysResult},
 };
 
 use super::{Syscall, SyscallResult};
+use core::intrinsics::size_of;
 
 /// 文件信息类
 #[repr(C)]
+#[derive(Debug, Clone, Copy)]
 pub struct Kstat {
     /// 设备
     pub st_dev: u64,
@@ -79,19 +77,21 @@ bitflags::bitflags! {
 
 impl<'a> Syscall<'a> {
     pub async fn sys_fstat(&self) -> SyscallResult {
-        info!("Syscall: fstat");
         let args = self.cx.syscall_args();
-        let (fd, kstat) = (args[0], args[1]);
+        let (fd, kstat) = (args[0], UserWritePtr::<Kstat>::from(args[1]));
+
+        info!("Syscall: fstat, fd: {}, kstat: {}", fd, kstat);
+
         if let Some(fd) = self.lproc.with_mut_fdtable(|f| f.get(fd)) {
             // TODO: check stat() returned error
             let fstat = fd.file.attr().await?;
-
-            within_sum(|| unsafe {
-                *(kstat as *mut Kstat) = Kstat {
+            kstat.write(
+                &self.lproc,
+                Kstat {
                     st_dev: fstat.device_id as u64,
                     st_ino: 1,
                     st_mode: u32::from(fstat.kind) | 0o777, // 0777 permission, we don't care about permission
-                    // TODO: when linkat is implemented, use their infrastructure to check link num
+                    // don't support hard link, just return 1
                     st_nlink: 1,
                     st_uid: 0,
                     st_gid: 0,
@@ -107,8 +107,8 @@ impl<'a> Syscall<'a> {
                     st_mtime_nsec: 0,
                     st_ctime_sec: 0,
                     st_ctime_nsec: 0,
-                }
-            });
+                },
+            )?;
             return Ok(0);
         }
         Err(SysError::EBADF)
@@ -117,34 +117,32 @@ impl<'a> Syscall<'a> {
     pub async fn sys_fstatat(&self) -> SyscallResult {
         info!("Syscall: fstatat");
         let args = self.cx.syscall_args();
-        let (dir_fd, path_name, kstat, flags) = (args[0], args[1], args[2], args[3]);
+        let (dir_fd, path_name, kstat, flags) = (
+            args[0],
+            UserReadPtr::<u8>::from(args[1]),
+            UserWritePtr::<Kstat>::from(args[2]),
+            args[3],
+        );
 
-        let user_check = UserCheck::new_with_sum(&self.lproc);
-        let path_name = user_check.checked_read_cstr(path_name as *const u8)?;
-
+        let path_name = path_name.read_cstr(&self.lproc)?;
         info!(
-            "fstatat: dir_fd: {}, path_name: {:?}, stat: 0x{:x}",
+            "fstatat: dir_fd: {}, path_name: {:?}, stat: {}",
             dir_fd, path_name, kstat
         );
 
         let (dir, file_name) = self.at_helper(dir_fd, path_name, flags).await?;
-
-        let file = if file_name == *"" {
-            dir
-        } else {
-            dir.lookup(&file_name).await?
-        };
+        let file = self.lookup_helper(dir, &file_name).await?;
 
         let fstat = file.attr().await?;
-
         debug!("Fstat: {:?}", fstat);
 
-        within_sum(|| unsafe {
-            *(kstat as *mut Kstat) = Kstat {
+        kstat.write(
+            &self.lproc,
+            Kstat {
                 st_dev: fstat.device_id as u64,
                 st_ino: 1,
                 st_mode: u32::from(fstat.kind) | 0o777, // 0777 permission, we don't care about permission
-                // TODO: when linkat is implemented, use their infrastructure to check link num
+                // don't support hard link, just return 1
                 st_nlink: 1,
                 st_uid: 0,
                 st_gid: 0,
@@ -160,8 +158,8 @@ impl<'a> Syscall<'a> {
                 st_mtime_nsec: 0,
                 st_ctime_sec: 0,
                 st_ctime_nsec: 0,
-            }
-        });
+            },
+        )?;
 
         Ok(0)
     }
@@ -176,10 +174,9 @@ impl<'a> Syscall<'a> {
 
     pub async fn sys_mkdir(&self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (_dir_fd, path, _user_mode) = (args[0], args[1], args[2]);
+        let (_dir_fd, path, _user_mode) = (args[0], UserReadPtr::<u8>::from(args[1]), args[2]);
         info!("Syscall: mkdir");
-        let user_check = UserCheck::new_with_sum(&self.lproc);
-        let path = user_check.checked_read_cstr(path as *const u8)?;
+        let path = path.read_cstr(&self.lproc)?;
         let mut path = Path::from_string(path).expect("Error parsing path");
 
         let root_fs = fs::root::get_root_dir();
@@ -209,9 +206,8 @@ impl<'a> Syscall<'a> {
             UserReadPtr::<u8>::from(args[3]),
         );
 
-        let user_check = UserCheck::new_with_sum(&self.lproc);
-        let old_path = user_check.checked_read_cstr(old_path.raw_ptr())?;
-        let new_path = user_check.checked_read_cstr(new_path.raw_ptr())?;
+        let old_path = old_path.read_cstr(&self.lproc)?;
+        let new_path = new_path.read_cstr(&self.lproc)?;
 
         let (old_dir, old_file_name) = self.at_helper(old_dir_fd, old_path, 0).await?;
         let (new_dir, new_file_name) = self.at_helper(new_dir_fd, new_path, 0).await?;
@@ -259,8 +255,7 @@ impl<'a> Syscall<'a> {
         let (dir_fd, path, _times, _flags) =
             (args[0], UserReadPtr::<u8>::from(args[1]), args[2], args[3]);
 
-        let user_check = UserCheck::new_with_sum(&self.lproc);
-        let path = user_check.checked_read_cstr(path.raw_ptr())?;
+        let path = path.read_cstr(&self.lproc)?;
 
         let (dir, file_name) = self.at_helper(dir_fd, path, 0).await?;
         if !dir.is_dir().await? {
@@ -312,13 +307,11 @@ impl<'a> Syscall<'a> {
 
     pub async fn sys_getdents(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (fd, buf, len) = (args[0], UserWritePtr::<u8>::from(args[1]), args[2]);
+        let (fd, buf, len) = (args[0], args[1], args[2]);
 
         info!(
             "Syscall: getdents (fd: {:?}, buf: {:?}, len: {:?})",
-            fd,
-            buf.as_usize(),
-            len
+            fd, buf, len
         );
 
         let fd_obj = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
@@ -380,7 +373,7 @@ impl<'a> Syscall<'a> {
         for (name, vfs_entry) in &files[progress..] {
             // TODO-BUG: 检查写入后的长度是否满足 u64 的对齐要求, 不满足补 0
             // TODO: d_name 是 &str, 末尾可能会有很多 \0, 想办法去掉它们
-            let this_entry_len = core::mem::size_of::<DirentFront>() + name.len() + 1;
+            let this_entry_len = size_of::<DirentFront>() + name.len() + 1;
             if wroten_len + this_entry_len > len {
                 break;
             }
@@ -392,14 +385,14 @@ impl<'a> Syscall<'a> {
                 d_type: DirentFront::as_dtype(vfs_entry.attr().await?.kind),
             };
 
-            let dirent_beg = buf.add(wroten_len).as_usize() as *mut DirentFront;
-            let d_name_beg = buf.add(wroten_len + core::mem::size_of::<DirentFront>());
+            let dirent_beg = buf + wroten_len;
+            let d_name_beg = dirent_beg + size_of::<DirentFront>();
 
-            debug!("dirent: {:x}", dirent_beg as usize);
-
-            let user_check = UserCheck::new_with_sum(&self.lproc);
-            user_check.checked_write(dirent_beg, dirent_front)?;
-            user_check.checked_write_cstr(d_name_beg.as_usize() as *mut u8, name)?;
+            log::trace!("writing dirent to 0x{:x}...", dirent_beg);
+            unsafe {
+                UserWritePtr::<u8>::from(dirent_beg).write_as_bytes(&self.lproc, &dirent_front)?;
+                UserWritePtr::<u8>::from(d_name_beg).write_cstr(&self.lproc, name)?;
+            };
 
             wroten_len += this_entry_len;
             progress += 1;
@@ -413,23 +406,18 @@ impl<'a> Syscall<'a> {
 
     pub async fn sys_unlinkat(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (dir_fd, path_name, flags) = (args[0], args[1], args[2]);
+        let (dir_fd, path_name, flags) = (args[0], UserReadPtr::<u8>::from(args[1]), args[2]);
 
+        let path_name = path_name.read_cstr(&self.lproc)?;
         info!(
-            "Syscall: unlinkat (dir_fd: {:?}, path_name: {:?}, flags: {:?})",
+            "Syscall: unlinkat (dir_fd: {:?}, path_name: {}, flags: {:?})",
             dir_fd, path_name, flags
         );
 
         let need_to_be_dir = (flags & AT_REMOVEDIR) != 0;
-
-        let user_check = UserCheck::new_with_sum(&self.lproc);
-        let path_name = user_check.checked_read_cstr(path_name as *const u8)?;
-
-        debug!("unlinkat: path_name: {:?}", path_name);
-
         let (dir, file_name) = self.at_helper(dir_fd, path_name, flags).await?;
 
-        let file_type = dir.clone().lookup(&file_name).await?.attr().await?.kind;
+        let file_type = dir.lookup(&file_name).await?.attr().await?.kind;
         if need_to_be_dir && file_type != VfsFileKind::Directory {
             return Err(SysError::ENOTDIR);
         }
@@ -444,11 +432,10 @@ impl<'a> Syscall<'a> {
 
     pub async fn sys_faccessat(&self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (dir_fd, path_name, mode, flags) = (args[0], args[1], args[2], args[3]);
+        let (dir_fd, path_name, mode, flags) =
+            (args[0], UserReadPtr::<u8>::from(args[1]), args[2], args[3]);
 
-        let user_check = UserCheck::new_with_sum(&self.lproc);
-        let path_name = user_check.checked_read_cstr(path_name as *const u8)?;
-
+        let path_name = path_name.read_cstr(&self.lproc)?;
         info!(
             "faccessat: dir_fd: {:?}, path_name: {:?}, mode: {:?}, flags: {:?}",
             dir_fd, path_name, mode, flags
@@ -556,27 +543,22 @@ impl<'a> Syscall<'a> {
 
     pub async fn sys_mount(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (device, mount_point, _fs_type, _flags, _data): (
-            UserReadPtr<u8>,
-            UserReadPtr<u8>,
-            UserReadPtr<u8>,
-            u32,
-            UserReadPtr<u8>,
-        ) = (
-            UserReadPtr::from_usize(args[0]),
-            UserReadPtr::from_usize(args[1]),
-            UserReadPtr::from_usize(args[2]),
+        let (device, mount_point, _fs_type, _flags, _data) = (
+            UserReadPtr::<u8>::from(args[0]),
+            UserReadPtr::<u8>::from(args[1]),
+            UserReadPtr::<u8>::from(args[2]),
             args[3] as u32,
-            UserReadPtr::from_usize(args[4]),
+            UserReadPtr::<u8>::from(args[4]),
         );
 
-        let user_check = UserCheck::new_with_sum(&self.lproc);
-        let device = user_check.checked_read_cstr(device.raw_ptr())?;
-        let mount_point = user_check.checked_read_cstr(mount_point.raw_ptr())?;
+        let device = device.read_cstr(&self.lproc)?;
+        let mount_point = mount_point.read_cstr(&self.lproc)?;
+
         info!(
             "Syscall: mount (device: {:?}, mount_point: {:?})",
             device, mount_point
         );
+
         let _device_path = Path::from_string(device)?;
         // TODO: real mount the device
 
@@ -604,10 +586,9 @@ impl<'a> Syscall<'a> {
 
     pub async fn sys_umount(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (mount_point, _flags) = (UserReadPtr::from_usize(args[0]), args[1] as u32);
+        let (mount_point, _flags) = (UserReadPtr::<u8>::from(args[0]), args[1] as u32);
 
-        let user_check = UserCheck::new_with_sum(&self.lproc);
-        let mount_point = user_check.checked_read_cstr(mount_point.raw_ptr())?;
+        let mount_point = mount_point.read_cstr(&self.lproc)?;
         info!("Syscall: umount (mount_point: {:?})", mount_point);
 
         let cwd = self.lproc.with_mut_fsinfo(|f| f.cwd.clone());
