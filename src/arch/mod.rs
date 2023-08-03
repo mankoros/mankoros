@@ -2,11 +2,6 @@ use log::debug;
 
 use crate::consts;
 
-mod hart_local;
-pub use hart_local::init_hart_local_info;
-pub use hart_local::sum_mode_pop;
-pub use hart_local::sum_mode_push;
-
 /// Returns the current frame pointer or stack base pointer
 #[inline(always)]
 pub fn fp() -> usize {
@@ -80,13 +75,4 @@ pub fn spin(cycle: usize) {
     for _ in 0..cycle {
         core::hint::spin_loop();
     }
-}
-
-#[inline(always)]
-pub fn within_sum<T>(f: impl FnOnce() -> T) -> T {
-    // Allow acessing user vaddr
-    sum_mode_push();
-    let ret = f();
-    sum_mode_pop();
-    ret
 }

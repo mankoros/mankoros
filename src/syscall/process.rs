@@ -2,8 +2,7 @@ use alloc::{string::String, vec::Vec};
 use bitflags::bitflags;
 
 use crate::{
-    arch::within_sum,
-    executor::util_futures::yield_now,
+    executor::{hart_local::within_sum, util_futures::yield_now},
     fs::new_vfs::{path::Path, VfsFileKind},
     memory::address::VirtAddr,
     process::{self, lproc::ProcessStatus, user_space::user_area::UserAreaPerm},

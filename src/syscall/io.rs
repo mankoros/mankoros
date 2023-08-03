@@ -1,9 +1,11 @@
 use log::{debug, info};
 
 use crate::{
-    arch::within_sum,
     consts::MAX_OPEN_FILES,
-    executor::util_futures::{within_sum_async, yield_now, AnyFuture},
+    executor::{
+        hart_local::within_sum,
+        util_futures::{within_sum_async, yield_now, AnyFuture},
+    },
     fs::{
         new_vfs::{
             path::Path,

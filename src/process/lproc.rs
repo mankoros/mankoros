@@ -7,8 +7,9 @@ use super::{
     },
 };
 use crate::{
-    arch::{self, switch_page_table, within_sum},
+    arch::{self, switch_page_table},
     consts::PAGE_SIZE,
+    executor::hart_local::within_sum,
     fs::{
         self,
         new_vfs::{path::Path, top::VfsFileRef},

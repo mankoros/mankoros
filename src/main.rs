@@ -23,11 +23,8 @@
 extern crate alloc;
 
 use alloc::boxed::Box;
-use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::fmt::Write;
-use process::lproc::LightProcess;
-use process::spawn_proc;
 
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -65,7 +62,6 @@ use crate::boot::boot_pagetable_paddr;
 use crate::consts::address_space::K_SEG_PHY_MEM_BEG;
 use crate::utils::SerialWrapper;
 
-use crate::arch::{flush_tlb_all, init_hart_local_info};
 use crate::executor::block_on;
 use crate::memory::address::kernel_virt_text_to_phys;
 use crate::memory::frame_ref_cnt::init_frame_ref_cnt;
@@ -194,9 +190,6 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
         "Hart frequency: {:?} MHz",
         hart_freq.iter().map(|f| f / 1000000).collect::<Vec<_>>()
     );
-
-    // Init hart local info
-    init_hart_local_info();
 
     // Remove low memory mappings
     pagetable::pagetable::unmap_boot_seg();

@@ -5,9 +5,9 @@ pub mod user_area;
 use alloc::{string::String, sync::Arc, vec::Vec};
 
 use crate::{
-    arch::{flush_tlb, get_curr_page_table_addr, within_sum},
+    arch::{flush_tlb, get_curr_page_table_addr},
     consts::{PAGE_MASK, PAGE_SIZE},
-    executor::block_on,
+    executor::{block_on, hart_local::within_sum},
     fs::new_vfs::top::VfsFileRef,
     memory::{
         address::{PhysAddr, VirtAddr},
