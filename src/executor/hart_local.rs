@@ -1,37 +1,42 @@
 use alloc::{sync::Arc, vec::Vec};
 
 use crate::{consts, process::lproc::LightProcess, sync::SpinNoIrqLock};
-use core::arch::asm;
+use core::{arch::asm, mem::MaybeUninit};
 
-pub struct HartLocal {
-    num_intr_off: usize,
-    intr_enable: bool,
+pub struct HartLocalInfo {
+    sum_cnt: usize,
+    no_irq_cnt: usize,
     current_lproc: Option<Arc<LightProcess>>,
 }
 
-impl HartLocal {
-    fn new() -> Self {
+impl HartLocalInfo {
+    const fn new() -> Self {
         Self {
-            num_intr_off: 0,
-            intr_enable: true, // interrupt is enabled after init
+            sum_cnt: 0,
+            no_irq_cnt: 0,
             current_lproc: None,
         }
     }
 
-    pub fn get_current_lproc(&self) -> Option<Arc<LightProcess>> {
+    pub fn current_lproc(&self) -> Option<Arc<LightProcess>> {
         self.current_lproc.as_ref().map(Arc::clone)
     }
 }
 
-lazy_static::lazy_static! {
-    pub static ref HART_CONTEXT: Vec<SpinNoIrqLock<HartLocal>> = {
-        let mut context = Vec::new();
-        for _ in 0..consts::MAX_SUPPORTED_CPUS {
-            context.push(SpinNoIrqLock::new(HartLocal::new()));
-        }
-        context
-    };
-}
+// hart local 的东西修改肯定也是 hart local 的, 不用锁
+const HART_MAX: usize = 8;
+static mut HART_LOCAL_INFO: [HartLocalInfo; HART_MAX] = [
+    // [HartLocalInfo::new(); HART_MAX] needs impl Copy for HartLocalInfo,
+    // but we can't impl Copy for HartLocalInfo because of Arc<LightProcess>
+    HartLocalInfo::new(),
+    HartLocalInfo::new(),
+    HartLocalInfo::new(),
+    HartLocalInfo::new(),
+    HartLocalInfo::new(),
+    HartLocalInfo::new(),
+    HartLocalInfo::new(),
+    HartLocalInfo::new(),
+];
 
 #[no_mangle]
 #[inline(always)]
@@ -43,14 +48,79 @@ pub fn get_hart_id() -> usize {
     hartid
 }
 
-pub fn get_curr_lproc() -> Option<Arc<LightProcess>> {
+fn get_curr_hart_info() -> &'static mut HartLocalInfo {
     let hart_id = get_hart_id();
-    let hart_context = HART_CONTEXT[hart_id].lock(here!());
-    hart_context.get_current_lproc()
+    debug_assert!(hart_id < HART_MAX);
+    unsafe { &mut HART_LOCAL_INFO[hart_id] }
+}
+
+pub fn get_curr_lproc() -> Option<Arc<LightProcess>> {
+    get_curr_hart_info().current_lproc()
 }
 
 pub fn set_curr_lproc(lproc: Arc<LightProcess>) {
-    let hart_id = get_hart_id();
-    let mut hart_context = HART_CONTEXT[hart_id].lock(here!());
-    hart_context.current_lproc = Some(lproc);
+    get_curr_hart_info().current_lproc = Some(lproc);
+}
+
+pub fn no_irq_push() {
+    let curr = get_curr_hart_info();
+    if curr.no_irq_cnt == 0 {
+        unsafe { riscv::interrupt::disable() };
+    }
+    curr.no_irq_cnt += 1;
+}
+
+pub fn no_irq_pop() {
+    let curr = get_curr_hart_info();
+    if curr.no_irq_cnt == 1 {
+        unsafe { riscv::register::sstatus::set_sie() };
+    }
+    curr.no_irq_cnt -= 1;
+}
+
+#[inline(always)]
+pub fn within_no_irq<T>(f: impl FnOnce() -> T) -> T {
+    // Allow acessing user vaddr
+    no_irq_push();
+    let ret = f();
+    no_irq_pop();
+    ret
+}
+
+pub struct AutoSIE;
+impl AutoSIE {
+    pub fn new() -> Self {
+        no_irq_push();
+        Self {}
+    }
+}
+impl Drop for AutoSIE {
+    fn drop(&mut self) {
+        no_irq_pop();
+    }
+}
+
+pub fn sum_mode_push() {
+    let curr = get_curr_hart_info();
+    if curr.sum_cnt == 0 {
+        unsafe { riscv::register::sstatus::clear_sie() };
+    }
+    curr.sum_cnt += 1;
+}
+
+pub fn sum_mode_pop() {
+    let curr = get_curr_hart_info();
+    if curr.sum_cnt == 1 {
+        unsafe { riscv::register::sstatus::clear_sum() };
+    }
+    curr.sum_cnt -= 1;
+}
+
+#[inline(always)]
+pub fn within_sum<T>(f: impl FnOnce() -> T) -> T {
+    // Allow acessing user vaddr
+    sum_mode_push();
+    let ret = f();
+    sum_mode_pop();
+    ret
 }

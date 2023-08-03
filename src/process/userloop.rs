@@ -6,7 +6,10 @@ use riscv::register::{
 
 use crate::{
     arch, drivers,
-    executor::{hart_local::set_curr_lproc, util_futures::yield_now},
+    executor::{
+        hart_local::{no_irq_pop, no_irq_push, set_curr_lproc, AutoSIE},
+        util_futures::yield_now,
+    },
     memory::address::VirtAddr,
     process::user_space::user_area::PageFaultAccessType,
     syscall::Syscall,
@@ -21,36 +24,11 @@ use core::{
 };
 use log::{debug, info, warn};
 
-struct AutoSIE {}
-static mut SIE_COUNT: i32 = 0;
-impl AutoSIE {
-    fn disable_interrupt_until_drop() -> Self {
-        unsafe {
-            if SIE_COUNT == 0 {
-                sstatus::clear_sie();
-            }
-            SIE_COUNT += 1;
-        }
-
-        Self {}
-    }
-}
-impl Drop for AutoSIE {
-    fn drop(&mut self) {
-        unsafe {
-            SIE_COUNT -= 1;
-            if SIE_COUNT == 0 {
-                sstatus::set_sie();
-            }
-        }
-    }
-}
-
 pub async fn userloop(lproc: Arc<LightProcess>) {
     loop {
         debug!("enter userspace: {:x?}", lproc.id());
         // TODO: 处理 HART 相关问题
-        let auto_sie = AutoSIE::disable_interrupt_until_drop();
+        let auto_sie = AutoSIE::new();
         let context = lproc.context();
         let timer = lproc.timer();
 

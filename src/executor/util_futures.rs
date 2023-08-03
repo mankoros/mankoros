@@ -1,4 +1,4 @@
-use crate::{arch::within_sum, tools::errors::Async};
+use crate::{executor::hart_local::within_sum, tools::errors::Async};
 use alloc::vec::Vec;
 use core::{
     future::Future,

@@ -4,8 +4,10 @@
 use log::info;
 
 use crate::{
-    arch::within_sum,
-    executor::{hart_local::get_curr_lproc, util_futures::yield_now},
+    executor::{
+        hart_local::{get_curr_lproc, within_sum},
+        util_futures::yield_now,
+    },
     here,
     memory::{UserReadPtr, UserWritePtr},
     timer::{get_time_f64, Rusage, TimeSpec, TimeVal, Tms},

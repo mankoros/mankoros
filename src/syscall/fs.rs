@@ -5,8 +5,8 @@ use alloc::string::String;
 use log::{debug, info, warn};
 
 use crate::{
-    arch::within_sum,
     consts::MAX_OPEN_FILES,
+    executor::hart_local::within_sum,
     fs::{
         self,
         disk::BLOCK_SIZE,
