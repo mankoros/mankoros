@@ -4,6 +4,7 @@ use core::arch::global_asm;
 use riscv::register::sstatus;
 use riscv::register::{stvec, utvec::TrapMode};
 
+use crate::executor::hart_local::within_sum;
 use log::trace;
 
 global_asm!(include_str!("trap.asm"));
@@ -39,7 +40,7 @@ unsafe fn set_user_trap() {
 }
 
 #[inline(always)]
-unsafe fn set_kernel_trap() {
+pub unsafe fn set_kernel_trap() {
     extern "C" {
         fn __kernel_trap_vector();
     }
@@ -62,12 +63,12 @@ unsafe fn enable_irq() {
     sstatus::set_sie();
 }
 
+extern "C" {
+    fn __user_rw_trap_vector();
+}
 #[inline(always)]
-unsafe fn set_kernel_user_rw_trap() {
-    extern "C" {
-        fn __user_rw_trap_entry();
-    }
-    let trap_vaddr = __user_rw_trap_entry as usize;
+pub unsafe fn set_kernel_user_rw_trap() {
+    let trap_vaddr = __user_rw_trap_vector as usize;
     stvec::write(trap_vaddr, TrapMode::Vectored);
     trace!(
         "Switch to User-RW checking mode for hart {} at STVEC: 0x{:x}",
@@ -79,11 +80,8 @@ unsafe fn set_kernel_user_rw_trap() {
 #[inline(always)]
 pub fn will_read_fail(vaddr: usize) -> bool {
     when_debug!({
-        extern "C" {
-            fn __user_rw_trap_entry();
-        }
         let curr_stvec = stvec::read().address();
-        debug_assert!(curr_stvec == __user_rw_trap_entry as usize);
+        debug_assert!(curr_stvec == __user_rw_trap_vector as usize);
     });
 
     extern "C" {
@@ -96,11 +94,8 @@ pub fn will_read_fail(vaddr: usize) -> bool {
 #[inline(always)]
 pub fn will_write_fail(vaddr: usize) -> bool {
     when_debug!({
-        extern "C" {
-            fn __user_rw_trap_entry();
-        }
         let curr_stvec = stvec::read().address();
-        debug_assert!(curr_stvec == __user_rw_trap_entry as usize);
+        debug_assert!(curr_stvec == __user_rw_trap_vector as usize);
     });
 
     extern "C" {

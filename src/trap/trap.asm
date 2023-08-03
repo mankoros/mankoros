@@ -2,6 +2,9 @@
     .global __kernel_to_user
     .global __user_trap_entry
     .global __kernel_trap_vector
+    .global __user_rw_trap_vector
+    .global __try_read_user
+    .global __try_write_user
 
 # 常量：表示每个寄存器占的字节数，由于是64位，都是8字节
 .equ XLENB, 8
@@ -282,7 +285,7 @@ __user_rw_exception_entry:
 
 .align 8
 __user_rw_trap_vector:
-    j __kernel_default_exception_entry
+    j __user_rw_exception_entry
     .rept 16
     .align 2
     j __kernel_default_interrupt_entry

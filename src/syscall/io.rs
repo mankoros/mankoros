@@ -467,7 +467,7 @@ impl Syscall<'_> {
         let iovs = iov.read_array(iovcnt, &self.lproc)?;
         for (i, iov) in iovs.iter().enumerate() {
             let ptr = UserReadPtr::<u8>::from(iov.base);
-            log::trace!("syscall writev: iov #{i}, ptr: {ptr}, len: {}", iov.len);
+            log::debug!("syscall writev: iov #{i}, ptr: {ptr}, len: {}", iov.len);
 
             let buf = ptr.as_slice(iov.len, &self.lproc)?;
             let write_len = file.write_at(offset, buf).await?;
