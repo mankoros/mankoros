@@ -4,7 +4,15 @@
 //! Adapted from FTL OS
 
 #![allow(dead_code)]
-use core::marker::PhantomData;
+use crate::{
+    executor::hart_local::within_sum,
+    memory::address::VirtAddr,
+    process::{lproc::LightProcess, user_space::user_area::PageFaultAccessType},
+    tools::errors::{SysError, SysResult},
+    trap::trap::will_read_fail,
+};
+use alloc::{string::String, sync::Arc, vec::Vec};
+use core::{intrinsics::size_of, marker::PhantomData, ops::ControlFlow};
 
 pub trait Policy: Clone + Copy + 'static {}
 
@@ -92,7 +100,70 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
     pub fn nonnull(self) -> Option<Self> {
         (!self.ptr.is_null()).then_some(self)
     }
+    pub fn read(self, lproc: &Arc<LightProcess>) -> SysResult<T> {
+        debug_assert!(!self.is_null());
+        lproc.just_ensure_user_area(
+            VirtAddr::from(self.as_usize()),
+            size_of::<T>(),
+            PageFaultAccessType::RO,
+        )?;
+        let res = within_sum(|| unsafe { core::ptr::read(self.ptr) });
+        Ok(res)
+    }
+
+    pub fn read_array(self, n: usize, lproc: &Arc<LightProcess>) -> SysResult<Vec<T>> {
+        debug_assert!(!self.is_null());
+        lproc.just_ensure_user_area(
+            VirtAddr::from(self.as_usize()),
+            size_of::<T>() * n,
+            PageFaultAccessType::RO,
+        )?;
+
+        let mut res = Vec::with_capacity(n);
+        within_sum(|| unsafe {
+            let mut ptr = self.ptr;
+            for _ in 0..n {
+                res.push(ptr.read());
+                ptr = ptr.offset(1);
+            }
+        });
+
+        Ok(res)
+    }
 }
+
+impl<P: Read> UserPtr<u8, P> {
+    pub fn read_cstr(self, lproc: &Arc<LightProcess>) -> SysResult<String> {
+        let mut str = String::with_capacity(32);
+        let mut has_ended = false;
+
+        lproc.ensure_user_area(
+            VirtAddr::from(self.as_usize()),
+            usize::MAX,
+            PageFaultAccessType::RO,
+            |beg, len| unsafe {
+                let mut ptr = beg.as_mut_ptr();
+                for _ in 0..len {
+                    let c = ptr.read();
+                    if c == 0 {
+                        has_ended = true;
+                        return ControlFlow::Break(None);
+                    }
+                    str.push(c as char);
+                    ptr = ptr.offset(1);
+                }
+                ControlFlow::Continue(())
+            },
+        )?;
+
+        if has_ended {
+            Ok(str)
+        } else {
+            Err(SysError::EINVAL)
+        }
+    }
+}
+
 impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
     pub fn raw_ptr_mut(self) -> *mut T {
         self.ptr
@@ -100,12 +171,124 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
     pub fn nonnull_mut(self) -> Option<Self> {
         (!self.ptr.is_null()).then_some(self)
     }
+
+    pub fn write(self, lproc: &Arc<LightProcess>, val: T) -> SysResult<()> {
+        debug_assert!(!self.is_null());
+        lproc.just_ensure_user_area(
+            VirtAddr::from(self.as_usize()),
+            size_of::<T>(),
+            PageFaultAccessType::RW,
+        )?;
+        within_sum(|| unsafe { core::ptr::write(self.ptr, val) });
+        Ok(())
+    }
+    pub fn write_array(self, lproc: &Arc<LightProcess>, val: &[T]) -> SysResult<()> {
+        debug_assert!(!self.is_null());
+        lproc.just_ensure_user_area(
+            VirtAddr::from(self.as_usize()),
+            size_of::<T>() * val.len(),
+            PageFaultAccessType::RW,
+        )?;
+        within_sum(|| unsafe {
+            let mut ptr = self.ptr;
+            for &v in val {
+                ptr.write(v);
+                ptr = ptr.offset(1);
+            }
+        });
+        Ok(())
+    }
 }
+
+impl<P: Write> UserPtr<u8, P> {
+    pub fn write_cstr(self, lproc: &Arc<LightProcess>, val: &str) -> SysResult<()> {
+        debug_assert!(!self.is_null());
+
+        let mut str = val.as_bytes();
+        let mut has_filled_zero = false;
+
+        lproc.ensure_user_area(
+            VirtAddr::from(self.as_usize()),
+            val.len() + 1,
+            PageFaultAccessType::RW,
+            |beg, len| unsafe {
+                let mut ptr = beg.as_mut_ptr();
+                let writable_len = len.min(str.len());
+                for _ in 0..writable_len {
+                    let c = str[0];
+                    str = &str[1..];
+                    ptr.write(c);
+                    ptr = ptr.offset(1);
+                }
+                if str.is_empty() {
+                    if writable_len < len {
+                        ptr.write(0);
+                        has_filled_zero = true;
+                    }
+                    // 其他的留到下一轮, 下一轮时 writable_len == 0,
+                    // 会直接到这里
+                }
+                ControlFlow::Continue(())
+            },
+        )?;
+
+        if has_filled_zero {
+            Ok(())
+        } else {
+            Err(SysError::EINVAL)
+        }
+    }
+}
+
 impl<T: Clone + Copy + 'static, P: Policy> From<usize> for UserPtr<T, P> {
     fn from(a: usize) -> Self {
         Self {
             ptr: a as *mut T,
             _mark: PhantomData,
         }
+    }
+}
+
+impl LightProcess {
+    #[inline(always)]
+    fn just_ensure_user_area(
+        &self,
+        begin: VirtAddr,
+        len: usize,
+        access: PageFaultAccessType,
+    ) -> SysResult<()> {
+        self.ensure_user_area(begin, len, access, |_, _| ControlFlow::Continue(()))
+    }
+
+    /// ensure that the whole range is accessible, or return an error
+    #[inline(always)]
+    fn ensure_user_area(
+        &self,
+        begin: VirtAddr,
+        len: usize,
+        access: PageFaultAccessType,
+        mut f: impl FnMut(VirtAddr, usize) -> ControlFlow<Option<SysError>>,
+    ) -> SysResult<()> {
+        let mut curr_vaddr = begin;
+        let mut readable_len = 0;
+        while readable_len < len {
+            if will_read_fail(curr_vaddr.bits()) {
+                self.with_mut_memory(|m| m.handle_pagefault(curr_vaddr, access))
+                    .map_err(|_| SysError::EFAULT)?;
+            }
+
+            let next_page_beg = curr_vaddr.round_down().next_page().into();
+            let len = next_page_beg - curr_vaddr;
+
+            match f(curr_vaddr, len) {
+                ControlFlow::Continue(_) => {}
+                ControlFlow::Break(None) => return Ok(()),
+                ControlFlow::Break(Some(e)) => return Err(e),
+            }
+
+            readable_len += len;
+            curr_vaddr = next_page_beg;
+        }
+        Ok(())
     }
 }
