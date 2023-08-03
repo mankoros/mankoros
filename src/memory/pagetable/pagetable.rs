@@ -19,6 +19,7 @@ use crate::{
         address::{PhysAddr, PhysAddr4K, VirtAddr, VirtAddr4K},
         frame,
     },
+    when_debug,
 };
 
 use alloc::{vec, vec::Vec};
@@ -374,26 +375,27 @@ impl Drop for PageTable {
         // so no extra things should be done
         for (i, frame) in self.intrm_tables.iter().enumerate() {
             log::trace!("Drop pagetable page {:#x} ({})", frame, i);
-            cfg_if::cfg_if! {
+            when_debug!({
                 // Debug sanity check
-                if #[cfg(debug_assertions)] {
-                    let ref_cnt = frame.page_num().get_ref_cnt();
-                    if ref_cnt != 1 {
-                        warn!("Pagetable page {:#x} still has {} references", frame, ref_cnt);
-                        panic!("Pagetable page should not have references");
-                    }
-
-                    let page = self.table_of(*frame);
-                    for pte in page.iter() {
-                        if pte.is_valid() && pte.is_leaf() && pte.is_user() {
-                            warn!("Pagetable page {:#x} still valid user page", frame);
-                            panic!("Pagetable page should not be valid");
-                        }
-                    }
-                    // Clear dealloc page when in debug
-                    unsafe { frame.as_mut_page_slice().fill(0x5) };
+                let ref_cnt = frame.page_num().get_ref_cnt();
+                if ref_cnt != 1 {
+                    warn!(
+                        "Pagetable page {:#x} still has {} references",
+                        frame, ref_cnt
+                    );
+                    panic!("Pagetable page should not have references");
                 }
-            }
+
+                let page = self.table_of(*frame);
+                for pte in page.iter() {
+                    if pte.is_valid() && pte.is_leaf() && pte.is_user() {
+                        warn!("Pagetable page {:#x} still valid user page", frame);
+                        panic!("Pagetable page should not be valid");
+                    }
+                }
+                // Clear dealloc page when in debug
+                unsafe { frame.as_mut_page_slice().fill(0x5) };
+            });
             debug_assert!(frame.is_valid());
             frame.page_num().decrease();
             frame::dealloc_frame(*frame);
