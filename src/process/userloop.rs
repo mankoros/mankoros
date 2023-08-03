@@ -91,7 +91,6 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                 Exception::InstructionPageFault
                 | Exception::LoadPageFault
                 | Exception::StorePageFault => {
-                    // TODO: page fault
                     debug!(
                         "Pagefault, User SEPC: 0x{:x}, STVAL: 0x{:x}, SCAUSE: {:#?}, User sp: 0x{:x}",
                         context.user_sepc, stval, e, context.user_rx[2]
@@ -111,7 +110,6 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                         warn!("Pagefault failed: {:?}, process killed", e);
                         is_exit = true;
                     }
-                    // do_exit = trap_handler::page_fault(&thread, e, stval, context.user_sepc).await;
                 }
                 Exception::InstructionFault | Exception::IllegalInstruction => {
                     // user die

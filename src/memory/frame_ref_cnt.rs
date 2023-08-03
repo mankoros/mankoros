@@ -4,6 +4,7 @@ use crate::{
         PAGE_SIZE,
     },
     memory::{address::PhysPageNum, frame::dealloc_frame},
+    when_debug,
 };
 use alloc::alloc::alloc;
 use core::{alloc::Layout, intrinsics, panic};
@@ -42,15 +43,13 @@ pub fn is_frame_ref_cnt_inited() -> bool {
 
 impl PhysPageNum {
     fn get_ref_cnt_ptr(self) -> *mut u32 {
-        cfg_if::cfg_if! {
-            if #[cfg(debug_assertions)] {
-                let max_ppn = max_physical_memory() / PAGE_SIZE;
-                if self.bits() >= max_ppn {
-                    panic!("get_ref_cnt_ptr: ppn out of range");
-                }
+        when_debug!({
+            let max_ppn = max_physical_memory() / PAGE_SIZE;
+            if self.bits() >= max_ppn {
+                panic!("get_ref_cnt_ptr: ppn out of range");
             }
-        }
-        debug_assert!(self.addr().is_valid());
+            assert!(self.addr().is_valid());
+        });
         unsafe { FRAME_REF_CNT_PTR.add(self.bits()) }
     }
 
@@ -107,11 +106,9 @@ impl PhysPageNum {
         if self.add_ref_cnt(-1) == 1 {
             // Fill the page with zeroes when in debug mode
             log::trace!("dealloc_frame_try {:?} by ref count == 0", self.addr());
-            cfg_if::cfg_if! {
-                if #[cfg(debug_assertions)] {
-                    unsafe { self.addr().as_mut_page_slice().fill(0x5) };
-                }
-            }
+            when_debug!({
+                unsafe { self.addr().as_mut_page_slice().fill(0x5) };
+            });
             dealloc_frame(self.addr());
         }
     }

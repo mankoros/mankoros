@@ -5,7 +5,7 @@
 //!
 //!
 use crate::consts::platform::max_physical_memory;
-use crate::here;
+use crate::{here, when_debug};
 
 use bitmap_allocator::BitAlloc;
 
@@ -68,13 +68,12 @@ pub fn init() {
 /// returns the physical address of the frame, usually 0x80xxxxxx
 pub fn alloc_frame() -> Option<PhysAddr4K> {
     let paddr = GlobalFrameAlloc.alloc();
-    cfg_if::cfg_if! {
-        if #[cfg(debug_assertions)] {
-            if let Some(paddr) = paddr {
-                unsafe { paddr.as_mut_page_slice().fill(0x5); } // Fill with junk
-            }
+    when_debug!({
+        if let Some(paddr) = paddr {
+            // Fill with junk
+            unsafe { paddr.as_mut_page_slice().fill(0x5) };
         }
-    }
+    });
 
     if let Some(paddr) = paddr {
         debug_assert!(paddr.is_valid());

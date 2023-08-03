@@ -8,7 +8,7 @@ pub mod user_check;
 
 #[macro_export]
 macro_rules! when_debug {
-    ($blk:block) => {
+    ($blk:expr) => {
         cfg_if::cfg_if! {
             if #[cfg(debug_assertions)] {
                 $blk
