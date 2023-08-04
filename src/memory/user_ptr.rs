@@ -8,7 +8,7 @@ use crate::{
     memory::address::VirtAddr,
     process::{lproc::LightProcess, user_space::user_area::PageFaultAccessType},
     tools::errors::{SysError, SysResult},
-    trap::trap::{set_kernel_trap, set_kernel_user_rw_trap, will_read_fail},
+    trap::trap::{set_kernel_trap, set_kernel_user_rw_trap, will_read_fail, will_write_fail},
 };
 use alloc::{string::String, sync::Arc, vec::Vec};
 use core::{
@@ -353,10 +353,16 @@ impl LightProcess {
 
         unsafe { set_kernel_user_rw_trap() };
 
+        let test_fn = match access {
+            PageFaultAccessType::RO => will_read_fail,
+            PageFaultAccessType::RW => will_write_fail,
+            _ => panic!("invalid access type"),
+        };
+
         let mut curr_vaddr = begin;
         let mut readable_len = 0;
         while readable_len < len {
-            if will_read_fail(curr_vaddr.bits()) {
+            if test_fn(curr_vaddr.bits()) {
                 self.with_mut_memory(|m| m.handle_pagefault(curr_vaddr, access))
                     .map_err(|_| SysError::EFAULT)?;
             }
