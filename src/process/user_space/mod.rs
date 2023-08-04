@@ -356,6 +356,12 @@ impl UserSpace {
         vaddr: VirtAddr,
         access_type: PageFaultAccessType,
     ) -> Result<(), PageFaultErr> {
+        debug!(
+            "Page fault at {:x?} with {:?} (pgt: {:x?})",
+            vaddr,
+            access_type,
+            self.page_table.root_paddr()
+        );
         self.areas.page_fault(&mut self.page_table, vaddr.page_num_down(), access_type)
     }
 
