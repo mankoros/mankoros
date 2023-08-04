@@ -466,6 +466,10 @@ impl Syscall<'_> {
         let mut total_len = 0;
         let iovs = iov.read_array(iovcnt, &self.lproc)?;
         for (i, iov) in iovs.iter().enumerate() {
+            if iov.len == 0 {
+                continue;
+            }
+
             let ptr = UserReadPtr::<u8>::from(iov.base);
             log::debug!("syscall writev: iov #{i}, ptr: {ptr}, len: {}", iov.len);
 
@@ -493,6 +497,10 @@ impl Syscall<'_> {
         let mut total_len = 0;
         let iovs = iov.read_array(iovcnt, &self.lproc)?;
         for (i, iov) in iovs.iter().enumerate() {
+            if iov.len == 0 {
+                continue;
+            }
+
             let ptr = UserWritePtr::<u8>::from(iov.base);
             log::trace!("syscall readv: iov #{i}, ptr: {ptr}, len: {}", iov.len);
 
