@@ -70,7 +70,7 @@ fn run_script(name: &str) {
     envp.push(String::from("PATH=/"));
 
     let lproc = LightProcess::new();
-    lproc.do_exec(busybox, args, envp);
+    block_on(lproc.clone().do_exec(busybox, args, envp));
     lproc.with_mut_procfs_info(|info| info.exe_path = Some(Path::from("/busybox")));
     spawn_proc(lproc);
 }
@@ -82,7 +82,7 @@ fn run_binary(path: &str, args: Vec<String>) {
 
     // Some necessary environment variables.
     let lproc = LightProcess::new();
-    lproc.do_exec(bin, args, Vec::new());
+    block_on(lproc.clone().do_exec(bin, args, Vec::new()));
     lproc.with_mut_procfs_info(|info| info.exe_path = Some(path));
     spawn_proc(lproc);
 }

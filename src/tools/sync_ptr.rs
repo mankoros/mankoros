@@ -1,6 +1,6 @@
 use core::ops::Deref;
 
-struct SyncMutPtr<T>(*mut T);
+pub struct SyncMutPtr<T>(*mut T);
 
 impl<T> Deref for SyncMutPtr<T> {
     type Target = *mut T;
@@ -26,3 +26,4 @@ impl<T> SyncMutPtr<T> {
 }
 
 unsafe impl<T> Sync for SyncMutPtr<T> {}
+unsafe impl<T> Send for SyncMutPtr<T> {}

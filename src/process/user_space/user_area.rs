@@ -100,18 +100,19 @@ impl From<xmas_elf::program::Flags> for UserAreaPerm {
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct PageFaultAccessType: u8 {
-        const WRITE = 1 << 1;
-        const EXECUTE = 1 << 2;
+        const READ = 1 << 1;
+        const WRITE = 1 << 2;
+        const EXECUTE = 1 << 3;
     }
 }
 
 impl PageFaultAccessType {
     // no write & no execute == read only
-    pub const RO: Self = Self::empty();
+    pub const RO: Self = Self::READ;
     // can't use | (bits or) here
     // see https://github.com/bitflags/bitflags/issues/180
-    pub const RW: Self = Self::WRITE;
-    pub const RX: Self = Self::EXECUTE;
+    pub const RW: Self = Self::RO.union(Self::WRITE);
+    pub const RX: Self = Self::RO.union(Self::EXECUTE);
 
     pub fn from_exception(e: scause::Exception) -> Self {
         match e {

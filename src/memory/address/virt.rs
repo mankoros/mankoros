@@ -93,6 +93,12 @@ impl VirtAddr {
         #[allow(arithmetic_overflow)]
         VirtAddr4K((self.0 & !consts::PAGE_MASK) + consts::PAGE_SIZE)
     }
+    pub const fn floor(self) -> VirtAddr4K {
+        self.round_down()
+    }
+    pub const fn ceil(self) -> VirtAddr4K {
+        VirtAddr4K((self.0 + consts::PAGE_SIZE - 1) & !consts::PAGE_MASK)
+    }
     pub const fn assert_4k(self) -> VirtAddr4K {
         VirtAddr4K::from(self.0)
     }

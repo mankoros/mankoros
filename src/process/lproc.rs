@@ -255,7 +255,12 @@ impl LightProcess {
     }
 
     // Create new userspace
-    pub fn do_exec(self: &Arc<Self>, elf_file: VfsFileRef, args: Vec<String>, envp: Vec<String>) {
+    pub async fn do_exec(
+        self: &Arc<Self>,
+        elf_file: VfsFileRef,
+        args: Vec<String>,
+        envp: Vec<String>,
+    ) {
         let new_userspace = UserSpace::new();
 
         let page_table_paddr = new_userspace.page_table.root_paddr();
@@ -271,8 +276,7 @@ impl LightProcess {
         log::debug!("do_exec: new userspace switched");
 
         // 把 elf 的 segment 映射到用户空间
-        let (entry_point, auxv) = self.with_mut_memory(|m| m.parse_and_map_elf_file(elf_file));
-
+        let (entry_point, auxv) = self.parse_and_map_elf_file_async(elf_file).await.unwrap();
         debug!("Parse ELF file done.");
 
         // 分配栈

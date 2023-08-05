@@ -71,52 +71,6 @@ pub struct AuxVector {
 }
 
 impl AuxVector {
-    pub fn from_elf(elf: &ElfFile, begin_addr: VirtAddr) -> Self {
-        let pgm_header_addr = (begin_addr + elf.header.pt2.ph_offset() as usize).bits();
-        let pgm_header_cnt = elf.header.pt2.ph_count() as usize;
-        let pgm_header_entry_size = elf.header.pt2.ph_entry_size() as usize;
-        let entry_point = elf.header.pt2.entry_point() as usize;
-
-        let mut auxv = Vec::new();
-        macro_rules! push_elm {
-            ($aux_type: expr, $aux_value: expr) => {
-                auxv.push(AuxElement {
-                    aux_type: $aux_type,
-                    aux_value: $aux_value,
-                });
-            };
-        }
-
-        push_elm!(AT_PHDR, pgm_header_addr);
-        push_elm!(AT_PHENT, pgm_header_entry_size);
-        push_elm!(AT_PHNUM, pgm_header_cnt);
-
-        push_elm!(AT_PAGESZ, PAGE_SIZE);
-        push_elm!(AT_BASE, 0);
-        push_elm!(AT_FLAGS, 0);
-        push_elm!(AT_ENTRY, entry_point);
-
-        // magic number from UltraOS, don't know why
-        // ref: https://github.com/xiyurain/UltraOS/blob/3b95ec3cffe94fd5165da525c4193906366f7d5a/codes/os/src/mm/memory_set.rs#LL297C73-L297C73
-        push_elm!(AT_NOTELF, 0x112d);
-
-        // values below are copied from FTL-OS
-        push_elm!(AT_UID, 0);
-        push_elm!(AT_EUID, 0);
-        push_elm!(AT_GID, 0);
-        push_elm!(AT_EGID, 0);
-
-        push_elm!(AT_PLATFORM, 0);
-        push_elm!(AT_HWCAP, 0);
-        push_elm!(AT_CLKTCK, 100);
-        push_elm!(AT_SECURE, 0);
-        push_elm!(AT_RANDOM, pgm_header_addr); // Just use program as random
-
-        // rest entries are not nesscary for now
-
-        AuxVector { vec: auxv }
-    }
-
     pub fn from_elf_analyzer(elf: &ElfAnalyzer, begin_addr: VirtAddr) -> Self {
         let pgm_header_addr = (begin_addr + elf.pt2.ph_offset as usize).bits();
         let pgm_header_cnt = elf.pt2.ph_count as usize;
