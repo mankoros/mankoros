@@ -13,6 +13,7 @@ use crate::{
 };
 
 mod aux_vector;
+pub mod info;
 pub use aux_vector::AuxElement;
 pub use aux_vector::AuxVector;
 
