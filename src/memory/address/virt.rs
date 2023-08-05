@@ -1,7 +1,7 @@
 use super::{impl_arithmetic_with_usize, impl_fmt, impl_usize_convert};
 use crate::consts;
 use core::fmt;
-use core::ops::{Add, AddAssign, Sub, SubAssign};
+use core::ops::{Add, AddAssign, Range, Sub, SubAssign};
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct VirtAddr4K(usize);
@@ -132,3 +132,27 @@ impl VirtPageNum {
 impl_arithmetic_with_usize!(VirtPageNum);
 impl_fmt!(VirtPageNum, "VPN");
 impl_usize_convert!(VirtPageNum);
+
+pub type VirtAddrRange = Range<VirtAddr>;
+
+#[inline(always)]
+///! 用于迭代虚拟地址范围内的所有页, 如果首尾不是页对齐的就 panic
+pub fn iter_vpn(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum)) {
+    let range = round_range_vpn(range);
+    let mut vpn = range.start;
+    while vpn < range.end {
+        f(vpn);
+        vpn += 1;
+    }
+}
+
+pub fn round_range(range: VirtAddrRange) -> VirtAddrRange {
+    range.start.round_down().into()..(range.end - 1).round_up().into()
+}
+pub fn round_range_4k(range: VirtAddrRange) -> Range<VirtAddr4K> {
+    range.start.round_down()..(range.end - 1).round_up()
+}
+pub fn round_range_vpn(range: VirtAddrRange) -> Range<VirtPageNum> {
+    let range = round_range_4k(range);
+    range.start.page_num()..range.end.page_num()
+}
