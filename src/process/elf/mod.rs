@@ -2,7 +2,10 @@ use super::user_space::UserSpace;
 use crate::{
     arch::get_curr_page_table_addr,
     consts::{PAGE_MASK, PAGE_SIZE},
-    executor::{block_on, hart_local::within_sum},
+    executor::{
+        block_on,
+        hart_local::{within_sum, AutoSUM},
+    },
     fs::new_vfs::top::VfsFileRef,
     memory::{
         address::{PhysAddr, VirtAddr},
@@ -10,12 +13,15 @@ use crate::{
         kernel_phys_to_virt,
         pagetable::pte::PTEFlags,
     },
+    process::user_space::user_area::UserAreaPerm,
+    tools::errors::SysResult,
 };
 
 mod aux_vector;
 pub mod info;
 pub use aux_vector::AuxElement;
 pub use aux_vector::AuxVector;
+use core::panic;
 
 impl UserSpace {
     /// Return: entry_point, auxv
@@ -151,5 +157,96 @@ impl UserSpace {
         let entry_point = VirtAddr::from(elf.header.pt2.entry_point() as usize);
 
         (entry_point, auxv)
+    }
+
+    pub async fn parse_and_map_elf_file_async(
+        &mut self,
+        elf_file: VfsFileRef,
+    ) -> SysResult<(VirtAddr, AuxVector)> {
+        use info::{parse, PhType};
+
+        let elf = parse(&elf_file).await?;
+        let mut elf_begin = VirtAddr::from(usize::MAX);
+
+        for i in 0..elf.ph_count() {
+            let ph = elf.program_header(i).await?;
+            if ph.type_()? != PhType::Load {
+                continue;
+            }
+
+            let mem_begin = VirtAddr::from(ph.virtual_addr as usize);
+            let mem_end = VirtAddr::from((ph.virtual_addr + ph.mem_size) as usize);
+
+            let aligned_mem_begin = mem_begin.round_down().into();
+            let aligned_mem_end = mem_end.round_up().into();
+            let aligned_mem_size = aligned_mem_end - aligned_mem_begin;
+
+            let area_perm: UserAreaPerm = ph.flags.into();
+            let file_offset = ph.offset as usize;
+
+            if ph.mem_size == ph.file_size {
+                let align_begin_offset = mem_begin - aligned_mem_begin;
+                let aligned_file_offset = file_offset - align_begin_offset;
+                self.areas_mut().insert_mmap_private_at(
+                    aligned_mem_begin,
+                    aligned_mem_size,
+                    area_perm,
+                    elf_file.clone(),
+                    aligned_file_offset,
+                )?;
+            } else {
+                // Some LOAD segments may be empty (e.g. .bss sections).
+                // or worse, the file size is smaller than the mem size but not zero.
+
+                // amb---mb-------------------------------me---ame
+                //       fb---------------fe
+
+                // ensure the memory area [amb, ame) is mapped
+                self.areas_mut().insert_mmap_anonymous_at(
+                    aligned_mem_begin,
+                    aligned_mem_size,
+                    area_perm,
+                )?;
+                self.force_map_area(aligned_mem_begin);
+
+                // fill file contents or zeros
+                let _auto_sum = AutoSUM::new();
+                unsafe {
+                    let mut ptr = aligned_mem_begin.bits() as *mut u8;
+
+                    // fill [amb, mb) with zeros
+                    let len = mem_begin - aligned_mem_begin;
+                    ptr.write_bytes(0, len);
+                    ptr = ptr.add(len);
+
+                    // fill [fb, fe) with file content
+                    let len = ph.file_size as usize;
+                    let slice = core::slice::from_raw_parts_mut(ptr, len);
+                    elf_file.read_at(file_offset, slice).await?;
+                    ptr = ptr.add(len);
+
+                    // fill [me, ame) with zeros
+                    let len = aligned_mem_end - mem_end;
+                    ptr.write_bytes(0, len);
+                    ptr = ptr.add(len);
+
+                    debug_assert!(ptr as usize == aligned_mem_end.bits());
+                }
+            }
+
+            // 更新 elf 的起始地址
+            if mem_begin < elf_begin {
+                elf_begin = mem_begin;
+            }
+        }
+
+        if elf_begin.bits() == usize::MAX {
+            panic!("Elf has no loadable segment!");
+        }
+
+        let auxv = AuxVector::from_elf_analyzer(&elf, elf_begin);
+        let entry_point = VirtAddr::from(elf.pt2.entry_point as usize);
+
+        Ok((entry_point, auxv))
     }
 }

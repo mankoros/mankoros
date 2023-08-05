@@ -1,4 +1,4 @@
-//! 一个异步环境的elf解析器
+//! 一个异步环境的 elf 解析器, adapted from FTL-OS
 
 use core::mem::{self, MaybeUninit};
 
@@ -7,19 +7,20 @@ use crate::{
     tools::errors::{SysError, SysResult},
 };
 use alloc::{string::String, vec::Vec};
-use xmas_elf::{
-    header::{Class, Type_},
-    program::Flags,
-    sections::{ShType, SHT_HIOS, SHT_HIPROC, SHT_HIUSER, SHT_LOOS, SHT_LOPROC, SHT_LOUSER},
-};
+use xmas_elf::{header::Class, program::Flags};
 
-#[derive(Debug, Copy, Clone)]
-pub struct ShType_(u32);
+#[derive(Copy, Clone, Debug)]
+pub struct PhType_(pub u32);
+pub type PhType = xmas_elf::program::Type;
+
+#[derive(Copy, Clone, Debug)]
+pub struct ShType_(pub u32);
+pub type ShType = xmas_elf::sections::ShType;
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct ProgramHeader {
-    pub type_: Type_,
+    pub type_: PhType_,
     pub flags: Flags,
     pub offset: u64,
     pub virtual_addr: u64,
@@ -70,7 +71,7 @@ impl VfsFileRef {
     }
 }
 
-pub async fn parse(file: VfsFileRef) -> SysResult<ElfAnalyzer> {
+pub async fn parse(file: &VfsFileRef) -> SysResult<ElfAnalyzer> {
     const PH1_SIZE: usize = mem::size_of::<HeaderPt1>();
     const PH2_SIZE: usize = mem::size_of::<HeaderPt2>();
 
@@ -87,7 +88,11 @@ pub async fn parse(file: VfsFileRef) -> SysResult<ElfAnalyzer> {
 
     let pt2: HeaderPt2 = file.read_obj(PH1_SIZE).await?;
 
-    Ok(ElfAnalyzer { file, pt1, pt2 })
+    Ok(ElfAnalyzer {
+        file: file.clone(),
+        pt1,
+        pt2,
+    })
 }
 
 impl ElfAnalyzer {
@@ -157,6 +162,12 @@ impl ElfAnalyzer {
     }
 }
 
+impl ProgramHeader {
+    pub fn type_(&self) -> SysResult<PhType> {
+        self.type_.as_type()
+    }
+}
+
 impl SectionHeader {
     pub async fn raw_data(&self, elf: &ElfAnalyzer) -> SysResult<Vec<u8>> {
         assert_ne!(self.get_type().unwrap(), ShType::Null);
@@ -170,7 +181,7 @@ impl SectionHeader {
         }
     }
     pub fn get_type(&self) -> SysResult<ShType> {
-        self.type_().as_sh_type()
+        self.type_().as_type()
     }
     fn type_(&self) -> ShType_ {
         self.type_
@@ -192,8 +203,32 @@ impl SectionHeader {
     }
 }
 
+impl PhType_ {
+    pub fn as_type(&self) -> SysResult<PhType> {
+        use xmas_elf::program::{TYPE_GNU_RELRO, TYPE_HIOS, TYPE_HIPROC, TYPE_LOOS, TYPE_LOPROC};
+        match self.0 {
+            0 => Ok(PhType::Null),
+            1 => Ok(PhType::Load),
+            2 => Ok(PhType::Dynamic),
+            3 => Ok(PhType::Interp),
+            4 => Ok(PhType::Note),
+            5 => Ok(PhType::ShLib),
+            6 => Ok(PhType::Phdr),
+            7 => Ok(PhType::Tls),
+            TYPE_GNU_RELRO => Ok(PhType::GnuRelro),
+            t if (TYPE_LOOS..=TYPE_HIOS).contains(&t) => Ok(PhType::OsSpecific(t)),
+            t if (TYPE_LOPROC..=TYPE_HIPROC).contains(&t) => Ok(PhType::ProcessorSpecific(t)),
+            _ => Err(SysError::EFAULT),
+        }
+    }
+}
+
 impl ShType_ {
-    fn as_sh_type(self) -> SysResult<ShType> {
+    pub fn as_type(self) -> SysResult<ShType> {
+        use xmas_elf::sections::{
+            SHT_HIOS, SHT_HIPROC, SHT_HIUSER, SHT_LOOS, SHT_LOPROC, SHT_LOUSER,
+        };
+
         match self.0 {
             0 => Ok(ShType::Null),
             1 => Ok(ShType::ProgBits),
