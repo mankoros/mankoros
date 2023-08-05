@@ -105,7 +105,7 @@ impl PhysAddr {
     }
     pub const fn round_up(self) -> PhysAddr4K {
         #[allow(arithmetic_overflow)]
-        PhysAddr4K((self.0 & !consts::PAGE_MASK) + consts::PAGE_SIZE)
+        PhysAddr4K((self.0 + consts::PAGE_SIZE - 1) & !consts::PAGE_MASK)
     }
     pub const fn assert_4k(self) -> PhysAddr4K {
         PhysAddr4K::from(self.0)
