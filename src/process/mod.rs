@@ -22,7 +22,7 @@ pub mod userloop;
 pub fn spawn_proc_from_file(path: Path, file: VfsFileRef) {
     let lproc = LightProcess::new();
 
-    lproc.clone().do_exec(file, Vec::new(), Vec::new());
+    block_on(lproc.clone().do_exec(file, Vec::new(), Vec::new()));
     lproc.with_mut_procfs_info(|info| info.exe_path = Some(path));
     spawn_proc(lproc);
 }
@@ -60,7 +60,7 @@ pub fn spawn_init() {
     envp.push(String::from("PATH=/"));
 
     let lproc = LightProcess::new();
-    lproc.clone().do_exec(busybox, args, envp);
+    block_on(lproc.clone().do_exec(busybox, args, envp));
     lproc.with_mut_procfs_info(|info| info.exe_path = Some(Path::from("/busybox")));
     spawn_proc(lproc);
 }

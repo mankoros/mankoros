@@ -192,7 +192,7 @@ impl Fat32FS {
     }
 
     pub(super) async fn read_sector(&self, sid: SectorID, buf: &mut [u8]) -> SysResult<()> {
-        log::debug!("read sector: sid: {}", sid);
+        log::trace!("read sector: sid: {}", sid);
         if buf.len() == BLOCK_SIZE {
             self.block_dev.read_noc(sid, buf).await
         } else {
@@ -203,7 +203,7 @@ impl Fat32FS {
         }
     }
     pub(super) async fn write_sector(&self, sid: SectorID, buf: &[u8]) -> SysResult<()> {
-        log::debug!("write sector: sid: {}", sid);
+        log::trace!("write sector: sid: {}", sid);
         if buf.len() == BLOCK_SIZE {
             self.block_dev.write_noc(sid, buf).await
         } else {

@@ -69,7 +69,7 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                 Exception::InstructionPageFault
                 | Exception::LoadPageFault
                 | Exception::StorePageFault => {
-                    // log will be printed in handle_pagefault
+                    debug!("Pagefault, User SPEC: 0x{:x}", context.user_sepc);
                     let access_type = match e {
                         Exception::InstructionPageFault => PageFaultAccessType::RX,
                         Exception::LoadPageFault => PageFaultAccessType::RO,
