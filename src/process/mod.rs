@@ -12,7 +12,7 @@ use alloc::{
     vec::Vec,
 };
 
-pub mod aux_vector;
+pub mod elf;
 pub mod lproc;
 pub mod lproc_mgr;
 pub mod pid;

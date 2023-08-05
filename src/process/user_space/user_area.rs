@@ -1,7 +1,7 @@
 use bitflags::bitflags;
 
 use super::range_map::RangeMap;
-use crate::memory::address::{VirtAddr, VirtAddr4K};
+use crate::memory::address::{iter_vpn, VirtAddr, VirtAddrRange};
 
 use crate::memory::{
     address::VirtPageNum,
@@ -25,31 +25,7 @@ use crate::fs::new_vfs::top::{MmapKind, VfsFileRef};
 use crate::tools::errors::{SysError, SysResult};
 use alloc::sync::Arc;
 use core::ops::Range;
-use log::{debug, warn};
-
-pub type VirtAddrRange = Range<VirtAddr>;
-
-#[inline(always)]
-///! 用于迭代虚拟地址范围内的所有页, 如果首尾不是页对齐的就 panic
-pub(super) fn iter_vpn(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum)) {
-    let range = round_range_vpn(range);
-    let mut vpn = range.start;
-    while vpn < range.end {
-        f(vpn);
-        vpn += 1;
-    }
-}
-
-pub fn round_range(range: VirtAddrRange) -> VirtAddrRange {
-    range.start.round_down().into()..(range.end - 1).round_up().into()
-}
-pub fn round_range_4k(range: VirtAddrRange) -> Range<VirtAddr4K> {
-    range.start.round_down()..(range.end - 1).round_up()
-}
-pub fn round_range_vpn(range: VirtAddrRange) -> Range<VirtPageNum> {
-    let range = round_range_4k(range);
-    range.start.page_num()..range.end.page_num()
-}
+use log::debug;
 
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
