@@ -8,6 +8,7 @@ use crate::{
     process::{self, lproc::ProcessStatus, user_space::user_area::UserAreaPerm},
     signal,
     tools::errors::{SysError, SysResult},
+    when_debug,
 };
 
 use super::super::fs;
@@ -136,13 +137,19 @@ impl<'a> Syscall<'a> {
                 .collect::<Vec<_>>();
 
             log::debug!(
-                "syscall wait: all children pids: {:?}",
-                self.lproc.children_pid_usize()
+                "syscall wait: all children pids: {:?} (self: {:?})",
+                self.lproc.children_pid_usize(),
+                self.lproc.id()
             );
-            log::debug!(
-                "syscall wait: stopped children pids: {:?}",
-                stopped_children.iter().map(|lp| lp.id().into()).collect::<Vec<usize>>()
-            );
+
+            when_debug!({
+                if !stopped_children.is_empty() {
+                    log::debug!(
+                        "syscall wait: stopped children pids: {:?}",
+                        stopped_children.iter().map(|lp| lp.id().into()).collect::<Vec<usize>>()
+                    );
+                }
+            });
 
             // If WNOHANG is specified, return immediately if no child exited.
             if options.contains(WaitOptions::WNOHANG) && stopped_children.is_empty() {

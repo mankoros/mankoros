@@ -44,7 +44,7 @@ pub fn get_hart_id() -> usize {
 /// returns the old pagetable
 #[inline(always)]
 pub fn switch_page_table(paddr: usize) -> usize {
-    debug!("Switching to pagetable: 0x{:x}", paddr);
+    log::trace!("Switching to pagetable: 0x{:x}", paddr);
     let old_page_table_ptr = riscv::register::satp::read();
     unsafe {
         riscv::register::satp::set(

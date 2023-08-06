@@ -252,7 +252,6 @@ impl UserArea {
 
             // must be CoW
             let pte_flags = pte.flags();
-            debug!("flags: {:?}", pte_flags);
             debug_assert!(pte_flags.contains(PTEFlags::SHARED));
             debug_assert!(!pte_flags.contains(PTEFlags::W));
             debug_assert!(self.perm().contains(UserAreaPerm::WRITE));
