@@ -608,4 +608,41 @@ impl UserAreaManager {
             flush_tlb(vpn.addr().bits());
         })
     }
+
+    /// only for debug
+    pub fn print_all(&self) {
+        use crate::executor::hart_local::AutoSUM;
+        use crate::tools::exam_hash;
+        use crate::trap::trap::{set_kernel_trap, set_kernel_user_rw_trap, will_read_fail};
+
+        let _auto_sum = AutoSUM::new();
+        unsafe { set_kernel_user_rw_trap() };
+        for (range, area) in self.map.iter() {
+            log::warn!(
+                "==== {}, {:?}, {:?}, ====",
+                area.kind_str(),
+                area.perm(),
+                range,
+            );
+
+            iter_vpn(range, |vpn| {
+                let vaddr = vpn.addr();
+                if will_read_fail(vaddr.bits()) {
+                    // log::debug!("{:<8x}: unmapped", vpn);
+                } else {
+                    let hash = exam_hash(unsafe { vaddr.as_page_slice() });
+                    log::info!(
+                        "0x{: >8x}: {:0>4x} {:0>4x} {:0>4x} {:0>4x}",
+                        vpn.bits(),
+                        (hash & 0xffff_0000_0000_0000) >> 48,
+                        (hash & 0x0000_ffff_0000_0000) >> 32,
+                        (hash & 0x0000_0000_ffff_0000) >> 16,
+                        (hash & 0x0000_0000_0000_ffff),
+                    );
+                }
+            });
+        }
+        log::warn!("==== print all done ====");
+        unsafe { set_kernel_trap() };
+    }
 }
