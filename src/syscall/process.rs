@@ -77,12 +77,33 @@ impl<'a> Syscall<'a> {
         let args = self.cx.syscall_args();
         let (buf, len) = (UserWritePtr::<u8>::from(args[0]), args[1]);
 
-        info!("Syscall: getcwd");
+        info!("Syscall: getcwd: buf: {}, len: {}", buf, len);
+
+        if len == 0 && !buf.is_null() {
+            return Err(SysError::EINVAL);
+        }
+        if buf.is_null() {
+            return Err(SysError::EINVAL);
+        }
+
         let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone()).to_string();
+
+        if cwd.len() + 1 > len {
+            // the spec said:
+            //      If the length of the absolute pathname of the current working directory,
+            //      including the terminating null byte, exceeds buflen bytes, NULL is returned,
+            //      and errno shall be set to ERANGE.
+            return Ok(0);
+        }
+
         let length = min(cwd.len(), len);
+
+        log::debug!("getcwd: cwd: '{}', min-len: {}", cwd, length);
         buf.as_mut_slice(length, &self.lproc)?
             .copy_from_slice(&cwd.as_bytes()[..length]);
-        Ok(length)
+        buf.add(length).write(&self.lproc, 0)?;
+
+        Ok(buf.as_usize())
     }
 
     pub async fn sys_wait(&mut self) -> SyscallResult {
