@@ -1,3 +1,4 @@
+mod async_sleep;
 mod rusage;
 mod timespec;
 mod timestat;
@@ -10,6 +11,7 @@ pub use self::timestat::TimeStat;
 pub use self::timeval::TimeVal;
 pub use self::tms::Tms;
 use crate::{arch, consts};
+pub use async_sleep::wake_after;
 use log::info;
 use riscv::register::{sie, time};
 
@@ -23,6 +25,7 @@ pub fn init() {
     }
     set_next_timer_irq();
     info!("Timer IRQ initialized");
+    async_sleep::init_sleep_queue();
 }
 
 /// timer api
@@ -73,5 +76,6 @@ pub fn timer_handler() {
             TIMER_TICK = 0;
             info!("Hart {}: +1s", arch::get_hart_id());
         }
+        async_sleep::at_tick();
     }
 }

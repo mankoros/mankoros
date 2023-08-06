@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use core::{
     future::Future,
     pin::Pin,
-    task::{Context, Poll},
+    task::{Context, Poll, Waker},
 };
 
 pub struct YieldFuture(bool);
@@ -85,4 +85,17 @@ impl<T> Future for AnyFuture<'_, T> {
 
         Poll::Pending
     }
+}
+
+pub struct GetWakerFuture;
+impl Future for GetWakerFuture {
+    type Output = Waker;
+    #[inline(always)]
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Poll::Ready(cx.waker().clone())
+    }
+}
+
+pub async fn get_waker() -> Waker {
+    GetWakerFuture.await
 }
