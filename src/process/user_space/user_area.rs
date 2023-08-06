@@ -304,6 +304,15 @@ impl UserArea {
         }
 
         debug_assert!(frame != 0);
+
+        const SHOULD_PRINT_HASH: bool = false;
+        if SHOULD_PRINT_HASH {
+            use crate::tools::exam_hash;
+            log::info!(
+                "frame hash: {:#x}",
+                exam_hash(unsafe { frame.as_page_slice() })
+            );
+        }
         // remap the frame
         page_table.remap_page(access_vpn.addr(), frame, self.perm().into());
         flush_tlb(access_vpn.addr().bits());
