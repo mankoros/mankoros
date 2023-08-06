@@ -96,10 +96,6 @@ pub struct FATFile {
     pub(super) chain: ClusterChain,
 }
 
-fn round_up(x: usize, y: usize) -> usize {
-    (x + y - 1) / y
-}
-
 impl FATFile {
     pub fn new_free(fs: &'static Fat32FS, begin_cluster: ClusterID, kind: VfsFileKind) -> Self {
         Self {
