@@ -8,7 +8,7 @@ use crate::{
     executor::block_on,
     impl_vfs_default_non_dir,
     memory::{
-        address::{PhysAddr, PhysAddr4K},
+        address::{PhysAddr, PhysAddr4K, VirtAddr},
         frame::alloc_frame,
     },
     sync::SleepLock,
@@ -70,7 +70,7 @@ impl<F: ConcreteFile> VfsFile for PageCacheFile<F> {
                 offset,
                 buf.len()
             );
-            let page_addr = PhysAddr::from(offset).round_down().bits();
+            let page_addr = PhysAddr::from(offset).floor().bits();
             let mut mgr = self.mgr.lock().await;
             mgr.perpare_range(&self.file, page_addr, 1).await?;
             mgr.cached_write(offset, buf);
@@ -143,8 +143,8 @@ impl<F: ConcreteFile> PageManager<F> {
         offset: usize,
         len: usize,
     ) -> SysResult<usize> {
-        let begin = PhysAddr::from(offset).round_down().bits();
-        let end = PhysAddr::from(offset + len - 1).round_up().bits();
+        let begin = VirtAddr::from(offset).floor().bits();
+        let end = VirtAddr::from(offset + len).ceil().bits();
 
         let mut total_len = 0;
         for page_begin in (begin..end).step_by(PAGE_SIZE) {
@@ -170,7 +170,7 @@ impl<F: ConcreteFile> PageManager<F> {
         file: &SyncAttrFile<F>,
         offset: usize,
     ) -> SysResult<PhysAddr4K> {
-        let page_addr = PhysAddr::from(offset).round_down().bits();
+        let page_addr = PhysAddr::from(offset).floor().bits();
         self.perpare_range(file, page_addr, 1).await?;
         let page = self.cached_pages.get(&page_addr).unwrap();
         let new_page = alloc_frame().ok_or(SysError::ENOMEM)?;
@@ -186,7 +186,7 @@ impl<F: ConcreteFile> PageManager<F> {
         let mut target_buf = buf; // 目标区域, 会随着读取逐渐向后取
         let mut page; // 缓存页
         let mut page_buf; // 缓存页的有效区域, 会一页页向后寻找并取得
-        let mut page_addr = PhysAddr::from(offset).round_down().bits();
+        let mut page_addr = PhysAddr::from(offset).floor().bits();
 
         // 调整开头, 因为 offset 一般而言不会对齐到页, 所以我们要向前找到最近的页地址并尝试寻找该页
         // 随后裁剪该页的有效区域的前面的不会被读取的部分作为 page_buf
@@ -248,7 +248,7 @@ impl<F: ConcreteFile> PageManager<F> {
         let mut total_offset = offset; // 写入的总偏移
         let mut target_buf = buf; // 目标区域, 会随着写入逐渐向后取
         let mut page_buf;
-        let mut page_addr = PhysAddr::from(offset).round_down().bits();
+        let mut page_addr = PhysAddr::from(offset).floor().bits();
 
         // 不用管什么有效长度了, 写入的话写就是了
         page_buf = self.get_or_alloc(page_addr);

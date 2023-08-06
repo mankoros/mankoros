@@ -153,10 +153,10 @@ pub fn iter_vpn(range: VirtAddrRange, mut f: impl FnMut(VirtPageNum)) {
 }
 
 pub fn round_range(range: VirtAddrRange) -> VirtAddrRange {
-    range.start.round_down().into()..(range.end - 1).round_up().into()
+    range.start.floor().into()..range.end.ceil().into()
 }
 pub fn round_range_4k(range: VirtAddrRange) -> Range<VirtAddr4K> {
-    range.start.round_down()..(range.end - 1).round_up()
+    range.start.floor()..range.end.ceil()
 }
 pub fn round_range_vpn(range: VirtAddrRange) -> Range<VirtPageNum> {
     let range = round_range_4k(range);
