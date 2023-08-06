@@ -1,6 +1,15 @@
-use crate::{executor::util_futures::get_waker, sync::SpinNoIrqLock};
+use super::get_time_ms;
+use crate::{
+    executor::util_futures::{always_pending, get_waker},
+    sync::SpinNoIrqLock,
+};
 use alloc::collections::BinaryHeap;
-use core::{cmp::Reverse, mem::MaybeUninit, task::Waker};
+use core::{
+    cmp::Reverse,
+    mem::MaybeUninit,
+    task::{Poll, Waker},
+};
+use futures::Future;
 
 type AbsTimeT = usize;
 
@@ -17,18 +26,39 @@ fn get_sleep_queue() -> &'static SleepQueue {
 }
 
 pub async fn wake_after(ms: usize) {
-    let waker = get_waker().await;
-    let wake_up_time = crate::timer::get_time_ms() + ms;
+    SleepFuture {
+        wake_up_time: get_time_ms() + ms,
+    }
+    .await
+}
 
-    get_sleep_queue().push(Node {
-        wake_up_time,
-        waker,
-    });
+struct SleepFuture {
+    wake_up_time: AbsTimeT,
+}
+impl Future for SleepFuture {
+    type Output = ();
+
+    fn poll(
+        self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> Poll<Self::Output> {
+        let this = unsafe { self.get_unchecked_mut() };
+        let now = get_time_ms();
+
+        if this.wake_up_time <= now {
+            Poll::Ready(())
+        } else {
+            get_sleep_queue().push(Node {
+                wake_up_time: this.wake_up_time,
+                waker: cx.waker().clone(),
+            });
+            Poll::Pending
+        }
+    }
 }
 
 pub(super) fn at_tick() {
-    let now = crate::timer::get_time_ms();
-    get_sleep_queue().wake_ready(now);
+    get_sleep_queue().wake_ready(get_time_ms());
 }
 
 struct Node {
@@ -74,6 +104,11 @@ impl SleepQueue {
     fn wake_ready(&self, now: AbsTimeT) {
         let mut heap = self.heap.lock(here!());
         while let Some(Reverse(node)) = heap.peek() {
+            log::trace!(
+                "wake_ready: now: {}, node.wake_up_time: {}",
+                now,
+                node.wake_up_time
+            );
             if node.wake_up_time > now {
                 break;
             }

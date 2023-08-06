@@ -7,7 +7,7 @@ use crate::{
     executor::util_futures::yield_now,
     here,
     memory::{UserReadPtr, UserWritePtr},
-    timer::{get_time_f64, Rusage, TimeSpec, TimeVal, Tms},
+    timer::{get_time_ms, wake_after, Rusage, TimeSpec, TimeVal, Tms},
     tools::errors::SysError,
 };
 
@@ -102,11 +102,19 @@ impl<'a> Syscall<'a> {
         info!("Syscall: nanosleep");
         // Calculate end time
         let time_spec = req.read(&self.lproc)?;
-        let end_time = get_time_f64() + time_spec.time_in_sec();
+        let sleep_time_ms = (time_spec.time_in_sec() * 1000.0) as usize;
 
-        while get_time_f64() < end_time {
-            yield_now().await
-        }
+        // Sleep
+        let before_sleep = get_time_ms();
+        wake_after(sleep_time_ms).await;
+        let after_sleep = get_time_ms();
+        debug_assert!(after_sleep >= before_sleep + sleep_time_ms);
+        log::debug!(
+            "Sleep for {} ms, actually sleep {} ms",
+            sleep_time_ms,
+            after_sleep - before_sleep
+        );
+
         // Sleep is done
         // Update rem if provided
         if !rem.is_null() {

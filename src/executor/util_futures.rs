@@ -99,3 +99,16 @@ impl Future for GetWakerFuture {
 pub async fn get_waker() -> Waker {
     GetWakerFuture.await
 }
+
+pub struct AlwaysPendingFuture;
+impl Future for AlwaysPendingFuture {
+    type Output = ();
+    #[inline(always)]
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Poll::Pending
+    }
+}
+
+pub fn always_pending() -> AlwaysPendingFuture {
+    AlwaysPendingFuture
+}
