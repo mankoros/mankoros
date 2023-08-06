@@ -184,12 +184,13 @@ impl<F: ConcreteFile> PageManager<F> {
     pub fn cached_read(&self, offset: usize, buf: &mut [u8]) -> usize {
         let mut total_len = 0; // 读取的总长度
         let mut target_buf = buf; // 目标区域, 会随着读取逐渐向后取
+        let mut page; // 缓存页
         let mut page_buf; // 缓存页的有效区域, 会一页页向后寻找并取得
         let mut page_addr = PhysAddr::from(offset).round_down().bits();
 
         // 调整开头, 因为 offset 一般而言不会对齐到页, 所以我们要向前找到最近的页地址并尝试寻找该页
         // 随后裁剪该页的有效区域的前面的不会被读取的部分作为 page_buf
-        let page = match self.cached_pages.get(&page_addr) {
+        page = match self.cached_pages.get(&page_addr) {
             Some(page) => page,
             None => return total_len,
         };
@@ -215,17 +216,18 @@ impl<F: ConcreteFile> PageManager<F> {
                 total_len += page_buf_len;
 
                 // 读到文件尾就直接返回
-                if page_buf_len != PAGE_SIZE {
+                if page.len() != PAGE_SIZE {
                     return total_len;
                 }
 
                 // 否则继续读下一页
                 target_buf = &mut target_buf[page_buf_len..];
-                page_buf = match self.cached_pages.get(&page_addr) {
-                    Some(page) => page.as_slice(),
+                page = match self.cached_pages.get(&page_addr) {
+                    Some(page) => page,
                     // 如果没有下一页了, 那也是读到文件尾了
                     None => return total_len,
                 };
+                page_buf = page.as_slice();
                 page_addr += PAGE_SIZE;
             } else {
                 // 如果目标 buf 比当前页短或恰好等于, 就读完目标 buf 并返回

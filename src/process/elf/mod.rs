@@ -71,29 +71,38 @@ impl LightProcess {
                 // fill file contents or zeros
                 let _auto_sum = AutoSUM::new();
                 unsafe {
-                    let mut ptr = SyncMutPtr::<u8>::new_usize(aligned_mem_begin.bits());
+                    let mut ptr = SyncMutPtr::<u8>::new_usize(mem_begin.bits());
                     log::debug!("Start load segment: {:#x}", ptr.get() as usize);
-
-                    // fill [amb, mb) with zeros
-                    let len = mem_begin - aligned_mem_begin;
-                    ptr.write_bytes(0, len);
-                    ptr = ptr.add(len);
-                    log::debug!("Finish [amb, mb/fb): {:#x}", ptr.get() as usize);
 
                     // fill [fb, fe) with file content
                     let len = ph.file_size as usize;
                     let slice = core::slice::from_raw_parts_mut(ptr.get(), len);
-                    elf_file.read_at(file_offset, slice).await?;
+                    assert_eq!(elf_file.read_at(file_offset, slice).await?, len);
                     ptr = ptr.add(len);
                     log::debug!("Finish [mb/fb, fe): {:#x}", ptr.get() as usize);
 
-                    // fill [fe, ame) with zeros
-                    let len = aligned_mem_end - (mem_begin + ph.file_size as usize);
+                    // fill [fe, me) with zeros
+                    let len = mem_end - (mem_begin + ph.file_size as usize);
                     ptr.write_bytes(0, len);
                     ptr = ptr.add(len);
-                    log::debug!("Finish [fe, ame): {:#x}", ptr.get() as usize);
+                    log::debug!("Finish [fe, me): {:#x}", ptr.get() as usize);
 
-                    debug_assert!(ptr.get() as usize == aligned_mem_end.bits());
+                    // left [amb, mb) and [me, ame) untouched
+
+                    debug_assert!(ptr.get() as usize == mem_end.bits());
+                }
+
+                const SHOULD_PRINT_HASH: bool = false;
+                if SHOULD_PRINT_HASH {
+                    use crate::memory::address::iter_vpn;
+                    use crate::tools::exam_hash;
+                    iter_vpn(aligned_mem_begin..aligned_mem_end, |vpn| {
+                        log::info!(
+                            "vpn: {:x}, hash: {:#x}",
+                            vpn,
+                            exam_hash(unsafe { vpn.addr().as_page_slice() })
+                        )
+                    })
                 }
             }
 
