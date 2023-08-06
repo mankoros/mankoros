@@ -205,15 +205,15 @@ impl MMC {
         let descriptor_page_paddr: usize =
             alloc_frame().expect("Error allocating descriptor page").bits();
         let descriptor_page_vaddr = kernel_phys_to_virt(descriptor_page_paddr);
-        const descriptor_cnt: usize = 2;
-        let mut buffer_page_paddr: [usize; descriptor_cnt] = [0; descriptor_cnt];
-        for i in 0..descriptor_cnt {
+        const DESCRIPTOR_CNT: usize = 2;
+        let mut buffer_page_paddr: [usize; DESCRIPTOR_CNT] = [0; DESCRIPTOR_CNT];
+        for i in 0..DESCRIPTOR_CNT {
             buffer_page_paddr[i] = alloc_frame().expect("Error allocating buffer page").bits();
         }
         let _descriptor_table = unsafe {
             core::slice::from_raw_parts_mut(
                 descriptor_page_vaddr as *mut Descriptor,
-                descriptor_cnt,
+                DESCRIPTOR_CNT,
             )
         };
 

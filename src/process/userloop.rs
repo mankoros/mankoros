@@ -1,13 +1,12 @@
 use alloc::sync::Arc;
 use riscv::register::{
-    scause::{self, Exception, Interrupt},
-    sstatus, stval,
+    scause::{self, Exception, Interrupt}, stval,
 };
 
 use crate::{
     arch, drivers,
     executor::{
-        hart_local::{no_irq_pop, no_irq_push, set_curr_lproc, AutoSIE},
+        hart_local::{set_curr_lproc, AutoSIE},
         util_futures::yield_now,
     },
     memory::address::VirtAddr,

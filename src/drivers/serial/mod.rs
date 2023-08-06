@@ -3,7 +3,7 @@ mod uart8250;
 use super::wait_for;
 use alloc::{boxed::Box, collections::VecDeque};
 use log::{info, warn};
-use ringbuffer::{RingBufferExt, RingBufferRead, RingBufferWrite};
+use ringbuffer::{RingBufferRead, RingBufferWrite};
 
 use core::{
     cell::UnsafeCell,
@@ -25,6 +25,7 @@ pub struct EarlyConsole;
 impl Write for EarlyConsole {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         for byte in s.bytes() {
+            #[allow(deprecated)]
             sbi_rt::legacy::console_putchar(byte.into());
         }
         Ok(())
@@ -268,5 +269,4 @@ fn probe_serial_console(stdout: &fdt::node::FdtNode) -> Serial {
         }
         _ => panic!("Unsupported serial console"),
     }
-    unreachable!();
 }

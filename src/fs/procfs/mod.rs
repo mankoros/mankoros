@@ -1,5 +1,4 @@
 use super::new_vfs::{
-    mount::MountManager,
     top::{MmapKind, PollKind, VfsFS, VfsFile, VfsFileRef},
     VfsFileAttr, VfsFileKind,
 };

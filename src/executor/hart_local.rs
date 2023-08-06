@@ -1,7 +1,7 @@
-use alloc::{sync::Arc, vec::Vec};
+use alloc::sync::Arc;
 
-use crate::{consts, process::lproc::LightProcess, sync::SpinNoIrqLock};
-use core::{arch::asm, mem::MaybeUninit};
+use crate::process::lproc::LightProcess;
+use core::arch::asm;
 
 pub struct HartLocalInfo {
     sum_cnt: usize,

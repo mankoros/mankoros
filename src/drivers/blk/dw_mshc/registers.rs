@@ -84,6 +84,7 @@ impl CMD {
 
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    #[allow(non_camel_case_types)]
     pub struct RINSTS_int_status: u16 {
         const Cd = 1 << 0;
         const RE = 1 << 1;

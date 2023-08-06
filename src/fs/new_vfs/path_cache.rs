@@ -15,7 +15,6 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use futures::FutureExt;
 
 pub struct PathCacheDir<F: ConcreteFile> {
     file: SyncAttrFile<F>,

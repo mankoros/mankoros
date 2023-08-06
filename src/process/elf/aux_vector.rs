@@ -1,5 +1,4 @@
 use alloc::vec::Vec;
-use xmas_elf::ElfFile;
 
 use super::info::ElfAnalyzer;
 use crate::{consts::PAGE_SIZE, memory::address::VirtAddr};
