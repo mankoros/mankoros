@@ -1,7 +1,7 @@
 use log::{debug, info};
 
 use crate::{
-    consts::MAX_OPEN_FILES,
+    consts::{time, MAX_OPEN_FILES},
     executor::util_futures::{yield_now, AnyFuture},
     fs::{
         new_vfs::{
@@ -14,6 +14,7 @@ use crate::{
     },
     memory::{address::VirtAddr, UserInOutPtr, UserReadPtr, UserWritePtr},
     process::user_space::user_area::UserAreaPerm,
+    timer::{wake_after, with_timeout, TimeVal},
     tools::errors::{dyn_future, Async, SysError, SysResult},
 };
 
@@ -367,15 +368,15 @@ impl Syscall<'_> {
         let args = self.cx.syscall_args();
         let (maxfdp1, readfds_ptr, writefds_ptr, exceptfds_ptr, tsptr, _sigmask) = (
             args[0],
-            UserInOutPtr::<FdSet>::from_usize(args[1]),
-            UserInOutPtr::<FdSet>::from_usize(args[2]),
-            UserInOutPtr::<FdSet>::from_usize(args[3]),
-            args[4],
+            UserInOutPtr::<FdSet>::from(args[1]),
+            UserInOutPtr::<FdSet>::from(args[2]),
+            UserInOutPtr::<FdSet>::from(args[3]),
+            UserReadPtr::<TimeVal>::from(args[4]),
             args[5],
         );
 
         info!(
-            "Syscall: pselect, maxfdp1: {}, readfds: 0x{:x}, writefds: 0x{:x}, exceptfds: 0x{:x}, tsptr: {:x}, sigmask: {}",
+            "Syscall: pselect, maxfdp1: {}, readfds: 0x{:x}, writefds: 0x{:x}, exceptfds: 0x{:x}, tsptr: {}, sigmask: {}",
             maxfdp1,
             readfds_ptr.as_usize(),
             writefds_ptr.as_usize(),
@@ -384,12 +385,21 @@ impl Syscall<'_> {
             _sigmask,
         );
 
+        let timeout_opt = if !tsptr.is_null() {
+            let tv = tsptr.read(&self.lproc)?;
+            Some(tv.tv_sec * 1000 + tv.tv_usec)
+        } else {
+            None
+        };
+
+        log::debug!("timeout: {:?}", timeout_opt);
+
         if maxfdp1 == 0 {
             // avoid reading read/write/except fds when maxfdp1 is 0
-            if tsptr != 0 {
-                // when all fds are empty, we should sleep for the time specified by tsptr
-                // if not sleep, we may starvate other processes
-                yield_now().await;
+            // when all fds are empty, we should sleep for the time specified by tsptr
+            // if not sleep, we may starvate other processes
+            if let Some(timeout) = timeout_opt {
+                wake_after(timeout).await;
             }
             return Ok(0);
         }
@@ -435,19 +445,27 @@ impl Syscall<'_> {
         readfds.clear();
         writefds.clear();
 
-        let (future_id, _) = AnyFuture::new_with(futures).await;
-        let (fd_idx, event) = mapping.remove(&future_id).unwrap();
+        let pselect_result = match timeout_opt {
+            Some(timeout) => with_timeout(timeout, AnyFuture::new_with(futures)).await,
+            None => Some(AnyFuture::new_with(futures).await),
+        };
 
-        match event {
-            PollKind::Read => readfds.set(fd_idx),
-            PollKind::Write => writefds.set(fd_idx),
+        if let Some((future_id, _)) = pselect_result {
+            let (fd_idx, event) = mapping.remove(&future_id).unwrap();
+
+            match event {
+                PollKind::Read => readfds.set(fd_idx),
+                PollKind::Write => writefds.set(fd_idx),
+            }
+
+            readfds_ptr.write(&self.lproc, readfds)?;
+            writefds_ptr.write(&self.lproc, writefds)?;
+            exceptfds_ptr.write(&self.lproc, FdSet::zero())?;
+
+            Ok(1)
+        } else {
+            Ok(0)
         }
-
-        readfds_ptr.write(&self.lproc, readfds)?;
-        writefds_ptr.write(&self.lproc, writefds)?;
-        exceptfds_ptr.write(&self.lproc, FdSet::zero())?;
-
-        Ok(1)
     }
 
     pub async fn sys_writev(&mut self) -> SyscallResult {

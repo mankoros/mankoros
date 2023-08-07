@@ -12,6 +12,7 @@ pub use self::timeval::TimeVal;
 pub use self::tms::Tms;
 use crate::{arch, consts};
 pub use async_sleep::wake_after;
+pub use async_sleep::with_timeout;
 use log::info;
 use riscv::register::{sie, time};
 

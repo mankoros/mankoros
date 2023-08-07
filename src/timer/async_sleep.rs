@@ -7,6 +7,7 @@ use alloc::collections::BinaryHeap;
 use core::{
     cmp::Reverse,
     mem::MaybeUninit,
+    pin::Pin,
     task::{Poll, Waker},
 };
 use futures::Future;
@@ -26,34 +27,61 @@ fn get_sleep_queue() -> &'static SleepQueue {
 }
 
 pub async fn wake_after(ms: usize) {
-    SleepFuture {
-        wake_up_time: get_time_ms() + ms,
-    }
-    .await
+    let r = SleepFuture::new(get_time_ms() + ms, always_pending()).await;
+    debug_assert!(r.is_none());
 }
 
-struct SleepFuture {
+pub async fn with_timeout<F: Future>(ms: usize, future: F) -> Option<F::Output> {
+    SleepFuture::new(get_time_ms() + ms, future).await
+}
+
+struct SleepFuture<F: Future> {
     wake_up_time: AbsTimeT,
+    is_done: bool,
+    is_registered: bool,
+    future: F,
 }
-impl Future for SleepFuture {
-    type Output = ();
+impl<F: Future> SleepFuture<F> {
+    fn new(wake_up_time: AbsTimeT, future: F) -> Self {
+        Self {
+            wake_up_time,
+            is_done: false,
+            is_registered: false,
+            future,
+        }
+    }
+}
 
-    fn poll(
-        self: core::pin::Pin<&mut Self>,
-        cx: &mut core::task::Context<'_>,
-    ) -> Poll<Self::Output> {
+impl<F: Future> Future for SleepFuture<F> {
+    type Output = Option<F::Output>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
         let this = unsafe { self.get_unchecked_mut() };
-        let now = get_time_ms();
 
-        if this.wake_up_time <= now {
-            Poll::Ready(())
-        } else {
+        if this.is_done {
+            return Poll::Pending;
+        }
+
+        let mut inner = unsafe { Pin::new_unchecked(&mut this.future) };
+        if let Poll::Ready(v) = inner.as_mut().poll(cx) {
+            this.is_done = true;
+            return Poll::Ready(Some(v));
+        }
+
+        if this.wake_up_time <= get_time_ms() {
+            this.is_done = true;
+            return Poll::Ready(None);
+        }
+
+        if !this.is_registered {
+            this.is_registered = true;
             get_sleep_queue().push(Node {
                 wake_up_time: this.wake_up_time,
                 waker: cx.waker().clone(),
             });
-            Poll::Pending
         }
+
+        Poll::Pending
     }
 }
 
