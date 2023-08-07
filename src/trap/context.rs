@@ -1,3 +1,4 @@
+use super::fp_ctx::FloatContext;
 use alloc::boxed::Box;
 use riscv::register::sstatus::Sstatus;
 
@@ -13,6 +14,9 @@ pub struct UKContext {
     pub kernel_ra: usize,       // 46
     pub kernel_sp: usize,       // 47
     pub kernel_tp: usize,       // 48
+
+    // ============非汇编保存部分============== //
+    pub fp_ctx: FloatContext,
 }
 
 impl UKContext {
@@ -35,6 +39,7 @@ impl UKContext {
         self.user_rx[12] = envp;
         self.user_sepc = sepc;
         self.user_sstatus = sstatus;
+        self.fp_ctx.init_user();
     }
 
     pub fn set_user_pc_to_next(&mut self, curr_instruction_len: usize) {

@@ -1,12 +1,13 @@
 use alloc::sync::Arc;
 
-use crate::process::lproc::LightProcess;
+use crate::process::{lproc::LightProcess, pid::Pid};
 use core::arch::asm;
 
 pub struct HartLocalInfo {
     sum_cnt: usize,
     no_irq_cnt: usize,
     current_lproc: Option<Arc<LightProcess>>,
+    curr_fp_belong_to: Option<Arc<LightProcess>>,
 }
 
 impl HartLocalInfo {
@@ -15,6 +16,7 @@ impl HartLocalInfo {
             sum_cnt: 0,
             no_irq_cnt: 0,
             current_lproc: None,
+            curr_fp_belong_to: None,
         }
     }
 
@@ -60,6 +62,13 @@ pub fn get_curr_lproc() -> Option<Arc<LightProcess>> {
 
 pub fn set_curr_lproc(lproc: Arc<LightProcess>) {
     get_curr_hart_info().current_lproc = Some(lproc);
+}
+
+pub fn get_curr_fp_belong_to() -> Option<Arc<LightProcess>> {
+    get_curr_hart_info().curr_fp_belong_to.as_ref().map(Arc::clone)
+}
+pub fn set_curr_fp_belong_to(lproc: Arc<LightProcess>) {
+    get_curr_hart_info().curr_fp_belong_to = Some(lproc);
 }
 
 pub fn no_irq_push() {

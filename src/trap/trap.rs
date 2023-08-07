@@ -5,6 +5,7 @@ use riscv::register::sstatus;
 use riscv::register::{stvec, utvec::TrapMode};
 
 use log::trace;
+use crate::trap::fp_ctx::{fp_ctx_kernel_to_user, fp_ctx_user_to_kernel};
 
 global_asm!(include_str!("trap.asm"));
 
@@ -22,9 +23,11 @@ pub fn run_user(cx: &mut UKContext) {
         fn __kernel_to_user(cx: *mut UKContext);
     }
     unsafe {
+        fp_ctx_kernel_to_user();
         set_user_trap();
         __kernel_to_user(cx as *mut _ as *mut _);
         set_kernel_trap();
+        fp_ctx_user_to_kernel();
         enable_irq();
     }
 }

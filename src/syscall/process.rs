@@ -136,7 +136,7 @@ impl<'a> Syscall<'a> {
                 .filter(|lp| lp.status() == ProcessStatus::STOPPED)
                 .collect::<Vec<_>>();
 
-            log::debug!(
+            log::trace!(
                 "syscall wait: all children pids: {:?} (self: {:?})",
                 self.lproc.children_pid_usize(),
                 self.lproc.id()
