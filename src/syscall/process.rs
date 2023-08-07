@@ -124,7 +124,7 @@ impl<'a> Syscall<'a> {
             pid, wstatus, options
         );
 
-        if self.lproc.signal().intersects(signal::SignalSet::SIGCHLD.complement()) {
+        if self.lproc.signal_pending().intersects(signal::SignalSet::SIGCHLD.complement()) {
             return Err(SysError::EINTR);
         }
 
