@@ -1,8 +1,5 @@
 use super::get_time_ms;
-use crate::{
-    executor::util_futures::{always_pending, get_waker},
-    sync::SpinNoIrqLock,
-};
+use crate::{executor::util_futures::always_pending, sync::SpinNoIrqLock};
 use alloc::collections::BinaryHeap;
 use core::{
     cmp::Reverse,

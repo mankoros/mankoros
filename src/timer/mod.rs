@@ -51,11 +51,6 @@ pub fn get_time_us() -> usize {
     time::read() / consts::time::machine_ticks_per_usec()
 }
 
-/// 当前时间为多少秒 (浮点数格式)
-pub fn get_time_f64() -> f64 {
-    get_time() as f64 / consts::time::clock_freq() as f64
-}
-
 /// 获取下一次中断时间
 pub fn get_next_trigger() -> u64 {
     (get_time() + consts::time::clock_freq() / consts::time::INTERRUPT_PER_SEC)

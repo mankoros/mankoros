@@ -17,21 +17,27 @@ pub struct TimeSpec {
     pub tv_nsec: usize,
 }
 
+const E3: usize = 1000;
+const E6: usize = 1000000;
+const E9: usize = 1000000000;
+
 impl TimeSpec {
-    pub fn new(seconds: f64) -> Self {
-        let tv_sec = seconds as usize;
-        let tv_nsec = ((seconds - tv_sec as f64) * consts::time::NSEC_PER_SEC as f64) as usize;
-        Self { tv_sec, tv_nsec }
+    pub fn new(sec: usize, nsec: usize) -> Self {
+        Self {
+            tv_sec: sec,
+            tv_nsec: nsec,
+        }
     }
 
     pub fn now() -> Self {
-        let time = super::get_time_f64();
-        Self::new(time)
+        let now_us = super::get_time_us();
+        let tv_sec = now_us / E6;
+        let tv_nsec = (now_us % E6) * E3;
+        Self { tv_sec, tv_nsec }
     }
 
-    /// 返回以秒为单位的时间
-    pub fn time_in_sec(&self) -> f64 {
-        self.tv_sec as f64 + self.tv_nsec as f64 / consts::time::NSEC_PER_SEC as f64
+    pub fn time_in_ms(&self) -> usize {
+        self.tv_sec * E3 + self.tv_nsec / E6
     }
 }
 

@@ -1,8 +1,8 @@
 use log::{debug, info};
 
 use crate::{
-    consts::{time, MAX_OPEN_FILES},
-    executor::util_futures::{yield_now, AnyFuture},
+    consts::MAX_OPEN_FILES,
+    executor::util_futures::AnyFuture,
     fs::{
         new_vfs::{
             path::Path,

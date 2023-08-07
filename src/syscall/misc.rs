@@ -102,7 +102,7 @@ impl<'a> Syscall<'a> {
         info!("Syscall: nanosleep");
         // Calculate end time
         let time_spec = req.read(&self.lproc)?;
-        let sleep_time_ms = (time_spec.time_in_sec() * 1000.0) as usize;
+        let sleep_time_ms = time_spec.time_in_ms();
 
         // Sleep
         let before_sleep = get_time_ms();
@@ -118,7 +118,7 @@ impl<'a> Syscall<'a> {
         // Sleep is done
         // Update rem if provided
         if !rem.is_null() {
-            rem.write(&self.lproc, TimeSpec::new(0.0))?;
+            rem.write(&self.lproc, TimeSpec::new(0, 0))?;
         }
         Ok(0)
     }
