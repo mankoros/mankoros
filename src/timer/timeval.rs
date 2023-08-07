@@ -9,7 +9,7 @@ use core::ops::Add;
 use crate::consts;
 
 #[repr(C)]
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Default)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Default, Debug)]
 pub struct TimeVal {
     // seconds
     pub tv_sec: usize,

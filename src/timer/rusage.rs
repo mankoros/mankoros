@@ -6,7 +6,7 @@
 use super::TimeVal;
 
 #[repr(C)]
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Default)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Default, Debug)]
 pub struct Rusage {
     // user CPU time used
     pub ru_utime: TimeVal,

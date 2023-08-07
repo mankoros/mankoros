@@ -1,7 +1,7 @@
 //! Misc syscall
 //!
 
-use log::info;
+use log::{debug, info};
 
 use crate::{
     executor::util_futures::yield_now,
@@ -150,6 +150,8 @@ impl<'a> Syscall<'a> {
             _ => return Err(SysError::EINVAL),
         };
         usage.write(&self.lproc, data)?;
+
+        debug!("data: {data:?}");
         Ok(0)
     }
 }
