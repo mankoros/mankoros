@@ -257,7 +257,7 @@ fn probe_serial_console(stdout: &fdt::node::FdtNode) -> Serial {
                     first_compatible == "snps,dw-apb-uart",
                 )
             };
-            return Serial::new(base_paddr, size, irq_number, Box::new(uart));
+            Serial::new(base_paddr, size, irq_number, Box::new(uart))
         }
         "sifive,uart0" => {
             // sifive_u QEMU (FU540)
@@ -265,7 +265,7 @@ fn probe_serial_console(stdout: &fdt::node::FdtNode) -> Serial {
                 base_vaddr,
                 500 * 1000 * 1000, // 500 MHz hard coded for now
             );
-            return Serial::new(base_paddr, size, irq_number, Box::new(uart));
+            Serial::new(base_paddr, size, irq_number, Box::new(uart))
         }
         _ => panic!("Unsupported serial console"),
     }

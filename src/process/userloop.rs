@@ -1,6 +1,7 @@
 use alloc::sync::Arc;
 use riscv::register::{
-    scause::{self, Exception, Interrupt}, stval,
+    scause::{self, Exception, Interrupt},
+    stval,
 };
 
 use crate::{

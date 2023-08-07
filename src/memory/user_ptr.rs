@@ -295,13 +295,9 @@ impl<P: Write> UserPtr<u8, P> {
                     ptr.write(c);
                     ptr = ptr.offset(1);
                 }
-                if str.is_empty() {
-                    if writable_len < len {
-                        ptr.write(0);
-                        has_filled_zero = true;
-                    }
-                    // 其他的留到下一轮, 下一轮时 writable_len == 0,
-                    // 会直接到这里
+                if str.is_empty() && writable_len < len {
+                    ptr.write(0);
+                    has_filled_zero = true;
                 }
                 ControlFlow::Continue(())
             },

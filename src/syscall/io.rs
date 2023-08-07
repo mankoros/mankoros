@@ -543,7 +543,7 @@ impl Syscall<'_> {
             fd, buf, count, offset
         );
 
-        let ptr = UserWritePtr::<u8>::from(buf);
+        let ptr = buf;
         let buf = ptr.as_mut_slice(count, &self.lproc)?;
         let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
 
@@ -560,7 +560,7 @@ impl Syscall<'_> {
             fd, buf, count, offset
         );
 
-        let ptr = UserReadPtr::<u8>::from(buf);
+        let ptr = buf;
         let buf = ptr.as_slice(count, &self.lproc)?;
         let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
 

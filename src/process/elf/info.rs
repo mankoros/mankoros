@@ -248,9 +248,9 @@ impl ShType_ {
             16 => Ok(ShType::PreInitArray),
             17 => Ok(ShType::Group),
             18 => Ok(ShType::SymTabShIndex),
-            st if st >= SHT_LOOS && st <= SHT_HIOS => Ok(ShType::OsSpecific(st)),
-            st if st >= SHT_LOPROC && st <= SHT_HIPROC => Ok(ShType::ProcessorSpecific(st)),
-            st if st >= SHT_LOUSER && st <= SHT_HIUSER => Ok(ShType::User(st)),
+            st if (SHT_LOOS..=SHT_HIOS).contains(&st) => Ok(ShType::OsSpecific(st)),
+            st if (SHT_LOPROC..=SHT_HIPROC).contains(&st) => Ok(ShType::ProcessorSpecific(st)),
+            st if (SHT_LOUSER..=SHT_HIUSER).contains(&st) => Ok(ShType::User(st)),
             _ => Err(SysError::EFAULT),
         }
     }

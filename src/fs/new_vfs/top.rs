@@ -150,7 +150,7 @@ macro_rules! impl_vfs_default_non_dir {
         fn detach(
             &self,
             _name: &str,
-        ) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
+        ) -> $crate::tools::errors::ASysResult<$crate::fs::new_vfs::top::VfsFileRef> {
             unimplemented!(concat!(stringify!($ty), "::detach"))
         }
         fn attach(
@@ -222,7 +222,7 @@ macro_rules! impl_vfs_forward_dir {
         fn remove<'a>(&'a self, name: &'a str) -> $crate::tools::errors::ASysResult {
             self.$($e)+.remove(name)
         }
-        fn detach<'a>(&'a self, name: &'a str) -> crate::tools::errors::ASysResult<crate::fs::new_vfs::top::VfsFileRef> {
+        fn detach<'a>(&'a self, name: &'a str) -> $crate::tools::errors::ASysResult<$crate::fs::new_vfs::top::VfsFileRef> {
             self.$($e)+.detach(name)
         }
         fn attach<'a>(&'a self, name: &'a str, node: crate::fs::new_vfs::top::VfsFileRef) -> crate::tools::errors::ASysResult {
