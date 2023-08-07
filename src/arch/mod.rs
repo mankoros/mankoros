@@ -43,19 +43,26 @@ pub fn get_hart_id() -> usize {
 /// Switch to a new pagetable
 /// returns the old pagetable
 #[inline(always)]
-pub fn switch_page_table(paddr: usize) -> usize {
-    log::trace!("Switching to pagetable: 0x{:x}", paddr);
-    let old_page_table_ptr = riscv::register::satp::read();
+pub fn switch_page_table(new_pgt_addr: usize) -> usize {
+    debug_assert!(new_pgt_addr % consts::PAGE_SIZE == 0);
+    log::trace!("Switching to pagetable: 0x{:x}", new_pgt_addr);
+    let old_satp = riscv::register::satp::read();
+    let old_pgt_addr = old_satp.ppn() << consts::PAGE_SIZE_BITS;
+
+    // if the pagetable is the same, do nothing
+    if old_pgt_addr == new_pgt_addr {
+        return old_pgt_addr;
+    }
+
+    // else switch pagetable and flush tlb
+    let new_pgt_ppn = new_pgt_addr >> consts::PAGE_SIZE_BITS;
     unsafe {
-        riscv::register::satp::set(
-            riscv::register::satp::Mode::Sv39,
-            0,
-            paddr >> consts::PAGE_SIZE_BITS,
-        );
+        use riscv::register::satp;
+        satp::set(satp::Mode::Sv39, 0, new_pgt_ppn);
         riscv::asm::sfence_vma_all();
     }
-    debug!("Switched to pagetable: 0x{:x}", paddr);
-    old_page_table_ptr.ppn() << consts::PAGE_SIZE_BITS
+    debug!("Switched to pagetable: 0x{:x}", new_pgt_addr);
+    old_pgt_addr
 }
 
 #[inline(always)]
