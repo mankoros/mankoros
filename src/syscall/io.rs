@@ -5,12 +5,8 @@ use crate::{
     executor::util_futures::AnyFuture,
     fs::{
         self,
-        new_vfs::{
-            path::Path,
-            top::{PollKind, VfsFileRef},
-            VfsFileKind,
-        },
-        pipe::Pipe,
+        new_vfs::{path::Path, top::PollKind, VfsFileKind},
+        npipe::Pipe,
     },
     memory::{address::VirtAddr, UserInOutPtr, UserReadPtr, UserWritePtr},
     process::user_space::user_area::UserAreaPerm,
@@ -176,8 +172,8 @@ impl Syscall<'_> {
         let (pipe_read, pipe_write) = Pipe::new_pipe();
 
         let r = self.lproc.with_mut_fdtable(|table| {
-            let read_fd = table.alloc(VfsFileRef::new(pipe_read))?;
-            let write_fd = table.alloc(VfsFileRef::new(pipe_write))?;
+            let read_fd = table.alloc(pipe_read)?;
+            let write_fd = table.alloc(pipe_write)?;
             info!("read_fd: {}, write_fd: {}", read_fd, write_fd);
             Ok([read_fd as u32, write_fd as u32])
         })?;

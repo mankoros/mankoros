@@ -23,7 +23,7 @@ pub mod partition;
 pub mod memfs;
 pub mod new_vfs;
 pub mod nfat32;
-pub mod pipe;
+pub mod npipe;
 pub mod procfs;
 pub mod stdio;
 
