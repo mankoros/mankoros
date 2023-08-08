@@ -32,6 +32,47 @@ pub async fn with_timeout<F: Future>(ms: usize, future: F) -> Option<F::Output> 
     SleepFuture::new(get_time_ms() + ms, future).await
 }
 
+pub fn call_after<F>(ms: usize, f: F)
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    use crate::executor;
+    use alloc::boxed::Box;
+    use core::task::{RawWaker, RawWakerVTable};
+
+    fn new_raw_waker<F>(ptr: *const ()) -> RawWaker
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        RawWaker::new(
+            ptr,
+            &RawWakerVTable::new(
+                new_raw_waker::<F>,
+                |ptr| {
+                    let f = unsafe { (ptr as *mut F).read() };
+                    let (r, t) = executor::spawn(f);
+                    r.schedule();
+                    t.detach();
+                },
+                |_| unimplemented!("wake_by_ref"),
+                |ptr| drop(unsafe { Box::from_raw(ptr as *const F as *mut F) }),
+            ),
+        )
+    }
+
+    let ptr = Box::leak(Box::new(f)) as *const _ as *const ();
+    let raw_waker = new_raw_waker::<F>(ptr);
+    let waker = unsafe { Waker::from_raw(raw_waker) };
+
+    let wake_up_time = get_time_ms() + ms;
+    get_sleep_queue().push(Node {
+        wake_up_time,
+        waker,
+    })
+}
+
 struct SleepFuture<F: Future> {
     wake_up_time: AbsTimeT,
     is_done: bool,

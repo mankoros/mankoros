@@ -11,6 +11,7 @@ pub use self::timestat::TimeStat;
 pub use self::timeval::TimeVal;
 pub use self::tms::Tms;
 use crate::{arch, consts};
+pub use async_sleep::call_after;
 pub use async_sleep::wake_after;
 pub use async_sleep::with_timeout;
 use log::info;
