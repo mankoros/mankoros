@@ -13,6 +13,7 @@ use crate::{
     memory::address::VirtAddr,
     process::user_space::user_area::PageFaultAccessType,
     syscall::Syscall,
+    timer,
     trap::trap::run_user,
 };
 
@@ -97,8 +98,7 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
             },
             scause::Trap::Interrupt(i) => match i {
                 Interrupt::SupervisorTimer => {
-                    // TODO: timer, currently do nothing
-                    // timer::tick();
+                    timer::timer_handler();
                     if !is_exit {
                         debug!(
                             "Timer interrupt, User SEPC: 0x{:x}, STVAL: 0x{:x}",
