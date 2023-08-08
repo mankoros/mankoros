@@ -3,7 +3,7 @@ use log::info;
 
 use self::new_vfs::{
     mount::GlobalMountManager,
-    top::{VfsFS, VfsFSAttr, VfsFSKind, VfsFSRef, NORMAL_FILE_NAME_LENGTH},
+    top::{VfsFS, VfsFSAttr, VfsFSKind, VfsFSRef},
     DeviceIDCollection,
 };
 use crate::{

@@ -56,4 +56,8 @@ impl GlobalMountManager {
         let mp = Self::register(path, fs);
         VfsFileRef::new(mp)
     }
+
+    pub fn list() -> Vec<(Path, VfsFSRef)> {
+        MGR.lock(here!()).mount_points.clone()
+    }
 }

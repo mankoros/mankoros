@@ -1,8 +1,6 @@
 use super::new_vfs::{
-    top::{
-        MmapKind, PollKind, VfsFS, VfsFSAttr, VfsFSKind, VfsFile, VfsFileRef,
-        NORMAL_FILE_NAME_LENGTH,
-    },
+    mount::GlobalMountManager,
+    top::{MmapKind, PollKind, VfsFS, VfsFSAttr, VfsFSKind, VfsFile, VfsFileRef},
     DeviceIDCollection, VfsFileAttr, VfsFileKind,
 };
 use crate::{
@@ -81,14 +79,35 @@ impl ProcFSRootDir {
         VfsFileRef::new(ProcFSStandaloneFile {
             kind: VfsFileKind::RegularFile,
             f: || {
-                concat!(
-                    "procfs /proc procfs rw 0 0\n",
-                    "devfs /dev devfs rw 0 0\n",
-                    "/dev/sda / fat32 rw 0 0\n"
-                )
-                .to_string()
-                .as_bytes()
-                .into()
+                let mut content = String::with_capacity(150);
+                for (path, fs) in GlobalMountManager::list() {
+                    let kind = fs.attr().kind;
+
+                    // TODO: real device path
+                    let device_path = match kind {
+                        VfsFSKind::Fat => "/dev/sda",
+                        VfsFSKind::Dev => "devfs",
+                        VfsFSKind::Tmp => "tmpfs",
+                        VfsFSKind::Proc => "procfs",
+                    };
+                    content.push_str(device_path);
+                    content.push_str(" ");
+
+                    content.push_str(path.to_string().as_str());
+                    content.push_str(" ");
+
+                    let kind_str = match kind {
+                        VfsFSKind::Fat => "fat32",
+                        VfsFSKind::Dev => "devfs",
+                        VfsFSKind::Tmp => "tmpfs",
+                        VfsFSKind::Proc => "procfs",
+                    };
+                    content.push_str(kind_str);
+                    content.push_str(" ");
+
+                    content.push_str("rw 0 0\n");
+                }
+                content.as_bytes().into()
             },
         })
     }
