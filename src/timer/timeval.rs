@@ -21,6 +21,10 @@ impl TimeVal {
     pub fn now() -> Self {
         super::get_time_us().into()
     }
+
+    pub fn time_in_ms(&self) -> usize {
+        self.tv_sec * 1000 + self.tv_usec / 1000
+    }
 }
 
 impl Add for TimeVal {

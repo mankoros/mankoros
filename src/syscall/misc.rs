@@ -1,13 +1,16 @@
 //! Misc syscall
 //!
 
+use futures::FutureExt;
 use log::{debug, info};
 
 use crate::{
     executor::util_futures::yield_now,
     here,
     memory::{UserReadPtr, UserWritePtr},
-    timer::{get_time_ms, wake_after, Rusage, TimeSpec, TimeVal, Tms},
+    process::lproc_mgr::GlobalLProcManager,
+    signal::SignalSet,
+    timer::{get_time_ms, wake_after, Rusage, SleepFuture, TimeSpec, TimeVal, Tms},
     tools::errors::SysError,
 };
 
@@ -50,6 +53,17 @@ impl UtsName {
         data
     }
 }
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct ITimerVal {
+    pub it_interval: TimeVal,
+    pub it_value: TimeVal,
+}
+
+const ITIMER_REAL: usize = 0;
+const ITIMER_VIRTUAL: usize = 1;
+const ITIMER_PROF: usize = 2;
 
 impl<'a> Syscall<'a> {
     pub fn sys_uname(&mut self) -> SyscallResult {
@@ -152,6 +166,51 @@ impl<'a> Syscall<'a> {
         usage.write(&self.lproc, data)?;
 
         debug!("data: {data:?}");
+        Ok(0)
+    }
+
+    pub fn sys_setitimer(&mut self) -> SyscallResult {
+        log::info!("Syscall: setitimer");
+        let args = self.cx.syscall_args();
+        let which = args[0];
+        let new_value = UserReadPtr::<ITimerVal>::from(args[1]);
+
+        info!("Syscall: setitimer, which: {which}, new_value: {new_value}");
+
+        match which {
+            ITIMER_REAL => {
+                let next_wakeup_time = new_value.read(&self.lproc)?.it_value.time_in_ms();
+                let period = new_value.read(&self.lproc)?.it_interval.time_in_ms();
+                let pid = self.lproc.id();
+
+                if period == 0 {
+                    // One shot timer
+                    let future = SleepFuture::new(next_wakeup_time, async {
+                        let proc = GlobalLProcManager::get(pid);
+                        if let Some(proc) = proc {
+                            proc.send_signal(SignalSet::SIGALRM.get_signum());
+                        }
+                    });
+                } else {
+                    // Periodic timer
+                    let future = SleepFuture::new(next_wakeup_time, async {
+                        let proc = GlobalLProcManager::get(pid);
+                        if let Some(proc) = proc {
+                            proc.send_signal(SignalSet::SIGALRM.get_signum());
+                        }
+                        let periodic_future = SleepFuture::new(period, async {
+                            let proc = GlobalLProcManager::get(pid);
+                            if let Some(proc) = proc {
+                                proc.send_signal(SignalSet::SIGALRM.get_signum());
+                            }
+                        });
+                    });
+                }
+            }
+            _ => {
+                log::warn!("setitimer, which: {which}, not implemented");
+            }
+        }
         Ok(0)
     }
 }

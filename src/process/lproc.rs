@@ -194,7 +194,7 @@ impl LightProcess {
     }
     pub fn send_signal(self: &Arc<Self>, signum: usize) {
         self.signal.lock(here!()).signal_pending.set(
-            signal::SignalSet::from_bits_truncate(1 << (signum - 1)),
+            signal::SignalSet::from_bits(1 << (signum - 1)).unwrap(),
             true,
         );
     }

@@ -14,6 +14,7 @@ use crate::{arch, consts};
 pub use async_sleep::call_after;
 pub use async_sleep::wake_after;
 pub use async_sleep::with_timeout;
+pub use async_sleep::SleepFuture;
 use log::info;
 use riscv::register::{sie, time};
 
