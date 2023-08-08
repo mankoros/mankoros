@@ -12,6 +12,7 @@ use crate::{
     },
     memory::address::VirtAddr,
     process::user_space::user_area::PageFaultAccessType,
+    signal::{SignalSet, SIG_DFL, SIG_IGN},
     syscall::Syscall,
     timer,
     trap::trap::run_user,
@@ -36,6 +37,62 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
         match lproc.status() {
             ProcessStatus::UNINIT => panic!("Uninitialized process should not enter userloop"),
             ProcessStatus::READY => {
+                // Check pending signals
+                if lproc.signal_processing().is_empty() && !lproc.signal_pending().is_empty() {
+                    // Enter signal handling
+                    let signum_1 = lproc
+                        .signal_pending()
+                        .iter()
+                        .next()
+                        .unwrap()
+                        .bits()
+                        .checked_ilog2()
+                        .unwrap();
+                    let signum = SignalSet::from_bits_truncate(1 << signum_1);
+                    let handler = lproc
+                        .with_signal(|s| {
+                            s.signal_handler.get(&(signum_1 as usize + 1)).map(|h| h.clone())
+                        })
+                        .map(|h| h.bits());
+
+                    if let Some(handler) = handler {
+                        if handler == SIG_IGN {
+                            // Clear the signal immediately
+                            lproc.clear_signal(signum);
+                            continue;
+                        }
+                        if handler == SIG_DFL {
+                            match signum {
+                                SignalSet::SIGKILL
+                                | SignalSet::SIGALRM
+                                | SignalSet::SIGHUP
+                                | SignalSet::SIGINT
+                                | SignalSet::SIGTERM => {
+                                    // Killed
+                                    break;
+                                }
+                                _ => {
+                                    // Clear the signal immediately
+                                    lproc.clear_signal(signum);
+                                    continue;
+                                }
+                            }
+                        }
+                        // Save current context
+                        lproc.with_mut_signal(|s| {
+                            *s.before_signal_context.get_mut().as_mut() = context.clone();
+                        });
+                        // Set epc to signal handler
+                        // Signal handler run on the same stack
+                        log::debug!("enter signal handler: {:x?}", handler);
+                        context.user_sepc = handler;
+                        // Set processing signal
+                        lproc.with_mut_signal(|s| {
+                            s.signal_processing.insert(signum);
+                        });
+                    }
+                }
+
                 timer.lock(here!()).switch_into();
                 timer.lock(here!()).kernel_to_user();
                 run_user(context);

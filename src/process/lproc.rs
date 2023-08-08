@@ -167,6 +167,10 @@ impl LightProcess {
         self.signal.lock(here!()).signal_pending
     }
 
+    pub fn signal_processing(&self) -> signal::SignalSet {
+        self.signal.lock(here!()).signal_processing
+    }
+
     pub fn tgid(&self) -> Pid {
         self.group.lock(here!()).tgid()
     }

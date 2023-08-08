@@ -10,10 +10,9 @@ use super::{Syscall, SyscallResult};
 #[derive(Debug, Copy, Clone)]
 struct SigAction {
     sa_handler: usize,
-    sa_sigaction: usize,
-    sa_mask: usize,
-    sa_flags: usize,
+    sa_flags: u32,
     sa_restorer: usize,
+    sa_mask: usize,
 }
 
 impl<'a> Syscall<'a> {
@@ -46,7 +45,7 @@ impl<'a> Syscall<'a> {
         if args[1] != 0 {
             // Install a signal action
             let act = UserReadPtr::<SigAction>::from(args[1]).read(&self.lproc)?;
-            log::debug!("sigaction: signum: {}, act: {:?}", signum, act);
+            log::debug!("sigaction: signum: {:x?}, act: {:x?}", signum, act);
 
             self.lproc.with_mut_signal(|s| {
                 s.signal_handler.insert(signum, act.sa_handler.into());
@@ -70,6 +69,23 @@ impl<'a> Syscall<'a> {
         let proc = GlobalLProcManager::get(pid.into()).ok_or(LinuxError::ESRCH)?;
 
         proc.send_signal(signum);
+
+        Ok(0)
+    }
+
+    pub fn sys_sigreturn(&self) -> SyscallResult {
+        info!("Syscall: sigreturn");
+        *self.lproc.context() = self
+            .lproc
+            .with_mut_signal(|s| s.before_signal_context.get_mut().as_ref().clone());
+
+        // Clear processing bit
+        self.lproc.with_mut_signal(|s| {
+            assert!(!s.signal_processing.is_empty());
+            // signum - 1
+            let signum_1 = s.signal_processing.bits().trailing_zeros();
+            s.signal_processing.remove(SignalSet::from_bits_truncate(1 << signum_1));
+        });
 
         Ok(0)
     }

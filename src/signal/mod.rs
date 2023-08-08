@@ -37,3 +37,6 @@ bitflags! {
         const SIGTIMER  = 1 << (32 - 1);   // 非法的系统调用
     }
 }
+
+pub const SIG_DFL: usize = 0;
+pub const SIG_IGN: usize = 1;
