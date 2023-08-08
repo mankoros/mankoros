@@ -66,8 +66,19 @@ impl VfsFS for DevFS {
     }
 }
 
+struct TmpFS(VfsFileRef);
+impl VfsFS for TmpFS {
+    fn root(&self) -> VfsFileRef {
+        self.0.clone()
+    }
+    fn attr(&self) -> VfsFSAttr {
+        VfsFSAttr::default_mem(VfsFSKind::Tmp, DeviceIDCollection::TMP_FS_ID)
+    }
+}
+
 async fn mount_all_fs() -> SysResult<()> {
     let root_dir = get_root_dir();
+
     // Mount devfs
     let dev_fs = VfsFSRef::new(DevFS(VfsFileRef::new(TmpDir::new())));
     let dev_dir = dev_fs.root();
@@ -75,13 +86,17 @@ async fn mount_all_fs() -> SysResult<()> {
     dev_dir.attach("zero", VfsFileRef::new(ZeroDev)).await?;
     dev_dir.attach("vda2", VfsFileRef::new(ZeroDev)).await?;
     dev_dir.attach("tty", VfsFileRef::new(TTY)).await?;
-
-    // Mount devfs
     let dev_mp = GlobalMountManager::register_as_file("/dev", dev_fs);
     root_dir.attach("dev", dev_mp).await?;
+
     // Mount procfs
     let proc_mp = GlobalMountManager::register_as_file("/proc", VfsFSRef::new(ProcFS));
     root_dir.attach("proc", proc_mp).await?;
+
+    // Mount tmpfs
+    let tmp_fs = VfsFSRef::new(TmpFS(VfsFileRef::new(TmpDir::new())));
+    let tmp_mp = GlobalMountManager::register_as_file("/tmp", tmp_fs);
+    root_dir.attach("tmp", tmp_mp).await?;
 
     Ok(())
 }
