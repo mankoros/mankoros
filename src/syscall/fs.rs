@@ -277,7 +277,7 @@ impl<'a> Syscall<'a> {
                 return Err(SysError::EMFILE);
             }
             if let Some(old_fd) = table.get(fd) {
-                let new_fd = table.dup(NewFdRequirement::None, &old_fd);
+                let new_fd = table.dup(NewFdRequirement::None, &old_fd)?;
                 Ok(new_fd)
             } else {
                 Err(SysError::EBADF)
@@ -297,7 +297,7 @@ impl<'a> Syscall<'a> {
                 }
             }
             if let Some(old_fd) = table.get(old_fd) {
-                table.dup(NewFdRequirement::Exactly(new_fd), &old_fd);
+                table.dup(NewFdRequirement::Exactly(new_fd), &old_fd)?;
                 Ok(new_fd)
             } else {
                 Err(SysError::EBADF)
@@ -605,7 +605,7 @@ impl<'a> Syscall<'a> {
                     let old_fd = f.get(fd).unwrap();
                     f.dup(NewFdRequirement::GreaterThan(fd_lower_bound), &old_fd)
                 });
-                Ok(new_fd)
+                new_fd
             }
             _ => {
                 log::warn!("fcntl cmd: {} not implemented, returning 0 as default", cmd);

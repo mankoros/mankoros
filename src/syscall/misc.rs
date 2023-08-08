@@ -117,7 +117,7 @@ impl<'a> Syscall<'a> {
 
         // Sleep is done
         // Update rem if provided
-        if !rem.is_null() {
+        if rem.not_null() {
             rem.write(&self.lproc, TimeSpec::new(0, 0))?;
         }
         Ok(0)

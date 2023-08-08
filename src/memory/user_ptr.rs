@@ -69,6 +69,9 @@ impl<T: Clone + Copy + 'static, P: Policy> UserPtr<T, P> {
     pub fn is_null(self) -> bool {
         self.ptr.is_null()
     }
+    pub fn not_null(self) -> bool {
+        !self.ptr.is_null()
+    }
     pub fn as_usize(self) -> usize {
         self.ptr as usize
     }
@@ -94,12 +97,12 @@ impl<T: Clone + Copy + 'static, P: Policy> UserPtr<T, P> {
 }
 impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
     pub fn nonnull(self) -> Option<Self> {
-        (!self.ptr.is_null()).then_some(self)
+        self.not_null().then_some(self)
     }
 
     #[must_use]
     pub fn as_ref(self, lproc: &Arc<LightProcess>) -> SysResult<&T> {
-        debug_assert!(!self.is_null());
+        debug_assert!(self.not_null());
         lproc.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>(),
@@ -111,7 +114,7 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
 
     #[must_use]
     pub fn as_slice(self, n: usize, lproc: &Arc<LightProcess>) -> SysResult<&[T]> {
-        debug_assert!(n == 0 || !self.is_null());
+        debug_assert!(n == 0 || self.not_null());
         lproc.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>() * n,
@@ -123,7 +126,7 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
 
     #[must_use]
     pub fn read(self, lproc: &Arc<LightProcess>) -> SysResult<T> {
-        debug_assert!(!self.is_null());
+        debug_assert!(self.not_null());
         lproc.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>(),
@@ -135,7 +138,7 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
 
     #[must_use]
     pub fn read_array(self, n: usize, lproc: &Arc<LightProcess>) -> SysResult<Vec<T>> {
-        debug_assert!(n == 0 || !self.is_null());
+        debug_assert!(n == 0 || self.not_null());
         lproc.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>() * n,
@@ -157,7 +160,7 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
 impl<P: Read> UserPtr<u8, P> {
     #[must_use]
     pub fn read_cstr(self, lproc: &Arc<LightProcess>) -> SysResult<String> {
-        debug_assert!(!self.is_null());
+        debug_assert!(self.not_null());
         let mut str = String::with_capacity(32);
         let mut has_ended = false;
 
@@ -193,12 +196,12 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
         self.ptr
     }
     pub fn nonnull_mut(self) -> Option<Self> {
-        (!self.ptr.is_null()).then_some(self)
+        self.not_null().then_some(self)
     }
 
     #[must_use]
     pub fn as_mut(self, lproc: &Arc<LightProcess>) -> SysResult<&mut T> {
-        debug_assert!(!self.is_null());
+        debug_assert!(self.not_null());
         lproc.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>(),
@@ -210,7 +213,7 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
 
     #[must_use]
     pub fn as_mut_slice(self, n: usize, lproc: &Arc<LightProcess>) -> SysResult<&mut [T]> {
-        debug_assert!(n == 0 || !self.is_null());
+        debug_assert!(n == 0 || self.not_null());
         lproc.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>() * n,
@@ -222,7 +225,7 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
 
     #[must_use]
     pub fn write(self, lproc: &Arc<LightProcess>, val: T) -> SysResult<()> {
-        debug_assert!(!self.is_null());
+        debug_assert!(self.not_null());
         lproc.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>(),
@@ -234,7 +237,7 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
 
     #[must_use]
     pub fn write_array(self, lproc: &Arc<LightProcess>, val: &[T]) -> SysResult<()> {
-        debug_assert!(!self.is_null());
+        debug_assert!(self.not_null());
         lproc.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>() * val.len(),
@@ -255,7 +258,7 @@ impl<P: Write> UserPtr<u8, P> {
     #[must_use]
     /// should only be used at syscall getdent with dynamic-len structure
     pub unsafe fn write_as_bytes<U>(self, lproc: &Arc<LightProcess>, val: &U) -> SysResult<()> {
-        debug_assert!(!self.is_null());
+        debug_assert!(self.not_null());
 
         let len = size_of::<U>();
         lproc.just_ensure_user_area(
@@ -277,7 +280,7 @@ impl<P: Write> UserPtr<u8, P> {
 
     #[must_use]
     pub fn write_cstr(self, lproc: &Arc<LightProcess>, val: &str) -> SysResult<()> {
-        debug_assert!(!self.is_null());
+        debug_assert!(self.not_null());
 
         let mut str = val.as_bytes();
         let mut has_filled_zero = false;

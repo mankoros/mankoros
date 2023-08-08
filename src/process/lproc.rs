@@ -20,7 +20,10 @@ use crate::{
     sync::SpinNoIrqLock,
     syscall,
     timer::TimeStat,
-    tools::handler_pool::UsizePool,
+    tools::{
+        errors::{SysError, SysResult},
+        handler_pool::UsizePool,
+    },
     trap::context::UKContext,
 };
 use alloc::{
@@ -506,10 +509,20 @@ impl Clone for FileDescriptor {
     }
 }
 
-#[derive(Clone)]
 pub struct FdTable {
     pool: UsizePool,
     table: BTreeMap<usize, Arc<FileDescriptor>>,
+    limit: AtomicUsize,
+}
+
+impl Clone for FdTable {
+    fn clone(&self) -> Self {
+        Self {
+            pool: self.pool.clone(),
+            table: self.table.clone(),
+            limit: AtomicUsize::new(self.limit.load(Ordering::Relaxed)),
+        }
+    }
 }
 
 pub enum NewFdRequirement {
@@ -524,6 +537,7 @@ impl FdTable {
             // never alloc 0, 1, 2
             pool: UsizePool::new(3),
             table: BTreeMap::new(),
+            limit: AtomicUsize::new(512),
         }
     }
 
@@ -542,13 +556,34 @@ impl FdTable {
         t
     }
 
+    pub fn get_limit(&self) -> usize {
+        self.limit.load(Ordering::Relaxed)
+    }
+    pub fn set_limit(&mut self, limit: usize) {
+        self.limit.store(limit, Ordering::Relaxed);
+    }
+
+    fn check_whether_alloc_will_exceeded_limit(&self) -> SysResult<()> {
+        if self.table.len() >= self.get_limit() {
+            Err(SysError::EMFILE)
+        } else {
+            Ok(())
+        }
+    }
+
     // alloc finds a fd and insert the file descriptor into the table
-    pub fn alloc(&mut self, file: VfsFileRef) -> usize {
+    pub fn alloc(&mut self, file: VfsFileRef) -> SysResult<usize> {
+        self.check_whether_alloc_will_exceeded_limit()?;
         let fd = self.pool.get();
         self.table.insert(fd, FileDescriptor::new(file));
-        fd
+        Ok(fd)
     }
-    pub fn dup(&mut self, new_fd_req: NewFdRequirement, old_fd: &Arc<FileDescriptor>) -> usize {
+    pub fn dup(
+        &mut self,
+        new_fd_req: NewFdRequirement,
+        old_fd: &Arc<FileDescriptor>,
+    ) -> SysResult<usize> {
+        self.check_whether_alloc_will_exceeded_limit()?;
         let new_fd_no = match new_fd_req {
             NewFdRequirement::Exactly(new_fd) => new_fd,
             NewFdRequirement::GreaterThan(lower_bound) => {
@@ -568,7 +603,7 @@ impl FdTable {
         };
         let new_fd = Arc::new((**old_fd).clone());
         self.table.insert(new_fd_no, new_fd);
-        new_fd_no
+        Ok(new_fd_no)
     }
 
     pub fn remove(&mut self, fd: usize) -> Option<Arc<FileDescriptor>> {

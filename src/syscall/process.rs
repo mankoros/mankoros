@@ -5,7 +5,10 @@ use crate::{
     executor::util_futures::yield_now,
     fs::new_vfs::path::Path,
     memory::{address::VirtAddr, UserReadPtr, UserWritePtr},
-    process::{self, lproc::ProcessStatus, user_space::user_area::UserAreaPerm},
+    process::{
+        self, lproc::ProcessStatus, lproc_mgr::GlobalLProcManager, pid::Pid,
+        user_space::user_area::UserAreaPerm,
+    },
     signal,
     tools::errors::{SysError, SysResult},
     when_debug,
@@ -80,7 +83,7 @@ impl<'a> Syscall<'a> {
 
         info!("Syscall: getcwd: buf: {}, len: {}", buf, len);
 
-        if len == 0 && !buf.is_null() {
+        if len == 0 && buf.not_null() {
             return Err(SysError::EINVAL);
         }
         if buf.is_null() {
@@ -178,7 +181,7 @@ impl<'a> Syscall<'a> {
             }
         };
 
-        if !wstatus.is_null() {
+        if wstatus.not_null() {
             // 末尾 8 位是 SIG 信息，再上 8 位是退出码
             let status = (result_lproc.exit_code() as u32 & 0xff) << 8;
             debug!("wstatus: {:#x}", status);
@@ -377,12 +380,129 @@ impl<'a> Syscall<'a> {
     }
 
     pub fn sys_prlimit(&mut self) -> SyscallResult {
-        info!("Syscall: prlimit");
         let args = self.cx.syscall_args();
-        info!("pid: {}", args[0]);
-        info!("type: {}", args[1]);
-        info!("new limit: 0x{:0}", args[2]);
-        info!("old limit: 0x{:0}", args[3]);
+        let (pid, res, new_limit, old_limit) = (
+            Pid::from(args[0]),
+            RLimitResource::from_usize(args[1]),
+            UserReadPtr::<RLimit>::from(args[2]),
+            UserWritePtr::<RLimit>::from(args[3]),
+        );
+
+        info!(
+            "Syscall: prlimit, pid: {:?}, res: {:?}, new_limit: {}, old_limit: {}",
+            pid, res, new_limit, old_limit
+        );
+
+        let target_lproc = if pid == 0 {
+            self.lproc.clone()
+        } else {
+            GlobalLProcManager::get(pid).ok_or(SysError::ESRCH)?
+        };
+
+        let res = res.ok_or(SysError::EINVAL)?;
+
+        if old_limit.not_null() {
+            let limit = match res {
+                RLimitResource::NOFILE => target_lproc.with_fdtable(|f| f.get_limit()) as u64,
+                _ => {
+                    // not impl yet, just return 0
+                    log::warn!("prlimit(get): not impl for {:?} yet, use INF", res);
+                    RL_INFINITY
+                }
+            };
+            old_limit.write(&self.lproc, RLimit::default(limit))?;
+        }
+
+        if new_limit.not_null() {
+            let limit = new_limit.read(&self.lproc)?.cur;
+            match res {
+                RLimitResource::NOFILE => {
+                    target_lproc.with_mut_fdtable(|f| f.set_limit(limit as usize))
+                }
+                _ => {
+                    log::warn!("prlimit(set): not impl for {:?} yet, do nothing", res);
+                }
+            }
+        }
+
         Ok(0)
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct RLimit {
+    cur: u64,
+    max: u64,
+}
+
+impl RLimit {
+    pub const fn default(cur: u64) -> Self {
+        Self { cur, max: cur }
+    }
+}
+
+pub const RL_INFINITY: u64 = -1i64 as u64;
+
+#[derive(Debug, Clone, Copy)]
+enum RLimitResource {
+    /// Per-process CPU limit, in seconds.
+    CPU = 0,
+    /// Largest file that can be created, in bytes.
+    FSIZE = 1,
+    /// Maximum size of data segment, in bytes.
+    DATA = 2,
+    /// Maximum size of stack segment, in bytes.
+    STACK = 3,
+    /// Largest core file that can be created, in bytes.
+    CORE = 4,
+    /// Largest resident set size, in bytes.
+    RSS = 5,
+    /// Number of open files.
+    NOFILE = 7,
+    /// Address space limit.
+    AS = 9,
+    /// Number of processes.
+    NPROC = 6,
+    /// Locked-in-memory address space.
+    MEMLOCK = 8,
+    /// Maximum number of file locks.
+    LOCKS = 10,
+    /// Maximum number of pending signals.
+    SIGPENDING = 11,
+    /// Maximum bytes in POSIX message queues.
+    MSGQUEUE = 12,
+    /// Maximum nice priority allowed to raise to.
+    NICE = 13,
+    /// Maximum realtime priority allowed for non-priviledged processes.
+    RTPRIO = 14,
+    /// Maximum CPU time in µs that a process scheduled under a real-time
+    RTTIME = 15,
+    /// Maximum number of bytes in FUSE requests.
+    NLIMITS = 16,
+}
+
+impl RLimitResource {
+    pub fn from_usize(v: usize) -> Option<Self> {
+        match v {
+            0 => Some(RLimitResource::CPU),
+            1 => Some(RLimitResource::FSIZE),
+            2 => Some(RLimitResource::DATA),
+            3 => Some(RLimitResource::STACK),
+            4 => Some(RLimitResource::CORE),
+            5 => Some(RLimitResource::RSS),
+            7 => Some(RLimitResource::NOFILE),
+            9 => Some(RLimitResource::AS),
+            6 => Some(RLimitResource::NPROC),
+            8 => Some(RLimitResource::MEMLOCK),
+            10 => Some(RLimitResource::LOCKS),
+            11 => Some(RLimitResource::SIGPENDING),
+            12 => Some(RLimitResource::MSGQUEUE),
+            13 => Some(RLimitResource::NICE),
+            14 => Some(RLimitResource::RTPRIO),
+            15 => Some(RLimitResource::RTTIME),
+            16 => Some(RLimitResource::NLIMITS),
+            _ => None,
+        }
     }
 }
