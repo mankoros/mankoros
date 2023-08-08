@@ -583,7 +583,12 @@ impl FdTable {
         new_fd_req: NewFdRequirement,
         old_fd: &Arc<FileDescriptor>,
     ) -> SysResult<usize> {
-        self.check_whether_alloc_will_exceeded_limit()?;
+        if let NewFdRequirement::Exactly(new_fd) = new_fd_req && self.table.contains_key(&new_fd) {
+            // skip the check
+        } else {
+            self.check_whether_alloc_will_exceeded_limit()?;
+        }
+
         let new_fd_no = match new_fd_req {
             NewFdRequirement::Exactly(new_fd) => new_fd,
             NewFdRequirement::GreaterThan(lower_bound) => {
