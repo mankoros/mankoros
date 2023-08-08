@@ -121,6 +121,8 @@ impl<'a> Syscall<'a> {
             155 => self.sys_do_nothing("getpgid"),
             154 => self.sys_do_nothing("setpgid"),
             175 => self.sys_do_nothing("geteuid"),
+            176 => self.sys_do_nothing("getgid"),
+            177 => self.sys_do_nothing("getegid"),
 
             _ => {
                 warn!("Unknown syscall_id: {}", syscall_no);
