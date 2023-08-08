@@ -10,7 +10,7 @@ use crate::{
         self,
         disk::BLOCK_SIZE,
         memfs::zero::ZeroDev,
-        new_vfs::{path::Path, top::VfsFileRef, VfsFileKind},
+        new_vfs::{mount::GlobalMountManager, path::Path, top::VfsFileRef, VfsFileKind},
     },
     memory::{UserReadPtr, UserWritePtr},
     process::lproc::NewFdRequirement,
@@ -450,6 +450,7 @@ impl<'a> Syscall<'a> {
 
     pub async fn sys_statfs(&self) -> SyscallResult {
         #[repr(C)]
+        #[derive(Debug, Clone, Copy)]
         struct StatFS {
             /// Type of filesystem (see below)
             f_type: i64,
@@ -466,7 +467,7 @@ impl<'a> Syscall<'a> {
             /// Free file nodes in filesystem
             f_ffree: u64,
             /// Filesystem ID
-            f_fsid: [i32; 2],
+            f_fsid: u64,
             /// Maximum length of filenames
             f_namelen: i64,
             /// Fragment size (since Linux 2.6)
@@ -477,7 +478,47 @@ impl<'a> Syscall<'a> {
             f_spare: [i64; 4],
         }
 
-        todo!()
+        let args = self.cx.syscall_args();
+        let (path_name, buf) = (
+            UserReadPtr::<u8>::from(args[0]),
+            UserWritePtr::<StatFS>::from(args[1]),
+        );
+
+        let path_name = path_name.read_cstr(&self.lproc)?;
+        info!("statfs: path_name: {:?}, buf: {}", path_name, buf);
+
+        let path = Path::from_string(path_name)?;
+        let attr = match GlobalMountManager::get(&path) {
+            Some(fs) => fs.attr(),
+            None => return Err(SysError::ENOENT),
+        };
+
+        use fs::new_vfs::top::VfsFSKind;
+        let f_type = match attr.kind {
+            // from https://man7.org/linux/man-pages/man2/statfs.2.html
+            VfsFSKind::Fat => 0x4d44, // MSDOS_SUPER_MAGIC
+            VfsFSKind::Dev => 0x1373,
+            VfsFSKind::Tmp => 0x01021994,
+            VfsFSKind::Proc => 0x9fa0,
+        };
+
+        let stat_fs = StatFS {
+            f_type,
+            f_bsize: BLOCK_SIZE as _,
+            f_blocks: attr.total_block_size as _,
+            f_bfree: attr.free_block_size as _,
+            f_bavail: attr.free_block_size as _,
+            f_files: attr.total_file_count as _,
+            f_ffree: attr.total_file_count as _,
+            f_fsid: attr.fs_id as _,
+            f_namelen: attr.max_file_name_length as _,
+            f_frsize: BLOCK_SIZE as _,
+            f_flags: 0,
+            f_spare: [0; 4],
+        };
+
+        buf.write(&self.lproc, stat_fs)?;
+        Ok(0)
     }
 
     /// Path resolve helper for __at syscall

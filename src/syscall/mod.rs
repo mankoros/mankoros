@@ -74,6 +74,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_RENAMEAT2 => self.sys_renameat2().await,
             SYSCALL_UTIMENSAT => self.sys_utimensat().await,
             SYSCALL_FACCESSAT => self.sys_faccessat().await,
+            SYSCALL_STATFS => self.sys_statfs().await,
 
             // Process related
             SYSCALL_GETCWD => self.sys_getcwd(),

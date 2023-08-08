@@ -60,4 +60,14 @@ impl GlobalMountManager {
     pub fn list() -> Vec<(Path, VfsFSRef)> {
         MGR.lock(here!()).mount_points.clone()
     }
+
+    pub fn get(path: &Path) -> Option<VfsFSRef> {
+        MGR.lock(here!()).mount_points.iter().find_map(|(p, fs)| {
+            if path.starts_with(p) {
+                Some(fs.clone())
+            } else {
+                None
+            }
+        })
+    }
 }
