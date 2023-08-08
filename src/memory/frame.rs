@@ -15,7 +15,6 @@ use crate::sync::SpinNoIrqLock;
 use log::*;
 
 use super::address::{kernel_virt_text_to_phys, PhysAddr4K};
-use crate::executor::hart_local::within_sum;
 use crate::memory::frame_ref_cnt::is_frame_ref_cnt_inited;
 
 // Support 64GiB (?)
@@ -70,6 +69,7 @@ pub fn init() {
 pub fn alloc_frame() -> Option<PhysAddr4K> {
     let paddr = GlobalFrameAlloc.alloc();
     when_debug!({
+        use crate::executor::hart_local::within_sum;
         if let Some(paddr) = paddr {
             // Fill with junk
             within_sum(|| unsafe { paddr.as_mut_page_slice().fill(0x5) });

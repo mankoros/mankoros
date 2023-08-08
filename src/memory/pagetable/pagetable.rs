@@ -23,7 +23,7 @@ use crate::{
 };
 
 use alloc::{vec, vec::Vec};
-use log::{trace, warn};
+use log::trace;
 
 use super::pte::{self, PTEFlags, PageTableEntry};
 
@@ -379,9 +379,10 @@ impl Drop for PageTable {
                 // Debug sanity check
                 let ref_cnt = frame.page_num().get_ref_cnt();
                 if ref_cnt != 1 {
-                    warn!(
+                    log::warn!(
                         "Pagetable page {:#x} still has {} references",
-                        frame, ref_cnt
+                        frame,
+                        ref_cnt
                     );
                     panic!("Pagetable page should not have references");
                 }
@@ -389,7 +390,7 @@ impl Drop for PageTable {
                 let page = self.table_of(*frame);
                 for pte in page.iter() {
                     if pte.is_valid() && pte.is_leaf() && pte.is_user() {
-                        warn!("Pagetable page {:#x} still valid user page", frame);
+                        log::warn!("Pagetable page {:#x} still valid user page", frame);
                         panic!("Pagetable page should not be valid");
                     }
                 }
