@@ -141,7 +141,7 @@ impl Syscall<'_> {
             file
         };
 
-        self.lproc.with_mut_fdtable(|table| Ok(table.alloc(final_file)))
+        self.lproc.with_mut_fdtable(|table| table.alloc(final_file))
     }
 
     pub async fn sys_readlinkat(&self) -> SyscallResult {
@@ -176,11 +176,11 @@ impl Syscall<'_> {
         let (pipe_read, pipe_write) = Pipe::new_pipe();
 
         let r = self.lproc.with_mut_fdtable(|table| {
-            let read_fd = table.alloc(VfsFileRef::new(pipe_read));
-            let write_fd = table.alloc(VfsFileRef::new(pipe_write));
+            let read_fd = table.alloc(VfsFileRef::new(pipe_read))?;
+            let write_fd = table.alloc(VfsFileRef::new(pipe_write))?;
             info!("read_fd: {}, write_fd: {}", read_fd, write_fd);
-            [read_fd as u32, write_fd as u32]
-        });
+            Ok([read_fd as u32, write_fd as u32])
+        })?;
 
         pipe.write(&self.lproc, r)?;
         Ok(0)
@@ -385,7 +385,7 @@ impl Syscall<'_> {
             _sigmask,
         );
 
-        let timeout_opt = if !tsptr.is_null() {
+        let timeout_opt = if tsptr.not_null() {
             let tv = tsptr.read(&self.lproc)?;
             Some(tv.tv_sec * 1000 + tv.tv_usec)
         } else {
