@@ -140,9 +140,12 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                     });
                     if let Err(e) = result {
                         warn!(
-                            "Pagefault failed: {:?}, process killed, STVAL: 0x{stval:x}",
-                            e
+                            "Pagefault failed: {:?} ({:?}), process {:?} killed, STVAL: 0x{stval:x}",
+                            e,
+                            access_type,
+                            lproc.id(),
                         );
+                        lproc.with_memory(|m| m.areas().print_all());
                         is_exit = true;
                     }
                 }
