@@ -114,6 +114,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_GETUID => self.sys_getuid(),
             SYSCALL_GETRUSAGE => self.sys_getrusage(),
             SYSCALL_SYSLOG => self.sys_do_nothing("syslog"),
+            SYSCALL_SETITIMER => self.sys_setitimer(),
 
             // unimplemented
             29 => self.sys_do_nothing("ioctl"),
