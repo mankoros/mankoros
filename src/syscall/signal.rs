@@ -48,7 +48,7 @@ impl<'a> Syscall<'a> {
         if args[1] != 0 {
             // Install a signal action
             let act = UserReadPtr::<SigAction>::from(args[1]).read(&self.lproc)?;
-            log::debug!("sigaction: signum: {:x?}, act: {:x?}", signum, act);
+            log::debug!("sigaction: signum: {:?}, act: {:x?}", signum, act);
 
             self.lproc.with_mut_signal(|s| {
                 s.signal_handler.insert(signum, act.sa_handler.into());
@@ -102,6 +102,6 @@ impl<'a> Syscall<'a> {
             s.signal_processing.remove(SignalSet::from_bits_truncate(1 << signum_1));
         });
 
-        Ok(0)
+        Ok(self.lproc.context().user_rx[10])
     }
 }

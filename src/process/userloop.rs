@@ -86,6 +86,7 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                         // Signal handler run on the same stack
                         log::warn!("enter signal handler: {:x?}", handler);
                         context.user_sepc = handler;
+                        context.set_user_a0(signum_1 as usize + 1);
                         // Set processing signal
                         lproc.with_mut_signal(|s| {
                             s.signal_processing.insert(signum);
@@ -157,7 +158,10 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                     );
                     is_exit = true;
                 }
-                e => panic!("Unknown user exception: {:?}", e),
+                e => {
+                    warn!("Unknown user exception: {:?}", e);
+                    is_exit = true;
+                }
             },
             scause::Trap::Interrupt(i) => match i {
                 Interrupt::SupervisorTimer => {

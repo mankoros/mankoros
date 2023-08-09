@@ -174,22 +174,28 @@ impl<'a> Syscall<'a> {
         let which = args[0];
         let new_value = UserReadPtr::<ITimerVal>::from(args[1]);
 
-        info!("Syscall: setitimer, which: {which}, new_value: {new_value}");
-
         match which {
             ITIMER_REAL => {
-                let next_wakeup_time = new_value.read(&self.lproc)?.it_value.time_in_ms();
-                let period = new_value.read(&self.lproc)?.it_interval.time_in_ms();
+                let new_value = new_value.read(&self.lproc)?;
+                let next_wakeup_time = new_value.it_value.time_in_ms();
+                let period = new_value.it_interval.time_in_ms();
                 let pid = self.lproc.id();
 
+                log::info!("Syscall: setitimer, which: {which}, new_value: {new_value:?}, next_wakeup_time: {next_wakeup_time}, period: {period}");
+
                 if period == 0 {
-                    // One shot timer
-                    timer::call_after(next_wakeup_time, async move {
-                        let proc = GlobalLProcManager::get(pid);
-                        if let Some(proc) = proc {
-                            proc.send_signal(SignalSet::SIGALRM.get_signum());
-                        }
-                    });
+                    if next_wakeup_time != 0 {
+                        // One shot timer
+                        timer::call_after(next_wakeup_time, async move {
+                            let proc = GlobalLProcManager::get(pid);
+                            if let Some(proc) = proc {
+                                proc.send_signal(SignalSet::SIGALRM.get_signum());
+                            }
+                        });
+                    } else {
+                        // Disarm timer
+                        log::warn!("disarm timer not implemented");
+                    }
                 } else {
                     // Periodic timer
                     timer::call_after(next_wakeup_time, async move {
