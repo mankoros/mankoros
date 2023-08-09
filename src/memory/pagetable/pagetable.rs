@@ -126,6 +126,16 @@ impl PageTable {
         }
     }
 
+    /// Unmap the lower segment used for booting
+    pub fn unmap_user_space(&mut self) {
+        let root_page = self.table_of_mut(self.root_paddr);
+        for i in 0..ENTRY_COUNT / 2 {
+            // Lower half is user space
+            root_page[i] = PageTableEntry::EMPTY;
+        }
+        arch::flush_tlb_all();
+    }
+
     pub const fn root_paddr(&self) -> PhysAddr4K {
         self.root_paddr
     }
@@ -215,6 +225,14 @@ impl PageTable {
     pub fn copy_table_and_mark_self_cow(&mut self, do_with_frame: impl Fn(PhysAddr4K)) -> Self {
         let old = self;
         let mut new = Self::new();
+
+        // Copy kernel space
+        unsafe {
+            new.root_paddr
+                .as_mut_page_slice()
+                .copy_from_slice(old.root_paddr.as_page_slice());
+        }
+        new.unmap_user_space();
 
         let op1_iter = old.table_of_mut(old.root_paddr).iter_mut();
         let np1_iter = new.table_of_mut(new.root_paddr).iter_mut();

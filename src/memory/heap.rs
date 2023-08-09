@@ -40,7 +40,7 @@ fn heap_allocate_rescue(heap: &mut Heap<32>, layout: &core::alloc::Layout) {
         boot::boot_pagetable_paddr().into(),
     );
 
-    let allocate_size = layout.size().next_power_of_two(); // Ensure that can fulfill the request
+    let allocate_size = layout.size().next_power_of_two() * 2; // Ensure that can fulfill the request
 
     let page_cnt = (allocate_size + consts::PAGE_SIZE - 1) / consts::PAGE_SIZE;
     let paddr = alloc_frame_contiguous(
@@ -56,6 +56,7 @@ fn heap_allocate_rescue(heap: &mut Heap<32>, layout: &core::alloc::Layout) {
         paddr, aligned_heap_top
     );
 
+    warn!("Before heap: {:x?}", heap);
     root_pagetable.map_region(
         aligned_heap_top.into(),
         paddr,
