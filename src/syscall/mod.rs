@@ -92,6 +92,7 @@ impl<'a> Syscall<'a> {
             // Signal system
             SYSCALL_RT_SIGTIMEDWAIT => self.sys_sigwait().await,
             SYSCALL_RT_SIGACTION => self.sys_sigaction(),
+            SYSCALL_RT_SIGRETURN => self.sys_sigreturn(),
             SYSCALL_KILL => self.sys_kill(),
 
             // Memory related
@@ -103,6 +104,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_SHMCTL => self.sys_shmctl(),
             SYSCALL_SHMAT => self.sys_shmat(),
             SYSCALL_SHMDT => self.sys_shmdt(),
+            SYSCALL_MADVISE => self.sys_do_nothing("madvise"),
 
             // Misc
             SYSCALL_TIMES => self.sys_times(),

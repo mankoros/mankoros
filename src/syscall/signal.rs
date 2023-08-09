@@ -1,8 +1,11 @@
 use log::{info, warn};
 
 use crate::{
-    executor::util_futures::yield_now, memory::UserReadPtr, process::lproc_mgr::GlobalLProcManager,
-    signal::SignalSet, tools::errors::LinuxError,
+    executor::util_futures::yield_now,
+    memory::{address::VirtAddr, UserReadPtr, UserWritePtr},
+    process::lproc_mgr::GlobalLProcManager,
+    signal::SignalSet,
+    tools::errors::LinuxError,
 };
 
 use super::{Syscall, SyscallResult};
@@ -53,7 +56,17 @@ impl<'a> Syscall<'a> {
         }
         if args[2] != 0 {
             // Read the current signal action
-            log::warn!("todo: read old sigaction");
+            let act_ptr = UserWritePtr::<SigAction>::from(args[2]);
+            let handler = self
+                .lproc
+                .with_mut_signal(|s| s.signal_handler.get(&signum).cloned().unwrap_or(0.into()));
+            let act = SigAction {
+                sa_handler: handler.bits(),
+                sa_flags: 0,
+                sa_restorer: 0,
+                sa_mask: 0,
+            };
+            act_ptr.write(&self.lproc, act)?;
         }
 
         Ok(0)

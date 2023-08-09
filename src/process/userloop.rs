@@ -84,7 +84,7 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                         });
                         // Set epc to signal handler
                         // Signal handler run on the same stack
-                        log::debug!("enter signal handler: {:x?}", handler);
+                        log::warn!("enter signal handler: {:x?}", handler);
                         context.user_sepc = handler;
                         // Set processing signal
                         lproc.with_mut_signal(|s| {
