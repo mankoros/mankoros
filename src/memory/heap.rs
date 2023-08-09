@@ -1,9 +1,11 @@
+use core::cmp::max;
+
 use buddy_system_allocator::{Heap, LockedHeapWithRescue};
 use log::warn;
 
 use crate::{
     boot,
-    consts::{self, address_space::K_SEG_HEAP_BEG, PAGE_MASK},
+    consts::{self, address_space::K_SEG_HEAP_BEG},
 };
 
 use super::{
@@ -41,6 +43,7 @@ fn heap_allocate_rescue(heap: &mut Heap<32>, layout: &core::alloc::Layout) {
     );
 
     let allocate_size = layout.size().next_power_of_two() * 2; // Ensure that can fulfill the request
+    let allocate_size = max(allocate_size, consts::PAGE_SIZE);
 
     let page_cnt = (allocate_size + consts::PAGE_SIZE - 1) / consts::PAGE_SIZE;
     let paddr = alloc_frame_contiguous(
@@ -48,8 +51,9 @@ fn heap_allocate_rescue(heap: &mut Heap<32>, layout: &core::alloc::Layout) {
         layout.align().checked_ilog2().expect("alignment is not power of 2") as _,
     )
     .expect("Heap expansion failed, cannot allocate frame from physical frame allocator");
-    let aligned_heap_top =
-        (unsafe { KERNEL_HEAP_TOP } + layout.align() - 1) & !(layout.align() - 1) & !PAGE_MASK;
+    let aligned_heap_top = (unsafe { KERNEL_HEAP_TOP } + layout.align() - 1)
+        & !(layout.align() - 1)
+        & !consts::PAGE_MASK;
 
     warn!(
         "Allocation success, paddr = 0x{:x}, aligned_heap_top = 0x{:x}",
