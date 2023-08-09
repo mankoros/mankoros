@@ -68,7 +68,9 @@ impl<'a> Syscall<'a> {
 
         let proc = GlobalLProcManager::get(pid.into()).ok_or(LinuxError::ESRCH)?;
 
-        proc.send_signal(signum);
+        if signum != 0 {
+            proc.send_signal(signum);
+        }
 
         Ok(0)
     }
