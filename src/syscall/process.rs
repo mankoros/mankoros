@@ -21,7 +21,7 @@ use log::{debug, info, warn};
 
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-    pub struct CloneFlags: u32 {
+    pub struct CloneFlags: u64 {
         /* 共享内存 */
         const VM = 0x0000100;
         /* 共享文件系统信息 */
@@ -42,6 +42,8 @@ bitflags! {
         const CHILD_CLEARTID = 0x00200000;
         /* set the TID in the child */
         const CHILD_SETTID = 0x01000000;
+        /* clear child signal handler */
+        const CHILD_CLEAR_SIGHAND = 0x100000000;
     }
 }
 
@@ -194,7 +196,7 @@ impl<'a> Syscall<'a> {
     pub fn sys_clone(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
         let (flags, child_stack, parent_tid_ptr, child_tid_ptr, _new_thread_local_storage_ptr) =
-            (args[0] as u32, args[1], args[2], args[3], args[4]);
+            (args[0] as u64, args[1], args[2], args[3], args[4]);
 
         let flags = CloneFlags::from_bits(flags & !0xff).ok_or(SysError::EINVAL)?;
 

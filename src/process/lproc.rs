@@ -70,6 +70,7 @@ impl PrivateInfo {
     }
 }
 
+#[derive(Debug)]
 pub struct Signal {
     // Pending bits
     pub signal_pending: signal::SignalSet,
@@ -80,6 +81,17 @@ pub struct Signal {
     pub signal_handler: BTreeMap<usize, VirtAddr>,
     // Store the previous context when processing signal
     pub before_signal_context: SyncUnsafeCell<Box<UKContext, Global>>,
+}
+
+impl Clone for Signal {
+    fn clone(&self) -> Self {
+        Self {
+            signal_pending: self.signal_pending.clone(),
+            signal_processing: self.signal_processing.clone(),
+            signal_handler: self.signal_handler.clone(),
+            before_signal_context: SyncUnsafeCell::new(unsafe { UKContext::new_uninit() }),
+        }
+    }
 }
 
 impl Signal {
@@ -117,7 +129,7 @@ pub struct LightProcess {
     fdtable: Shared<FdTable>,
 
     // Signal related
-    signal: SpinNoIrqLock<Signal>,
+    signal: Shared<Signal>,
 }
 
 #[derive(Debug, Clone)]
@@ -284,7 +296,7 @@ impl LightProcess {
             fdtable: new_shared(FdTable::new_with_std()),
             private_info: SpinNoIrqLock::new(PrivateInfo::new()),
             procfs_info: SpinNoIrqLock::new(ProcFSInfo::empty()),
-            signal: SpinNoIrqLock::new(Signal::new()),
+            signal: new_shared(Signal::new()),
         });
         // I am the group leader
         new.group.lock(here!()).push_leader(new.clone());
@@ -451,6 +463,15 @@ impl LightProcess {
 
         let procfs_info = SpinNoIrqLock::new(self.with_procfs_info(Clone::clone));
 
+        let signal;
+        if flags.contains(CloneFlags::SIGHAND) {
+            signal = self.signal.clone();
+        } else if flags.contains(CloneFlags::CHILD_CLEAR_SIGHAND) {
+            signal = new_shared(Signal::new());
+        } else {
+            signal = new_shared(self.signal.lock(here!()).clone());
+        }
+
         let new = Self {
             id,
             parent,
@@ -466,7 +487,7 @@ impl LightProcess {
             fdtable,
             private_info: SpinNoIrqLock::new(PrivateInfo::new()), // TODO: verify if new or need to check FLAG
             procfs_info,
-            signal: SpinNoIrqLock::new(Signal::new()), // TODO: verify signal behavior
+            signal,
         };
 
         let new = Arc::new(new);
