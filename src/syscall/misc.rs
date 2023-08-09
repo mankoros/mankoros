@@ -1,7 +1,6 @@
 //! Misc syscall
 //!
 
-use futures::FutureExt;
 use log::{debug, info};
 
 use crate::{
@@ -10,7 +9,7 @@ use crate::{
     memory::{UserReadPtr, UserWritePtr},
     process::lproc_mgr::GlobalLProcManager,
     signal::SignalSet,
-    timer::{get_time_ms, wake_after, Rusage, SleepFuture, TimeSpec, TimeVal, Tms},
+    timer::{self, get_time_ms, wake_after, Rusage, TimeSpec, TimeVal, Tms},
     tools::errors::SysError,
 };
 
@@ -185,7 +184,7 @@ impl<'a> Syscall<'a> {
 
                 if period == 0 {
                     // One shot timer
-                    let future = SleepFuture::new(next_wakeup_time, async {
+                    timer::call_after(next_wakeup_time, async move {
                         let proc = GlobalLProcManager::get(pid);
                         if let Some(proc) = proc {
                             proc.send_signal(SignalSet::SIGALRM.get_signum());
@@ -193,17 +192,17 @@ impl<'a> Syscall<'a> {
                     });
                 } else {
                     // Periodic timer
-                    let future = SleepFuture::new(next_wakeup_time, async {
+                    timer::call_after(next_wakeup_time, async move {
                         let proc = GlobalLProcManager::get(pid);
                         if let Some(proc) = proc {
                             proc.send_signal(SignalSet::SIGALRM.get_signum());
+                            timer::call_after(period, async move {
+                                let proc = GlobalLProcManager::get(pid);
+                                if let Some(proc) = proc {
+                                    proc.send_signal(SignalSet::SIGALRM.get_signum());
+                                }
+                            });
                         }
-                        let periodic_future = SleepFuture::new(period, async {
-                            let proc = GlobalLProcManager::get(pid);
-                            if let Some(proc) = proc {
-                                proc.send_signal(SignalSet::SIGALRM.get_signum());
-                            }
-                        });
                     });
                 }
             }
