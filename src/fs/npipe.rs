@@ -173,7 +173,16 @@ impl Future for PipeReadPollFuture {
             if pipe.is_closed {
                 Poll::Ready(Err(SysError::EPIPE))
             } else {
-                debug_assert!(pipe.read_waker.is_none());
+                // debug_assert!(pipe.read_waker.is_none());
+                if !pipe.read_waker.is_none() {
+                    // 考虑一次带 timeout 的 pselect.
+                    // 如果是 timeout 或者是其他 fd 成功返回了, 它就会在这里留下一个没有的 waker.
+                    // 所以在设新 waker 时, 这里存在一个旧 waker 是可能的情况.
+                    // 我们姑且直接替换掉旧 waker.
+                    // 但是这样在真有多个进程一起读管道的时候可能会把某些进程彻底丢掉,
+                    // 让调度器再也找不到那个进程. 这种情况还不知道应该如何处理.
+                    log::debug!("PipeWrite: dropping old waker");
+                }
                 pipe.read_waker = Some(cx.waker().clone());
                 Poll::Pending
             }
@@ -257,7 +266,10 @@ impl Future for PipeWritePollFuture {
             if space_left != 0 {
                 Poll::Ready(Ok(pipe.buf.capacity() - pipe.buf.len()))
             } else {
-                debug_assert!(pipe.write_waker.is_none());
+                // debug_assert!(pipe.write_waker.is_none());
+                if !pipe.write_waker.is_none() {
+                    log::debug!("PipeWrite: dropping old waker");
+                }
                 pipe.write_waker = Some(cx.waker().clone());
                 Poll::Pending
             }
