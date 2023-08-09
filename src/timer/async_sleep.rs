@@ -79,8 +79,9 @@ struct SleepFuture<F: Future> {
     is_registered: bool,
     future: F,
 }
+
 impl<F: Future> SleepFuture<F> {
-    fn new(wake_up_time: AbsTimeT, future: F) -> Self {
+    pub fn new(wake_up_time: AbsTimeT, future: F) -> Self {
         Self {
             wake_up_time,
             is_done: false,

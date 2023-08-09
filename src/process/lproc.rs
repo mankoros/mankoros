@@ -70,6 +70,29 @@ impl PrivateInfo {
     }
 }
 
+pub struct Signal {
+    // Pending bits
+    pub signal_pending: signal::SignalSet,
+    // Currently in process
+    pub signal_processing: signal::SignalSet,
+    // User process signal handler
+    // expected the same life cycle as above signal_processing, share the same lock
+    pub signal_handler: BTreeMap<usize, VirtAddr>,
+    // Store the previous context when processing signal
+    pub before_signal_context: SyncUnsafeCell<Box<UKContext, Global>>,
+}
+
+impl Signal {
+    pub fn new() -> Self {
+        Self {
+            signal_pending: signal::SignalSet::empty(),
+            signal_processing: signal::SignalSet::empty(),
+            signal_handler: BTreeMap::new(),
+            before_signal_context: SyncUnsafeCell::new(unsafe { UKContext::new_uninit() }),
+        }
+    }
+}
+
 pub struct LightProcess {
     id: PidHandler,
     parent: Shared<Option<Weak<LightProcess>>>,
@@ -92,8 +115,9 @@ pub struct LightProcess {
     memory: Shared<UserSpace>,
     fsinfo: Shared<FsInfo>,
     fdtable: Shared<FdTable>,
-    // TODO: use a signal manager
-    signal: SpinNoIrqLock<signal::SignalSet>,
+
+    // Signal related
+    signal: SpinNoIrqLock<Signal>,
 }
 
 #[derive(Debug, Clone)]
@@ -139,8 +163,12 @@ impl LightProcess {
         self.parent.lock(here!()).clone()
     }
 
-    pub fn signal(&self) -> signal::SignalSet {
-        *self.signal.lock(here!())
+    pub fn signal_pending(&self) -> signal::SignalSet {
+        self.signal.lock(here!()).signal_pending
+    }
+
+    pub fn signal_processing(&self) -> signal::SignalSet {
+        self.signal.lock(here!()).signal_processing
     }
 
     pub fn tgid(&self) -> Pid {
@@ -162,10 +190,16 @@ impl LightProcess {
     }
 
     pub fn set_signal(self: &Arc<Self>, signal: signal::SignalSet) {
-        self.signal.lock(here!()).set(signal, true);
+        self.signal.lock(here!()).signal_pending.set(signal, true);
+    }
+    pub fn send_signal(self: &Arc<Self>, signum: usize) {
+        self.signal.lock(here!()).signal_pending.set(
+            signal::SignalSet::from_bits(1 << (signum - 1)).unwrap(),
+            true,
+        );
     }
     pub fn clear_signal(self: &Arc<Self>, signal: signal::SignalSet) {
-        self.signal.lock(here!()).set(signal, false);
+        self.signal.lock(here!()).signal_pending.set(signal, false);
     }
 
     pub fn context(&self) -> &mut UKContext {
@@ -227,6 +261,7 @@ impl LightProcess {
     with_!(private_info, PrivateInfo);
     with_!(procfs_info, ProcFSInfo);
     with_!(shm_table, ShmTable);
+    with_!(signal, Signal);
 
     pub fn is_exit(&self) -> bool {
         self.status() == ProcessStatus::ZOMBIE
@@ -247,9 +282,9 @@ impl LightProcess {
             memory: new_shared(UserSpace::new()),
             fsinfo: new_shared(FsInfo::new()),
             fdtable: new_shared(FdTable::new_with_std()),
-            signal: SpinNoIrqLock::new(signal::SignalSet::empty()),
             private_info: SpinNoIrqLock::new(PrivateInfo::new()),
             procfs_info: SpinNoIrqLock::new(ProcFSInfo::empty()),
+            signal: SpinNoIrqLock::new(Signal::new()),
         });
         // I am the group leader
         new.group.lock(here!()).push_leader(new.clone());
@@ -414,8 +449,6 @@ impl LightProcess {
             fdtable = new_shared(self.fdtable.lock(here!()).clone());
         }
 
-        // TODO: signal handler
-
         let procfs_info = SpinNoIrqLock::new(self.with_procfs_info(Clone::clone));
 
         let new = Self {
@@ -431,9 +464,9 @@ impl LightProcess {
             memory,
             fsinfo,
             fdtable,
-            signal: SpinNoIrqLock::new(signal::SignalSet::empty()),
             private_info: SpinNoIrqLock::new(PrivateInfo::new()), // TODO: verify if new or need to check FLAG
             procfs_info,
+            signal: SpinNoIrqLock::new(Signal::new()), // TODO: verify signal behavior
         };
 
         let new = Arc::new(new);

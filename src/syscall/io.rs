@@ -446,22 +446,28 @@ impl Syscall<'_> {
             None => Some(AnyFuture::new_with(futures).await),
         };
 
-        if let Some((future_id, _)) = pselect_result {
+        let ready_cnt = if let Some((future_id, _)) = pselect_result {
             let (fd_idx, event) = mapping.remove(&future_id).unwrap();
-
             match event {
                 PollKind::Read => readfds.set(fd_idx),
                 PollKind::Write => writefds.set(fd_idx),
             }
-
-            readfds_ptr.write(&self.lproc, readfds)?;
-            writefds_ptr.write(&self.lproc, writefds)?;
-            exceptfds_ptr.write(&self.lproc, FdSet::zero())?;
-
-            Ok(1)
+            1
         } else {
-            Ok(0)
+            0
+        };
+
+        if readfds_ptr.not_null() {
+            readfds_ptr.write(&self.lproc, readfds)?;
         }
+        if writefds_ptr.not_null() {
+            writefds_ptr.write(&self.lproc, writefds)?;
+        }
+        if exceptfds_ptr.not_null() {
+            exceptfds_ptr.write(&self.lproc, FdSet::zero())?;
+        }
+
+        Ok(ready_cnt)
     }
 
     pub async fn sys_writev(&mut self) -> SyscallResult {

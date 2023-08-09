@@ -37,3 +37,24 @@ bitflags! {
         const SIGTIMER  = 1 << (32 - 1);   // 非法的系统调用
     }
 }
+
+impl SignalSet {
+    pub fn add_sig(&mut self, signo: usize) {
+        self.insert(SignalSet::from_bits(1 << (signo - 1)).unwrap());
+    }
+
+    pub fn contain_sig(&self, signo: usize) -> bool {
+        self.contains(SignalSet::from_bits(1 << (signo - 1)).unwrap())
+    }
+
+    pub fn remove_sig(&mut self, signo: usize) {
+        self.remove(SignalSet::from_bits(1 << (signo - 1)).unwrap())
+    }
+
+    pub fn get_signum(&self) -> usize {
+        self.bits().trailing_zeros() as usize + 1
+    }
+}
+
+pub const SIG_DFL: usize = 0;
+pub const SIG_IGN: usize = 1;

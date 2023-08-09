@@ -87,9 +87,12 @@ impl<'a> Syscall<'a> {
             SYSCALL_GETPID => self.sys_getpid(),
             SYSCALL_GETTID => self.sys_gettid(),
             SYSCALL_SET_TID_ADDRESS => self.sys_set_tid_address(),
-            SYSCALL_RT_SIGTIMEDWAIT => self.sys_sigwait().await,
             SYSCALL_GETRLIMIT => self.sys_getrlimit(),
             SYSCALL_PRLIMIT => self.sys_prlimit(),
+            // Signal system
+            SYSCALL_RT_SIGTIMEDWAIT => self.sys_sigwait().await,
+            SYSCALL_RT_SIGACTION => self.sys_sigaction(),
+            SYSCALL_KILL => self.sys_kill(),
 
             // Memory related
             SYSCALL_BRK => self.sys_brk(),
@@ -111,13 +114,12 @@ impl<'a> Syscall<'a> {
             SYSCALL_GETUID => self.sys_getuid(),
             SYSCALL_GETRUSAGE => self.sys_getrusage(),
             SYSCALL_SYSLOG => self.sys_do_nothing("syslog"),
+            SYSCALL_SETITIMER => self.sys_setitimer(),
 
             // unimplemented
             29 => self.sys_do_nothing("ioctl"),
             94 => self.sys_do_nothing("exit_group"),
-            129 => self.sys_do_nothing("kill"),
             135 => self.sys_do_nothing("rt_sigprocmask"),
-            134 => self.sys_do_nothing("rt_sigaction"),
             155 => self.sys_do_nothing("getpgid"),
             154 => self.sys_do_nothing("setpgid"),
             175 => self.sys_do_nothing("geteuid"),
@@ -209,10 +211,10 @@ pub const SYSCALL_SCHED_YIELD: usize = 124;
 pub const SYSCALL_KILL: usize = 129;
 pub const SYSCALL_TKILL: usize = 130;
 pub const SYSCALL_TGKILL: usize = 131;
-pub const SYSCALL_SIGACTION: usize = 134;
-pub const SYSCALL_SIGPROCMASK: usize = 135;
+pub const SYSCALL_RT_SIGACTION: usize = 134;
+pub const SYSCALL_RT_SIGPROCMASK: usize = 135;
 pub const SYSCALL_RT_SIGTIMEDWAIT: usize = 137;
-pub const SYSCALL_SIGRETURN: usize = 139;
+pub const SYSCALL_RT_SIGRETURN: usize = 139;
 pub const SYSCALL_TIMES: usize = 153;
 pub const SYSCALL_GETPGID: usize = 155;
 pub const SYSCALL_UNAME: usize = 160;
