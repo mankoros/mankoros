@@ -174,26 +174,13 @@ impl<'a> Syscall<'a> {
 
     pub async fn sys_mkdir(&self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (_dir_fd, path, _user_mode) = (args[0], UserReadPtr::<u8>::from(args[1]), args[2]);
-        info!("Syscall: mkdir");
+        let (dir_fd, path, _user_mode) = (args[0], UserReadPtr::<u8>::from(args[1]), args[2]);
         let path = path.read_cstr(&self.lproc)?;
-        let mut path = Path::from_string(path).expect("Error parsing path");
 
-        let root_fs = fs::get_root_dir();
+        info!("Syscall: mkdir, dir_fd: {}, path: {:?}", dir_fd, path);
 
-        if !path.is_absolute() {
-            // FIXME: us dir_fd to determine current dir
-            let cwd = self.lproc.with_fsinfo(|f| f.cwd.clone()).to_string();
-            let mut path_str = path.to_string();
-            path_str.push_str(&cwd);
-            path = Path::from_str(path_str.as_str()).expect("Error parsing path");
-        }
-        debug!("Creating directory: {:?}", path);
-        if root_fs.clone().resolve(&path).await.is_ok() {
-            debug!("Directory already exists: {:?}", path);
-            return Ok(0);
-        }
-        root_fs.create(path.to_string().as_str(), VfsFileKind::Directory).await?;
+        let (dir, file_name) = self.at_helper(dir_fd, path, 0).await?;
+        dir.create(&file_name, VfsFileKind::Directory).await?;
         Ok(0)
     }
 

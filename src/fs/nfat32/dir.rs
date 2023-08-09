@@ -380,8 +380,8 @@ impl GroupDEntryIter<'_> {
     pub(super) fn collect_name(&self) -> String {
         if self.is_std_only() {
             let std = self.get_std_entry().as_std();
-            let mut name: Vec<_> = std.name.into_iter().filter(|&c| c != 0x20).collect();
-            let ext: Vec<_> = std.ext.into_iter().filter(|&c| c != 0x20).collect();
+            let mut name: Vec<_> = std.name.into_iter().filter(|&c| c != 0x20 && c != 0).collect();
+            let ext: Vec<_> = std.ext.into_iter().filter(|&c| c != 0x20 && c != 0).collect();
             if !ext.is_empty() {
                 name.push(b'.');
                 name.extend(ext);
