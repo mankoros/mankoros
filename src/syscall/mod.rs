@@ -122,6 +122,7 @@ impl<'a> Syscall<'a> {
             135 => self.sys_do_nothing("rt_sigprocmask"),
             155 => self.sys_do_nothing("getpgid"),
             154 => self.sys_do_nothing("setpgid"),
+            166 => self.sys_do_nothing("umask"),
             175 => self.sys_do_nothing("geteuid"),
             176 => self.sys_do_nothing("getgid"),
             177 => self.sys_do_nothing("getegid"),
