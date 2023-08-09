@@ -95,7 +95,7 @@ impl Drop for Pipe {
             panic!("Pipe is dropped without being closed");
         }
         if !self.buf.is_empty() {
-            panic!("Pipe is dropped without being empty");
+            log::debug!("Pipe is dropped without being empty");
         }
     }
 }
