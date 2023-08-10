@@ -44,13 +44,28 @@ bitfield-struct = "0.4.4"
 byte-slice-cast = { version = "1.2.2", default-features = false }
 paste = "1.0"
 
+[dependencies.smoltcp]
+version = "0.10.0"
+default-features = false
+features = [
+    "alloc",
+    "log",
+    # "phy-raw_socket",
+    # "phy-tuntap_interface",
+    "medium-ip",
+    "medium-ethernet",
+    # "medium-ieee802154",
+    "socket-raw",
+    "socket-udp",
+    "socket-tcp",
+    "socket-icmp",
+    "socket-dhcpv4",
+    "socket-dns",
+    "proto-ipv4",
+    "proto-ipv6",
+]
+
 [dependencies.lazy_static]
 # For runtime initializing static vars
 version = "1.4.0"
 features = ["spin_no_std"] # For no-std env
-
-[dependencies.fatfs]
-git = "https://github.com/rafalh/rust-fatfs"
-rev = "a3a834e"
-default-features = false
-features = ["alloc", "lfn", "log_level_trace", "unicode"]
