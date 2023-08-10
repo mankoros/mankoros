@@ -188,6 +188,13 @@ pub struct UserArea {
 }
 
 impl UserArea {
+    pub fn new_with_same_kind(old: UserArea, perm: UserAreaPerm) -> Self {
+        Self {
+            kind: old.kind,
+            perm,
+        }
+    }
+
     pub fn new_anonymous(perm: UserAreaPerm) -> Self {
         Self {
             kind: UserAreaType::MmapAnonymous,
@@ -597,6 +604,23 @@ impl UserAreaManager {
             UserArea::split_and_make_right,
             |_area, range| Self::release_range(page_table, range),
         );
+    }
+
+    pub fn remap_range(
+        &mut self,
+        page_table: &mut PageTable,
+        range: VirtAddrRange,
+        new_perm: UserAreaPerm,
+    ) {
+        let old_area = self.get_area(range.start).expect("range not mapped");
+        let new_area = UserArea::new_with_same_kind(old_area.clone(), new_perm);
+        self.map.remove(
+            range.clone(),
+            UserArea::split_and_make_left,
+            UserArea::split_and_make_right,
+            |_, _| {},
+        );
+        self.map.try_insert(range, new_area).expect("failed to remap range");
     }
 
     /// 释放一个虚拟地址范围内的所有页

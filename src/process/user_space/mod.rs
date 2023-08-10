@@ -253,6 +253,10 @@ impl UserSpace {
     pub fn unmap_range(&mut self, range: VirtAddrRange) {
         self.areas.unmap_range(&mut self.page_table, range);
     }
+
+    pub fn remap_range(&mut self, range: VirtAddrRange, new_perm: UserAreaPerm) {
+        self.areas.remap_range(&mut self.page_table, range, new_perm);
+    }
 }
 
 impl Drop for UserSpace {

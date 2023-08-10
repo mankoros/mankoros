@@ -193,9 +193,16 @@ impl<'a> Syscall<'a> {
             return Err(LinuxError::EINVAL);
         }
 
+        let new_range = VirtAddr::from(start)..VirtAddr::from(start + len);
         self.lproc.with_mut_memory(|m| {
-            let area = m.areas_mut().get_area_mut(start.into()).ok_or(LinuxError::ENOMEM)?;
-            area.set_perm(prot.into());
+            let (old_range, area) =
+                m.areas_mut().get_mut(start.into()).ok_or(LinuxError::ENOMEM)?;
+            if new_range == old_range {
+                area.set_perm(prot.into());
+            } else {
+                // Do split and remap
+                m.remap_range(new_range, prot.into());
+            }
             Ok(0)
         })?;
 
