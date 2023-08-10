@@ -99,7 +99,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_BRK => self.sys_brk(),
             SYSCALL_MUNMAP => self.sys_munmap(),
             SYSCALL_MMAP => self.sys_mmap(),
-            SYSCALL_MPROTECT => self.sys_do_nothing("mprotect"),
+            SYSCALL_MPROTECT => self.sys_mprotect(),
             SYSCALL_SHMGET => self.sys_shmget(),
             SYSCALL_SHMCTL => self.sys_shmctl(),
             SYSCALL_SHMAT => self.sys_shmat(),

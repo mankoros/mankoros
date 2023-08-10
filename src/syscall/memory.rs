@@ -12,7 +12,7 @@ use crate::{
         user_area::UserAreaPerm,
     },
     syscall::memory::ipc::{ShmIdDs, IPC_RMID, IPC_SET, IPC_STAT},
-    tools::errors::SysError,
+    tools::errors::{LinuxError, SysError},
 };
 
 use super::{Syscall, SyscallResult};
@@ -112,9 +112,14 @@ impl<'a> Syscall<'a> {
             args[5],
         );
 
-        info!(
-            "Syscall mmap: mmap start={:x} len={:} prot=[{:?}] flags=[{:?}] fd={} offset={:x}",
-            start, len, prot, flags, fd, offset
+        log::info!(
+            "Syscall mmap: mmap start=0x{:x} len=0x{:x} prot=[{:?}] flags=[{:?}] fd={} offset={:x}",
+            start,
+            len,
+            prot,
+            flags,
+            fd,
+            offset
         );
 
         // start == 0 表明需要 OS 为其找一段内存，而 MAP_FIXED 表明必须 mmap 在固定位置。两者是冲突的
@@ -166,6 +171,33 @@ impl<'a> Syscall<'a> {
 
         let range = VirtAddr::from(start)..VirtAddr::from(start + len);
         self.lproc.with_mut_memory(|m| m.unmap_range(range));
+
+        Ok(0)
+    }
+
+    pub fn sys_mprotect(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (start, len, prot) = (
+            args[0],
+            args[1],
+            MMAPPROT::from_bits(args[2] as u32).unwrap(),
+        );
+        log::info!(
+            "Syscall mprotect: mprotect start=0x{:x} len=0x{:x} prot=[{:?}]",
+            start,
+            len,
+            prot
+        );
+
+        if start & PAGE_MASK != 0 {
+            return Err(LinuxError::EINVAL);
+        }
+
+        self.lproc.with_mut_memory(|m| {
+            let area = m.areas_mut().get_area_mut(start.into()).ok_or(LinuxError::ENOMEM)?;
+            area.set_perm(prot.into());
+            Ok(0)
+        })?;
 
         Ok(0)
     }

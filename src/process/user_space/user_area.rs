@@ -213,6 +213,10 @@ impl UserArea {
         self.perm
     }
 
+    pub fn set_perm(&mut self, perm: UserAreaPerm) {
+        self.perm = perm;
+    }
+
     pub fn page_fault(
         &self,
         page_table: &mut PageTable,
@@ -382,8 +386,16 @@ impl UserAreaManager {
         self.get(vaddr).map(|(_, a)| a)
     }
 
+    pub fn get_area_mut(&mut self, vaddr: VirtAddr) -> Option<&mut UserArea> {
+        self.get_mut(vaddr).map(|(_, a)| a)
+    }
+
     pub fn get(&self, vaddr: VirtAddr) -> Option<(VirtAddrRange, &UserArea)> {
         self.map.get(vaddr)
+    }
+
+    pub fn get_mut(&mut self, vaddr: VirtAddr) -> Option<(VirtAddrRange, &mut UserArea)> {
+        self.map.get_mut(vaddr)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (VirtAddrRange, &UserArea)> {
