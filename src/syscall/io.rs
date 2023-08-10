@@ -253,6 +253,7 @@ impl Syscall<'_> {
         }
 
         impl PollFd {
+            pub const POLLCLR: i16 = 0x000;
             pub const POLLIN: i16 = 0x001;
             pub const POLLPRI: i16 = 0x002;
             pub const POLLOUT: i16 = 0x004;
@@ -283,10 +284,15 @@ impl Syscall<'_> {
         let poll_fds = fds.read_array(nfds, &self.lproc)?;
         for (i, poll_fd) in poll_fds.iter().enumerate() {
             let fd = poll_fd.fd as usize;
-            debug!("ppoll on fd: {}", fd);
             let events = poll_fd.events;
+            debug!("ppoll on fd: {}, event: {:#x}", fd, events);
             let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
 
+            if events == PollFd::POLLCLR {
+                let future = async { Ok(0) };
+                futures.push(dyn_future(future));
+                mapping.insert(futures.len() - 1, (i, PollFd::POLLCLR));
+            }
             if events & PollFd::POLLIN != 0 {
                 // 使用一个新的 Future 将 file 的所有权移动进去并保存, 以供给 poll_ready 使用
                 // TODO: 是否需要更加仔细地考虑 VfsFile 上方法对 self 的占有方式?
@@ -315,6 +321,7 @@ impl Syscall<'_> {
         let ready_poll_fd_ptr = fds.add(fd_idx);
         let mut ready_poll_fd_value = ready_poll_fd_ptr.read(&self.lproc)?;
         ready_poll_fd_value.revents = match event {
+            PollFd::POLLCLR => PollFd::POLLCLR,
             PollFd::POLLIN => PollFd::POLLIN,
             PollFd::POLLOUT => PollFd::POLLOUT,
             _ => unreachable!(),

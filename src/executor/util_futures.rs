@@ -59,6 +59,7 @@ impl<'a, T> AnyFuture<'a, T> {
     }
 
     pub fn new_with(futures: Vec<Async<'a, T>>) -> Self {
+        debug_assert!(futures.len() > 0);
         Self {
             futures,
             has_returned: false,
