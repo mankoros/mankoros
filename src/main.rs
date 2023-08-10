@@ -46,6 +46,7 @@ mod device_tree;
 mod executor;
 mod final_test;
 mod lazy_init;
+mod network;
 mod process;
 mod signal;
 mod timer;
