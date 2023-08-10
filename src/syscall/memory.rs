@@ -163,7 +163,7 @@ impl<'a> Syscall<'a> {
     pub fn sys_munmap(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
         let (start, len) = (args[0], args[1]);
-        info!("Syscall munmap: munmap start={:x} len={:x}", start, len);
+        log::info!("Syscall munmap: munmap start={:x} len={:x}", start, len);
 
         if start & PAGE_MASK != 0 {
             return Err(SysError::EINVAL);
