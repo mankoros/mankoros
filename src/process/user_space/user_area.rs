@@ -466,7 +466,7 @@ impl UserAreaManager {
     /// for mmap private / mmap anonymous
     fn find_free_mmap_area(&self, size: usize) -> SysResult<(VirtAddr, usize)> {
         self.map
-            .find_free_range(Self::MMAP_RANGE, size, |va, n| (va + n).round_up().into())
+            .find_free_range(Self::MMAP_RANGE, size, |va, n| (va + n).ceil().into())
             .map(|r| (r.start, r.end - r.start))
             .ok_or(SysError::ENOMEM)
     }
@@ -474,7 +474,7 @@ impl UserAreaManager {
     /// for mmap shared / shm
     fn find_free_share_area(&self, size: usize) -> SysResult<(VirtAddr, usize)> {
         self.map
-            .find_free_range(Self::SHARE_RANGE, size, |va, n| (va + n).round_up().into())
+            .find_free_range(Self::SHARE_RANGE, size, |va, n| (va + n).ceil().into())
             .map(|r| (r.start, r.end - r.start))
             .ok_or(SysError::ENOMEM)
     }
