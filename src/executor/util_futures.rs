@@ -1,4 +1,7 @@
-use crate::{executor::hart_local::within_sum, tools::errors::Async};
+use crate::{
+    executor::hart_local::within_sum,
+    tools::{errors::Async, Either},
+};
 use alloc::vec::Vec;
 use core::{
     future::Future,
@@ -112,4 +115,32 @@ impl Future for AlwaysPendingFuture {
 
 pub fn always_pending() -> AlwaysPendingFuture {
     AlwaysPendingFuture
+}
+
+/// First poll the left future, if it is ready, return the left future's output;
+/// otherwise, poll the right future, if it is ready, return the right future's output.
+/// If both futures are not ready, return pending.
+pub struct JoinFuture<L, R> {
+    left: L,
+    right: R,
+}
+
+impl<L: Future, R: Future> Future for JoinFuture<L, R> {
+    type Output = Either<L::Output, R::Output>;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = unsafe { self.get_unchecked_mut() };
+        let left = unsafe { Pin::new_unchecked(&mut this.left) };
+        let right = unsafe { Pin::new_unchecked(&mut this.right) };
+        if let Poll::Ready(left) = left.poll(cx) {
+            Poll::Ready(Either::Left(left))
+        } else if let Poll::Ready(right) = right.poll(cx) {
+            Poll::Ready(Either::Right(right))
+        } else {
+            Poll::Pending
+        }
+    }
+}
+
+pub fn join_future<L: Future, R: Future>(left: L, right: R) -> JoinFuture<L, R> {
+    JoinFuture { left, right }
 }
