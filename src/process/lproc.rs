@@ -33,6 +33,7 @@ use alloc::{
 use core::{
     cell::SyncUnsafeCell,
     sync::atomic::{AtomicI32, AtomicUsize, Ordering},
+    task::Waker,
 };
 use log::debug;
 use riscv::register::sstatus;
@@ -121,6 +122,7 @@ pub struct LightProcess {
     // Per thread information
     private_info: SpinNoIrqLock<PrivateInfo>,
     procfs_info: SpinNoIrqLock<ProcFSInfo>,
+    event_bus: SpinNoIrqLock<EventBus>,
 
     // 下面的数据可能被多个 LightProcess 共享
     group: Shared<ThreadGroup>,
@@ -202,14 +204,10 @@ impl LightProcess {
         &self.timer
     }
 
-    pub fn set_signal(self: &Arc<Self>, signal: signal::SignalSet) {
-        self.signal.lock(here!()).signal_pending.set(signal, true);
-    }
     pub fn send_signal(self: &Arc<Self>, signum: usize) {
-        self.signal.lock(here!()).signal_pending.set(
-            signal::SignalSet::from_bits(1 << (signum - 1)).unwrap(),
-            true,
-        );
+        let signal_set = signal::SignalSet::from_bits(1 << (signum - 1)).unwrap();
+        self.signal.lock(here!()).signal_pending.set(signal_set, true);
+        self.with_mut_event_bus(|bus| bus.notify(EventKind::Signal));
     }
     pub fn clear_signal(self: &Arc<Self>, signal: signal::SignalSet) {
         self.signal.lock(here!()).signal_pending.set(signal, false);
@@ -249,7 +247,7 @@ impl LightProcess {
             let parent = parent.upgrade().unwrap();
             // No remove from parent here, because it will be done in the parent's wait
             // Just send a signal to the parent
-            parent.set_signal(signal::SignalSet::SIGCHLD);
+            parent.send_signal(signal::SignalSet::SIGCHLD.get_signum());
             // Set self status
             self.set_status(ProcessStatus::STOPPED);
         }
@@ -276,6 +274,7 @@ impl LightProcess {
     with_!(shm_table, ShmTable);
     with_!(signal, Signal);
     with_!(timer_map, BTreeMap<usize, bool>);
+    with_!(event_bus, EventBus);
 
     pub fn is_exit(&self) -> bool {
         self.status() == ProcessStatus::ZOMBIE
@@ -298,6 +297,7 @@ impl LightProcess {
             fdtable: new_shared(FdTable::new_with_std()),
             private_info: SpinNoIrqLock::new(PrivateInfo::new()),
             procfs_info: SpinNoIrqLock::new(ProcFSInfo::empty()),
+            event_bus: SpinNoIrqLock::new(EventBus::new()),
             signal: new_shared(Signal::new()),
             timer_map: SpinNoIrqLock::new(BTreeMap::new()),
         });
@@ -490,6 +490,7 @@ impl LightProcess {
             fdtable,
             private_info: SpinNoIrqLock::new(PrivateInfo::new()), // TODO: verify if new or need to check FLAG
             procfs_info,
+            event_bus: SpinNoIrqLock::new(EventBus::new()),
             signal,
             timer_map: SpinNoIrqLock::new(BTreeMap::new()),
         };
@@ -778,5 +779,40 @@ impl ThreadGroup {
 
     pub fn tgid(&self) -> Pid {
         self.leader.as_ref().unwrap().upgrade().unwrap().id.pid()
+    }
+}
+
+bitflags::bitflags! {
+    #[derive(Debug, Copy, Clone)]
+    pub struct EventKind : u32 {
+        const Signal = 1 << 0;
+    }
+}
+
+struct EventNode {
+    listen_for: EventKind,
+    waker: Waker,
+}
+
+pub struct EventBus {
+    events: Vec<EventNode>,
+}
+
+impl EventBus {
+    pub fn new() -> Self {
+        Self { events: Vec::new() }
+    }
+    pub fn register(&mut self, listen_for: EventKind, waker: Waker) {
+        self.events.push(EventNode { listen_for, waker });
+    }
+    pub fn notify(&mut self, event: EventKind) {
+        self.events.retain(|node| {
+            if node.listen_for.contains(event) {
+                node.waker.wake_by_ref();
+                false
+            } else {
+                true
+            }
+        })
     }
 }
