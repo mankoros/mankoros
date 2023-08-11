@@ -9,11 +9,14 @@ use crate::{
     memory::{UserReadPtr, UserWritePtr},
     process::lproc_mgr::GlobalLProcManager,
     signal::SignalSet,
+    sync::SpinNoIrqLock,
     timer::{self, get_time_ms, wake_after, Rusage, TimeSpec, TimeVal, Tms},
-    tools::errors::SysError,
+    tools::{errors::SysError, handler_pool::UsizePool},
 };
 
 use super::{Syscall, SyscallResult};
+
+static TIMER_ID_POOL: SpinNoIrqLock<UsizePool> = SpinNoIrqLock::new(UsizePool::new(1));
 
 // copy from sys/utsname.h
 #[repr(C)]
@@ -186,28 +189,50 @@ impl<'a> Syscall<'a> {
                 if period == 0 {
                     if next_wakeup_time != 0 {
                         // One shot timer
+                        let timer_id = TIMER_ID_POOL.lock(here!()).get();
+                        self.lproc.with_mut_timer_map(|m| m.insert(timer_id, true)); // armed
                         timer::call_after(next_wakeup_time, async move {
                             let proc = GlobalLProcManager::get(pid);
                             if let Some(proc) = proc {
-                                proc.send_signal(SignalSet::SIGALRM.get_signum());
+                                let armed = proc.with_mut_timer_map(|m| {
+                                    m.remove(&timer_id).expect("timer_id should exist")
+                                });
+                                if armed {
+                                    proc.send_signal(SignalSet::SIGALRM.get_signum());
+                                }
                             }
                         });
                     } else {
                         // Disarm timer
-                        log::warn!("disarm timer not implemented");
+                        self.lproc.with_mut_timer_map(|m| {
+                            for (_, armed) in m.iter_mut() {
+                                *armed = false;
+                            }
+                        });
                     }
                 } else {
                     // Periodic timer
+                    let timer_id = TIMER_ID_POOL.lock(here!()).get();
                     timer::call_after(next_wakeup_time, async move {
                         let proc = GlobalLProcManager::get(pid);
                         if let Some(proc) = proc {
-                            proc.send_signal(SignalSet::SIGALRM.get_signum());
-                            timer::call_after(period, async move {
-                                let proc = GlobalLProcManager::get(pid);
-                                if let Some(proc) = proc {
-                                    proc.send_signal(SignalSet::SIGALRM.get_signum());
-                                }
+                            let armed = proc.with_mut_timer_map(|m| {
+                                m.get(&timer_id).expect("timer_id should exist").clone()
                             });
+                            if armed {
+                                proc.send_signal(SignalSet::SIGALRM.get_signum());
+                                timer::call_after(period, async move {
+                                    let proc = GlobalLProcManager::get(pid);
+                                    if let Some(proc) = proc {
+                                        let armed = proc.with_mut_timer_map(|m| {
+                                            m.get(&timer_id).expect("timer_id should exist").clone()
+                                        });
+                                        if armed {
+                                            proc.send_signal(SignalSet::SIGALRM.get_signum());
+                                        }
+                                    }
+                                });
+                            }
                         }
                     });
                 }

@@ -130,6 +130,7 @@ pub struct LightProcess {
 
     // Signal related
     signal: Shared<Signal>,
+    timer_map: SpinNoIrqLock<BTreeMap<usize, bool>>,
 }
 
 #[derive(Debug, Clone)]
@@ -274,6 +275,7 @@ impl LightProcess {
     with_!(procfs_info, ProcFSInfo);
     with_!(shm_table, ShmTable);
     with_!(signal, Signal);
+    with_!(timer_map, BTreeMap<usize, bool>);
 
     pub fn is_exit(&self) -> bool {
         self.status() == ProcessStatus::ZOMBIE
@@ -297,6 +299,7 @@ impl LightProcess {
             private_info: SpinNoIrqLock::new(PrivateInfo::new()),
             procfs_info: SpinNoIrqLock::new(ProcFSInfo::empty()),
             signal: new_shared(Signal::new()),
+            timer_map: SpinNoIrqLock::new(BTreeMap::new()),
         });
         // I am the group leader
         new.group.lock(here!()).push_leader(new.clone());
@@ -488,6 +491,7 @@ impl LightProcess {
             private_info: SpinNoIrqLock::new(PrivateInfo::new()), // TODO: verify if new or need to check FLAG
             procfs_info,
             signal,
+            timer_map: SpinNoIrqLock::new(BTreeMap::new()),
         };
 
         let new = Arc::new(new);
