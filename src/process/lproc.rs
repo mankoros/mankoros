@@ -253,9 +253,13 @@ impl LightProcess {
             // Set self status
             self.set_status(ProcessStatus::STOPPED);
         }
-        // Set children's parent to self's parent
+
+        // Move children to parent
         let children = self.children.lock(here!());
         children.iter().for_each(|c| *c.parent.lock(here!()) = self.parent());
+        if let Some(parent) = self.parent().and_then(|p| p.upgrade()) {
+            parent.children.lock(here!()).extend(children.iter().cloned());
+        }
         drop(children);
 
         log::debug!(
