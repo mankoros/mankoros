@@ -4,7 +4,7 @@ use crate::{
     executor::util_futures::yield_now,
     memory::{address::VirtAddr, UserReadPtr, UserWritePtr},
     process::lproc_mgr::GlobalLProcManager,
-    signal::SignalSet,
+    signal::{SignalSet, SIG_DFL},
     tools::errors::LinuxError,
 };
 
@@ -43,30 +43,35 @@ impl<'a> Syscall<'a> {
     pub fn sys_sigaction(&mut self) -> SyscallResult {
         info!("Syscall: sigaction");
         let args = self.cx.syscall_args();
-        let signum = args[0] as usize;
+        let (signum, act, old_act) = (
+            args[0] as usize,
+            UserReadPtr::<SigAction>::from(args[1]),
+            UserWritePtr::<SigAction>::from(args[2]),
+        );
 
-        if args[1] != 0 {
-            // Install a signal action
-            let act = UserReadPtr::<SigAction>::from(args[1]).read(&self.lproc)?;
-            log::debug!("sigaction: signum: {:?}, act: {:x?}", signum, act);
-
-            self.lproc.with_mut_signal(|s| {
-                s.signal_handler.insert(signum, act.sa_handler.into());
-            });
-        }
-        if args[2] != 0 {
+        if old_act.not_null() {
             // Read the current signal action
-            let act_ptr = UserWritePtr::<SigAction>::from(args[2]);
-            let handler = self
-                .lproc
-                .with_mut_signal(|s| s.signal_handler.get(&signum).cloned().unwrap_or(0.into()));
+            let vaddr = self.lproc.with_signal(|s| s.signal_handler.get(&signum).cloned());
+            let sa_handler = vaddr.map(VirtAddr::bits).unwrap_or(SIG_DFL);
+
+            // TODO: check the validity of the old_act
             let act = SigAction {
-                sa_handler: handler.bits(),
+                sa_handler,
                 sa_flags: 0,
                 sa_restorer: 0,
                 sa_mask: 0,
             };
-            act_ptr.write(&self.lproc, act)?;
+
+            old_act.write(&self.lproc, act)?;
+        }
+
+        if act.not_null() {
+            // Install a signal action
+            let act = act.read(&self.lproc)?;
+            log::debug!("sigaction: signum: {}, act: {:?}", signum, act);
+            self.lproc.with_mut_signal(|s| {
+                s.signal_handler.insert(signum, act.sa_handler.into());
+            });
         }
 
         Ok(0)

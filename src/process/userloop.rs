@@ -55,6 +55,12 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
                         })
                         .map(|h| h.bits());
 
+                    log::debug!(
+                        "userloop: recived signal: {:x?} with handler {:x?}",
+                        signum,
+                        handler
+                    );
+
                     if let Some(handler) = handler {
                         if handler == SIG_IGN {
                             // Clear the signal immediately
