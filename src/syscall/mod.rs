@@ -89,6 +89,8 @@ impl<'a> Syscall<'a> {
             SYSCALL_SET_TID_ADDRESS => self.sys_set_tid_address(),
             SYSCALL_GETRLIMIT => self.sys_getrlimit(),
             SYSCALL_PRLIMIT => self.sys_prlimit(),
+            SYSCALL_EXIT_GROUP => self.sys_exitgroup(),
+
             // Signal system
             SYSCALL_RT_SIGTIMEDWAIT => self.sys_sigwait().await,
             SYSCALL_RT_SIGACTION => self.sys_sigaction(),
@@ -120,7 +122,6 @@ impl<'a> Syscall<'a> {
 
             // unimplemented
             29 => self.sys_do_nothing("ioctl"),
-            94 => self.sys_do_nothing("exit_group"),
             135 => self.sys_do_nothing("rt_sigprocmask"),
             155 => self.sys_do_nothing("getpgid"),
             154 => self.sys_do_nothing("setpgid"),

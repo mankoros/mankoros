@@ -365,6 +365,22 @@ impl<'a> Syscall<'a> {
         Ok(0)
     }
 
+    pub fn sys_exitgroup(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let exit_code = args[0] as i32;
+        info!("Syscall: exitgroup (code: {})", exit_code);
+
+        self.lproc.with_mut_group(|g| {
+            for lp in g.iter_mut() {
+                lp.set_status(ProcessStatus::STOPPED);
+                lp.set_exit_code(exit_code);
+            }
+        });
+
+        self.do_exit = true;
+        Ok(0)
+    }
+
     pub fn sys_set_tid_address(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
         info!("Syscall: set_tid_address");

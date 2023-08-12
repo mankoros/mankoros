@@ -792,6 +792,13 @@ impl ThreadGroup {
     pub fn tgid(&self) -> Pid {
         self.leader.as_ref().unwrap().upgrade().unwrap().id.pid()
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Arc<LightProcess>> {
+        self.members.values()
+    }
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Arc<LightProcess>> {
+        self.members.values_mut()
+    }
 }
 
 bitflags::bitflags! {
