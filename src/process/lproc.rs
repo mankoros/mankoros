@@ -254,11 +254,16 @@ impl LightProcess {
             self.set_status(ProcessStatus::STOPPED);
         }
 
-        // Move children to parent
+        // Move children to init
+        // in src/lib_timing.c:684, lmbench depends on getppig() == 1 to
+        // tell whether itself is abandoned by parent
         let children = self.children.lock(here!());
-        children.iter().for_each(|c| *c.parent.lock(here!()) = self.parent());
-        if let Some(parent) = self.parent().and_then(|p| p.upgrade()) {
-            parent.children.lock(here!()).extend(children.iter().cloned());
+        if !children.is_empty() {
+            let init = GlobalLProcManager::get(Pid::from(1)).unwrap();
+            children
+                .iter()
+                .for_each(|c| *c.parent.lock(here!()) = Some(Arc::downgrade(&init)));
+            init.children.lock(here!()).extend(children.iter().cloned());
         }
         drop(children);
 
