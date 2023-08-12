@@ -23,6 +23,7 @@ use crate::{
     tools::{
         errors::{SysError, SysResult},
         handler_pool::UsizePool,
+        pointers::Ptr,
     },
     trap::context::UKContext,
 };
@@ -35,6 +36,7 @@ use core::{
     sync::atomic::{AtomicI32, AtomicUsize, Ordering},
     task::Waker,
 };
+use futures::Future;
 use log::debug;
 use riscv::register::sstatus;
 
@@ -507,6 +509,16 @@ impl LightProcess {
 
         new
     }
+
+    pub async fn wait_for_event(self: &Arc<Self>, listen_for: EventKind, waker: &Waker) {
+        EventBusWaitForFuture {
+            lproc: self.as_ref(),
+            waker,
+            listen_for,
+            event_id: None,
+        }
+        .await
+    }
 }
 
 pub struct FsInfo {
@@ -789,30 +801,93 @@ bitflags::bitflags! {
     }
 }
 
+// TODO-PERF: 使用侵入式链表来进行 O(1) 的删除
+type EventNodeId = usize;
 struct EventNode {
+    id: EventNodeId,
     listen_for: EventKind,
-    waker: Waker,
+    waker: Ptr<Waker>,
 }
 
 pub struct EventBus {
     events: Vec<EventNode>,
+    pool: UsizePool,
 }
 
 impl EventBus {
     pub fn new() -> Self {
-        Self { events: Vec::new() }
+        Self {
+            events: Vec::new(),
+            pool: UsizePool::new(0),
+        }
     }
-    pub fn register(&mut self, listen_for: EventKind, waker: Waker) {
-        self.events.push(EventNode { listen_for, waker });
+    /// should not be called excepted from related futures.
+    pub(super) fn register(&mut self, listen_for: EventKind, waker: Ptr<Waker>) -> EventNodeId {
+        let id = self.pool.get();
+        self.events.push(EventNode {
+            id,
+            listen_for,
+            waker,
+        });
+        id
     }
     pub fn notify(&mut self, event: EventKind) {
         self.events.retain(|node| {
             if node.listen_for.contains(event) {
-                node.waker.wake_by_ref();
+                node.waker.as_ref().wake_by_ref();
+                self.pool.release(node.id);
                 false
             } else {
                 true
             }
         })
+    }
+    pub fn remove(&mut self, id: EventNodeId) {
+        self.events.retain(|node| {
+            if node.id == id {
+                self.pool.release(node.id);
+                false
+            } else {
+                true
+            }
+        })
+    }
+}
+
+pub struct EventBusWaitForFuture<'a> {
+    lproc: &'a LightProcess,
+    waker: &'a Waker,
+    event_id: Option<EventNodeId>,
+    listen_for: EventKind,
+}
+
+impl Future for EventBusWaitForFuture<'_> {
+    type Output = ();
+    fn poll(
+        self: core::pin::Pin<&mut Self>,
+        _cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Self::Output> {
+        let this = unsafe { self.get_unchecked_mut() };
+
+        if this.event_id.is_none() {
+            // poll first, register to event bus and wait
+            let ptr = this.waker as *const _ as *mut _;
+            let id = this
+                .lproc
+                .with_mut_event_bus(|bus| bus.register(this.listen_for, Ptr::new(ptr)));
+            this.event_id = Some(id);
+            core::task::Poll::Pending
+        } else {
+            // poll second, ready
+            core::task::Poll::Ready(())
+        }
+    }
+}
+
+impl Drop for EventBusWaitForFuture<'_> {
+    fn drop(&mut self) {
+        if let Some(id) = self.event_id {
+            self.lproc.with_mut_event_bus(|bus| bus.remove(id));
+        }
     }
 }

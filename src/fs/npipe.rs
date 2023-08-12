@@ -4,7 +4,12 @@ use super::new_vfs::{
 };
 use crate::{
     consts::MAX_PIPE_SIZE,
+    executor::{
+        hart_local::get_curr_lproc,
+        util_futures::{get_waker, join_future},
+    },
     here, impl_vfs_default_non_dir,
+    process::lproc::EventKind,
     sync::SpinNoIrqLock,
     tools::errors::{dyn_future, ASysResult, SysError, SysResult},
 };
@@ -100,6 +105,18 @@ impl Drop for Pipe {
     }
 }
 
+async fn await_or_signal(f: impl Future<Output = SysResult<usize>>) -> SysResult<usize> {
+    let lproc = get_curr_lproc().unwrap();
+    let waker = get_waker().await;
+    let pipe_future = f;
+    let interrupt_future = lproc.wait_for_event(EventKind::Signal, &waker);
+
+    match join_future(pipe_future, interrupt_future).await {
+        crate::tools::Either::Left(r) => r,
+        crate::tools::Either::Right(_) => Err(SysError::EINTR),
+    }
+}
+
 pub struct PipeReadEnd {
     pipe: Arc<SpinNoIrqLock<Pipe>>,
 }
@@ -111,7 +128,7 @@ impl VfsFile for PipeReadEnd {
     fn poll_ready(&self, _offset: usize, _len: usize, kind: PollKind) -> ASysResult<usize> {
         dyn_future(async move {
             match kind {
-                PollKind::Read => PipeReadPollFuture::new(self.pipe.clone()).await,
+                PollKind::Read => await_or_signal(PipeReadPollFuture::new(self.pipe.clone())).await,
                 PollKind::Write => Err(SysError::EPERM),
             }
         })
@@ -202,7 +219,9 @@ impl VfsFile for PipeWriteEnd {
         dyn_future(async move {
             match kind {
                 PollKind::Read => Err(SysError::EPERM),
-                PollKind::Write => PipeWritePollFuture::new(self.pipe.clone()).await,
+                PollKind::Write => {
+                    await_or_signal(PipeWritePollFuture::new(self.pipe.clone())).await
+                }
             }
         })
     }
