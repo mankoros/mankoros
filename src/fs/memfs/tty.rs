@@ -1,17 +1,35 @@
 use crate::{
+    executor::hart_local::get_curr_lproc,
     fs::{
         new_vfs::{
-            top::{MmapKind, PollKind, VfsFile},
+            top::{IOCTLCmd, MmapKind, PollKind, VfsFile},
             DeviceIDCollection, VfsFileAttr, VfsFileKind,
         },
         stdio::{Stdin, Stdout},
     },
     impl_vfs_default_non_dir,
-    memory::address::PhysAddr4K,
+    memory::{address::PhysAddr4K, UserReadPtr, UserWritePtr},
     tools::errors::{dyn_future, ASysResult},
 };
+use core::sync::atomic::AtomicUsize;
 
-pub struct TTY;
+impl IOCTLCmd {
+    pub const TIOCGPGRP: Self = Self(0x540F);
+    pub const TIOCSPGRP: Self = Self(0x5410);
+}
+
+pub struct TTY {
+    holding_pgid: AtomicUsize,
+}
+impl TTY {
+    pub fn new() -> Self {
+        Self {
+            // default pgid is 1 (init)
+            holding_pgid: AtomicUsize::new(1),
+        }
+    }
+}
+
 impl VfsFile for TTY {
     impl_vfs_default_non_dir!(ZeroDev);
 
@@ -27,6 +45,32 @@ impl VfsFile for TTY {
                 modify_time: 0,
                 create_time: 0, // TODO: create time
             })
+        })
+    }
+
+    fn ioctl(&self, cmd: IOCTLCmd, arg: usize) -> ASysResult<usize> {
+        #[allow(non_camel_case_types)]
+        type pid_t = i32;
+        use core::sync::atomic::Ordering;
+
+        dyn_future(async move {
+            let lproc = get_curr_lproc().unwrap();
+            match cmd {
+                IOCTLCmd::TIOCGPGRP => {
+                    let argp = UserWritePtr::<pid_t>::from(arg);
+                    let pgid = self.holding_pgid.load(Ordering::Relaxed);
+                    argp.write(&lproc, pgid as pid_t)?;
+                }
+                IOCTLCmd::TIOCSPGRP => {
+                    let argp = UserReadPtr::<pid_t>::from(arg);
+                    let pgid = argp.read(&lproc)?;
+                    self.holding_pgid.store(pgid as usize, Ordering::Relaxed);
+                }
+                _ => {
+                    log::warn!("unsupported ioctl cmd: {:?}, just return 0", cmd)
+                }
+            };
+            Ok(0)
         })
     }
 

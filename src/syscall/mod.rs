@@ -56,6 +56,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_PWRITE => self.sys_pwrite().await,
             SYSCALL_PREADV => self.sys_preadv().await,
             SYSCALL_PWRITEV => self.sys_pwritev().await,
+            SYSCALL_IOCTL => self.sys_ioctl().await,
 
             // FS related
             SYSCALL_NEWFSTAT => self.sys_fstat().await,
@@ -123,7 +124,6 @@ impl<'a> Syscall<'a> {
             SYSCALL_SETITIMER => self.sys_setitimer(),
 
             // unimplemented
-            29 => self.sys_do_nothing("ioctl"),
             135 => self.sys_do_nothing("rt_sigprocmask"),
             166 => self.sys_do_nothing("umask"),
             175 => self.sys_do_nothing("geteuid"),

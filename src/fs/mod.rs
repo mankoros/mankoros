@@ -85,7 +85,7 @@ async fn mount_all_fs() -> SysResult<()> {
     dev_dir.attach("null", VfsFileRef::new(ZeroDev)).await?;
     dev_dir.attach("zero", VfsFileRef::new(ZeroDev)).await?;
     dev_dir.attach("vda2", VfsFileRef::new(ZeroDev)).await?;
-    dev_dir.attach("tty", VfsFileRef::new(TTY)).await?;
+    dev_dir.attach("tty", VfsFileRef::new(TTY::new())).await?;
     let dev_mp = GlobalMountManager::register_as_file("/dev", dev_fs);
     root_dir.attach("dev", dev_mp).await?;
 

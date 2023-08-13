@@ -643,6 +643,19 @@ impl Syscall<'_> {
 
         Ok(total_len)
     }
+
+    pub async fn sys_ioctl(&self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (fd, cmd, arg) = (args[0], args[1], args[2]);
+
+        info!(
+            "Syscall: ioctl, fd: {}, cmd: {:#x}, arg: {:#x}",
+            fd, cmd, arg
+        );
+
+        let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
+        fd.file.ioctl(cmd.into(), arg).await
+    }
 }
 
 #[repr(C)]

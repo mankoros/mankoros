@@ -1,7 +1,7 @@
 use super::{path::Path, VfsFileAttr, VfsFileKind};
 use crate::{
     memory::address::PhysAddr4K,
-    tools::errors::{ASysResult, SysResult},
+    tools::errors::{dyn_future, ASysResult, SysResult},
 };
 use alloc::{string::String, sync::Arc, vec::Vec};
 use core::{
@@ -67,6 +67,27 @@ pub enum PollKind {
 
 pub const OFFSET_TAIL: usize = 0;
 
+/// 代表一个 ioctl 指令.
+/// 具体能响应什么 ioctl 指令由 VfsFile 实现者决定,
+/// 在具体的模块中重新打开该结构体并提供一些常量即可.
+///
+/// 可参考 src/fs/memfs/tty.rs 中的实现.
+/// Unix 中各类 ioctl cmd 的定义可参考 musl:
+/// https://github.com/bminor/musl/blob/v1.2.4/arch/generic/bits/ioctl.h
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IOCTLCmd(pub usize);
+
+impl From<usize> for IOCTLCmd {
+    fn from(cmd: usize) -> Self {
+        Self(cmd)
+    }
+}
+impl Into<usize> for IOCTLCmd {
+    fn into(self) -> usize {
+        self.0
+    }
+}
+
 pub trait VfsFile: Send + Sync {
     // 通用操作
     /// 获取文件的各类属性,
@@ -92,6 +113,10 @@ pub trait VfsFile: Send + Sync {
     fn poll_read(&self, offset: usize, buf: &mut [u8]) -> usize;
     /// 阻塞地写入文件内容, 逻辑上应该只在 poll_ready 返回 Ready 之后调用.
     fn poll_write(&self, offset: usize, buf: &[u8]) -> usize;
+    /// 响应自定义的 ioctl 指令
+    fn ioctl(&self, _cmd: IOCTLCmd, _arg: usize) -> ASysResult<usize> {
+        dyn_future(async { Ok(0) })
+    }
 
     // 文件夹操作
     /// 列出文件夹中的所有文件的名字
