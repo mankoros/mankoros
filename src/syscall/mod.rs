@@ -90,6 +90,8 @@ impl<'a> Syscall<'a> {
             SYSCALL_GETRLIMIT => self.sys_getrlimit(),
             SYSCALL_PRLIMIT => self.sys_prlimit(),
             SYSCALL_EXIT_GROUP => self.sys_exitgroup(),
+            SYSCALL_GETPGID => self.sys_getpgid(),
+            SYSCALL_SETPGID => self.sys_setpgid(),
 
             // Signal system
             SYSCALL_RT_SIGTIMEDWAIT => self.sys_sigwait().await,
@@ -123,8 +125,6 @@ impl<'a> Syscall<'a> {
             // unimplemented
             29 => self.sys_do_nothing("ioctl"),
             135 => self.sys_do_nothing("rt_sigprocmask"),
-            155 => self.sys_do_nothing("getpgid"),
-            154 => self.sys_do_nothing("setpgid"),
             166 => self.sys_do_nothing("umask"),
             175 => self.sys_do_nothing("geteuid"),
             176 => self.sys_do_nothing("getgid"),
@@ -220,6 +220,7 @@ pub const SYSCALL_RT_SIGPROCMASK: usize = 135;
 pub const SYSCALL_RT_SIGTIMEDWAIT: usize = 137;
 pub const SYSCALL_RT_SIGRETURN: usize = 139;
 pub const SYSCALL_TIMES: usize = 153;
+pub const SYSCALL_SETPGID: usize = 154;
 pub const SYSCALL_GETPGID: usize = 155;
 pub const SYSCALL_UNAME: usize = 160;
 pub const SYSCALL_GETRLIMIT: usize = 163;
