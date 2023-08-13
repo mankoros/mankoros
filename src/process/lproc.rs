@@ -110,6 +110,10 @@ impl Signal {
 
 pub struct LightProcess {
     id: PidHandler,
+    // a pgid (process group id, see https://blog.csdn.net/qq_33160790/article/details/81346663)
+    // doesn't own a Pid, so not PidHandler here.
+    // In fact it is a Pid, but for performance, we use AtomicUsize here instead of SpinNoIrqLock<Pid>
+    pgid: AtomicUsize,
     parent: Shared<Option<Weak<LightProcess>>>,
     context: SyncUnsafeCell<Box<UKContext, Global>>,
 
@@ -174,6 +178,13 @@ impl LightProcess {
             // Return 1 if no parent
             1.into()
         }
+    }
+
+    pub fn pgid(&self) -> Pid {
+        self.pgid.load(Ordering::SeqCst).into()
+    }
+    pub fn set_pgid(&self, pid: Pid) {
+        self.pgid.store(pid.into(), Ordering::SeqCst);
     }
 
     pub fn parent(&self) -> Option<Weak<LightProcess>> {
@@ -292,9 +303,13 @@ impl LightProcess {
     }
 
     // ========================= 进程创建 =========================
+    // TODO: rename this to "new_init" for better readability
     pub fn new() -> Arc<Self> {
+        let id = alloc_pid();
+        let pgid = id.pid().into();
         let new = Arc::new(Self {
-            id: alloc_pid(),
+            id,
+            pgid: AtomicUsize::new(pgid),
             parent: new_shared(None),
             context: SyncUnsafeCell::new(unsafe { UKContext::new_uninit() }),
             children: new_shared(Vec::new()),
@@ -378,6 +393,10 @@ impl LightProcess {
         use syscall::CloneFlags;
 
         let id = alloc_pid();
+        // https://linux.die.net/man/2/getpgid
+        // By default, the new process shared the same pgid with parent
+        let pgid = self.pgid();
+
         let mut context = SyncUnsafeCell::new(Box::new(self.context().clone()));
         let status = SpinNoIrqLock::new(SyncUnsafeCell::new(self.status()));
         let timer = SpinNoIrqLock::new(TimeStat::new());
@@ -485,6 +504,7 @@ impl LightProcess {
 
         let new = Self {
             id,
+            pgid: AtomicUsize::new(pgid.into()),
             parent,
             context,
             children,

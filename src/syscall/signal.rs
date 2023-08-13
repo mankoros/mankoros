@@ -84,10 +84,25 @@ impl<'a> Syscall<'a> {
         let signum = args[1] as usize;
         log::debug!("kill: pid: {}, signum: {}", pid, signum);
 
-        let proc = GlobalLProcManager::get(pid.into()).ok_or(LinuxError::ESRCH)?;
-
-        if signum != 0 {
-            proc.send_signal(signum);
+        if pid > 0 {
+            let proc = GlobalLProcManager::get(pid.into()).ok_or(LinuxError::ESRCH)?;
+            if signum != 0 {
+                proc.send_signal(signum);
+            }
+        } else if pid == 0 {
+            // If pid equals 0, then sig is sent to every process in the process group of the calling process.
+            let proc = self.lproc.clone();
+            let target_pgid = proc.pgid();
+            if signum != 0 {
+                for child in proc.children() {
+                    if child.pgid() == target_pgid {
+                        child.send_signal(signum);
+                    }
+                }
+                proc.send_signal(signum);
+            }
+        } else {
+            todo!("kill: pid < -1")
         }
 
         Ok(0)

@@ -167,8 +167,9 @@ impl<'a> Syscall<'a> {
             } else if pid == -1 {
                 stopped_children.last()
             } else if pid == 0 {
-                let target_tgid = self.lproc.tgid();
-                stopped_children.iter().find(|lp| lp.tgid() == target_tgid)
+                // Note: "process group" != "thread group"
+                let target_pgid = self.lproc.pgid();
+                stopped_children.iter().find(|lp| lp.pgid() == target_pgid)
             } else {
                 debug_assert!(pid > 0);
                 let pid = pid as usize;
@@ -357,6 +358,8 @@ impl<'a> Syscall<'a> {
         Ok(0)
     }
 
+    // This exit all the process(thread) in a process' thread group.
+    // Note that "process group" != "thread group"
     pub fn sys_exitgroup(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
         let exit_code = args[0] as i32;
@@ -434,6 +437,47 @@ impl<'a> Syscall<'a> {
                 }
             }
         }
+
+        Ok(0)
+    }
+
+    pub fn sys_getpgid(&self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let target_lproc_pid = Pid::from(args[0]);
+
+        info!("Syscall: getpgid, pid: {:?}", target_lproc_pid);
+
+        let target_lproc = if target_lproc_pid == Pid::from(0) {
+            self.lproc.clone()
+        } else {
+            GlobalLProcManager::get(target_lproc_pid).ok_or(SysError::ESRCH)?
+        };
+
+        Ok(target_lproc.pgid().into())
+    }
+
+    pub fn sys_setpgid(&self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (target_lproc_pid, new_pgid) = (Pid::from(args[0]), args[1]);
+
+        info!(
+            "Syscall: setpgid, pid: {:?}, pgid: {}",
+            target_lproc_pid, new_pgid
+        );
+
+        let target_lproc = if target_lproc_pid == Pid::from(0) {
+            self.lproc.clone()
+        } else {
+            GlobalLProcManager::get(target_lproc_pid).ok_or(SysError::ESRCH)?
+        };
+
+        let new_pgid = if new_pgid == 0 {
+            target_lproc.id()
+        } else {
+            Pid::from(new_pgid)
+        };
+
+        target_lproc.set_pgid(new_pgid);
 
         Ok(0)
     }
