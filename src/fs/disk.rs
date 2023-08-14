@@ -241,6 +241,10 @@ impl ConcreteFile for Disk {
         todo!()
     }
 
+    fn get_time(&self) -> [usize; 3] {
+        todo!()
+    }
+
     fn truncate(&self, _new_size: usize) -> ASysResult {
         todo!()
     }
