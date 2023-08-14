@@ -4,11 +4,13 @@ use super::{
     ClusterID, Fat32FS, FatDEntryData, SectorID,
 };
 use crate::{
+    consts,
     executor::block_on,
     fs::{
         disk::{BLOCK_SIZE, LOG2_BLOCK_SIZE},
         new_vfs::{underlying::ConcreteFile, VfsFileKind},
     },
+    timer,
     tools::errors::{dyn_future, ASysResult, SysError, SysResult},
 };
 use alloc::vec::Vec;
@@ -219,6 +221,37 @@ impl ConcreteFile for FATFile {
     fn get_time(&self) -> [usize; 3] {
         let std = self.editor.std();
         [std.adate as usize, std.mdate as usize, std.cdate as usize]
+    }
+
+    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+        dyn_future(async move {
+            let std = self.editor.std_mut();
+            if time[0] == consts::time::UTIME_NOW {
+                std.adate = timer::get_time_us() as u16 * 1000;
+            } else if time[0] == consts::time::UTIME_OMIT {
+                // do nothing
+            } else {
+                std.adate = time[0] as u16;
+            }
+
+            if time[1] == consts::time::UTIME_NOW {
+                std.mdate = timer::get_time_us() as u16 * 1000;
+            } else if time[1] == consts::time::UTIME_OMIT {
+                // do nothing
+            } else {
+                std.mdate = time[1] as u16;
+            }
+
+            if time[2] == consts::time::UTIME_NOW {
+                std.cdate = timer::get_time_us() as u16 * 1000;
+            } else if time[2] == consts::time::UTIME_OMIT {
+                // do nothing
+            } else {
+                std.cdate = time[2] as u16;
+            }
+
+            Ok(())
+        })
     }
 
     fn read_page_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {

@@ -251,6 +251,8 @@ impl<'a> Syscall<'a> {
 
         log::warn!("utimensat: do NOT update the time, just check the file exists");
         let _file = self.lookup_helper(dir.clone(), &file_name).await?;
+        // update time
+        // file.set_time(_times)
         Ok(0)
     }
 
