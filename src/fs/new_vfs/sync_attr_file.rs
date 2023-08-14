@@ -26,15 +26,16 @@ impl<F: ConcreteFile> SyncAttrFile<F> {
 
     pub async fn attr(&self) -> VfsFileAttr {
         let file = self.file.lock().await;
+        let f_time = file.get_time();
         VfsFileAttr {
             kind: file.kind(),
             device_id: file.device_id(),
             self_device_id: 0,
             byte_size: file.size(),
             block_count: file.block_count(),
-            access_time: 0,
-            modify_time: 0,
-            create_time: 0,
+            access_time: f_time[0],
+            modify_time: f_time[1],
+            create_time: f_time[2],
         }
     }
 
@@ -62,6 +63,9 @@ impl<F: ConcreteFile> SyncAttrFile<F> {
     }
     pub async fn delete(&self) -> SysResult {
         self.lock().await.delete().await
+    }
+    pub async fn get_time(&self) -> [usize; 3] {
+        self.lock().await.get_time()
     }
 
     // 文件操作

@@ -216,6 +216,10 @@ impl ConcreteFile for FATFile {
             Ok(())
         })
     }
+    fn get_time(&self) -> [usize; 3] {
+        let std = self.editor.std();
+        [std.adate as usize, std.mdate as usize, std.cdate as usize]
+    }
 
     fn read_page_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
         // 假设 VFS 上层都是按页读取的, 那么这意味着 offset 一定是 sector 对齐的,

@@ -5,7 +5,7 @@ use alloc::string::String;
 use log::{debug, info, warn};
 
 use crate::{
-    consts::MAX_OPEN_FILES,
+    consts::{self, MAX_OPEN_FILES},
     fs::{
         self,
         disk::BLOCK_SIZE,
@@ -101,12 +101,12 @@ impl<'a> Syscall<'a> {
                     st_blksize: BLOCK_SIZE as i32,
                     _pad1: 0,
                     st_blocks: fstat.block_count as i64,
-                    st_atime_sec: 0,
-                    st_atime_nsec: 0,
-                    st_mtime_sec: 0,
-                    st_mtime_nsec: 0,
-                    st_ctime_sec: 0,
-                    st_ctime_nsec: 0,
+                    st_atime_sec: (fstat.access_time / consts::time::NSEC_PER_SEC) as isize,
+                    st_atime_nsec: (fstat.access_time % consts::time::NSEC_PER_SEC) as isize,
+                    st_mtime_sec: (fstat.modify_time / consts::time::NSEC_PER_SEC) as isize,
+                    st_mtime_nsec: (fstat.modify_time % consts::time::NSEC_PER_SEC) as isize,
+                    st_ctime_sec: (fstat.create_time / consts::time::NSEC_PER_SEC) as isize,
+                    st_ctime_nsec: (fstat.create_time % consts::time::NSEC_PER_SEC) as isize,
                 },
             )?;
             return Ok(0);
@@ -152,12 +152,12 @@ impl<'a> Syscall<'a> {
                 st_blksize: BLOCK_SIZE as i32,
                 _pad1: 0,
                 st_blocks: fstat.block_count as i64,
-                st_atime_sec: 0,
-                st_atime_nsec: 0,
-                st_mtime_sec: 0,
-                st_mtime_nsec: 0,
-                st_ctime_sec: 0,
-                st_ctime_nsec: 0,
+                st_atime_sec: (fstat.access_time / consts::time::NSEC_PER_SEC) as isize,
+                st_atime_nsec: (fstat.access_time % consts::time::NSEC_PER_SEC) as isize,
+                st_mtime_sec: (fstat.modify_time / consts::time::NSEC_PER_SEC) as isize,
+                st_mtime_nsec: (fstat.modify_time % consts::time::NSEC_PER_SEC) as isize,
+                st_ctime_sec: (fstat.create_time / consts::time::NSEC_PER_SEC) as isize,
+                st_ctime_nsec: (fstat.create_time % consts::time::NSEC_PER_SEC) as isize,
             },
         )?;
 
