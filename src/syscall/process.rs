@@ -195,25 +195,18 @@ impl<'a> Syscall<'a> {
 
     pub fn sys_clone(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (flags, child_stack, parent_tid_ptr, child_tid_ptr, _new_thread_local_storage_ptr) =
+        let (flags, child_stack, parent_tid_ptr, child_tid_ptr, new_thread_local_storage_ptr) =
             (args[0] as u64, args[1], args[2], args[3], args[4]);
 
-        let flags = CloneFlags::from_bits(flags & !0xff).ok_or(SysError::EINVAL)?;
+        let flags = CloneFlags::from_bits_truncate(flags & !0xff);
 
         info!(
-            "syscall: clone: flags: {:?}, child_stack: {:#x}, parent_tid_ptr: {:#x}, child_tid_ptr: {:#x}",
+            "syscall: clone: flags: {:?}, child_stack: {:#x}, parent_tid_ptr: {:#x}, child_tid_ptr: {:#x}, new_tls: 0x{new_thread_local_storage_ptr:x}",
             flags, child_stack, parent_tid_ptr, child_tid_ptr
         );
 
         let stack_begin = if child_stack != 0 {
-            if child_stack % 16 != 0 {
-                warn!("child stack is not aligned: {:#x}", child_stack);
-                // TODO: 跟组委会确认这种情况是不是要返回错误
-                // return Err(AxError::InvalidInput);
-                Some(child_stack - 8).map(VirtAddr::from)
-            } else {
-                Some(child_stack).map(VirtAddr::from)
-            }
+            Some(child_stack.into())
         } else {
             None
         };
@@ -252,8 +245,7 @@ impl<'a> Syscall<'a> {
         }
 
         if flags.contains(CloneFlags::SETTLS) {
-            // tp currently is used for hartid
-            // new_lproc.context().set_user_tp(new_thread_local_storage_ptr);
+            new_lproc.context().set_user_tp(new_thread_local_storage_ptr);
         }
 
         // syscall clone returns 0 in child process
