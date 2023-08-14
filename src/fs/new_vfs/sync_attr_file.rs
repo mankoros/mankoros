@@ -68,6 +68,10 @@ impl<F: ConcreteFile> SyncAttrFile<F> {
         self.lock().await.get_time()
     }
 
+    pub async fn set_time(&self, time: [usize; 3]) -> SysResult {
+        self.lock().await.set_time(time).await
+    }
+
     // 文件操作
     pub async fn read_page_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> SysResult<usize> {
         self.lock().await.read_page_at(offset, buf).await
