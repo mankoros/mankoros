@@ -25,6 +25,10 @@ pub struct Stderr;
 impl VfsFile for Stdin {
     impl_vfs_default_non_dir!(Stdin);
 
+    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+        todo!()
+    }
+
     fn write_at<'a>(&'a self, _offset: usize, _buf: &'a [u8]) -> ASysResult<usize> {
         dyn_future(async { Err(SysError::EPERM) })
     }
@@ -100,6 +104,10 @@ impl VfsFile for Stdin {
 
 impl VfsFile for Stdout {
     impl_vfs_default_non_dir!(Stdout);
+
+    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+        todo!()
+    }
 
     fn write_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> ASysResult<usize> {
         dyn_future(async move { Ok(self.poll_write(offset, buf)) })
@@ -179,6 +187,10 @@ impl VfsFile for Stdout {
 
 impl VfsFile for Stderr {
     impl_vfs_default_non_dir!(Stdout);
+
+    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+        todo!()
+    }
 
     fn write_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> ASysResult<usize> {
         dyn_future(async move { Ok(self.poll_write(offset, buf)) })

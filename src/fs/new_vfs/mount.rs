@@ -26,6 +26,10 @@ impl VfsFile for MountPoint {
         self.root.attr()
     }
 
+    fn set_time(&self, time: [usize; 3]) -> crate::tools::errors::ASysResult {
+        self.root.set_time(time)
+    }
+
     fn as_any(&self) -> &dyn core::any::Any {
         self
     }

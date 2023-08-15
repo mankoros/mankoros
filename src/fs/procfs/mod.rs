@@ -161,6 +161,10 @@ impl VfsFile for ProcFSRootDir {
             Ok(VfsFileRef::new(ProcFSProcDir::new(lproc)))
         })
     }
+
+    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+        todo!()
+    }
 }
 
 pub struct ProcFSProcDir {
@@ -187,6 +191,10 @@ impl ProcFSProcDir {
 impl VfsFile for ProcFSProcDir {
     impl_vfs_default_non_file!(ProcFSProcDir);
     impl_proc_dir_default!();
+
+    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+        todo!()
+    }
 
     fn list(&self) -> ASysResult<Vec<(String, VfsFileRef)>> {
         dyn_future(async {
@@ -231,6 +239,10 @@ impl VfsFile for ProcFSNormalFile {
                 create_time: 0,
             })
         })
+    }
+
+    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+        todo!()
     }
 
     fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
@@ -298,6 +310,10 @@ impl VfsFile for ProcFSStandaloneFile {
             buf[..len].copy_from_slice(&data[offset..offset + len]);
             Ok(len)
         })
+    }
+
+    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+        todo!()
     }
 
     fn write_at<'a>(&'a self, _offset: usize, _buf: &'a [u8]) -> ASysResult<usize> {

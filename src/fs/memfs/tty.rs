@@ -74,6 +74,10 @@ impl VfsFile for TTY {
         })
     }
 
+    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+        todo!()
+    }
+
     fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
         Stdin.read_at(offset, buf)
     }

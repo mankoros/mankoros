@@ -41,6 +41,10 @@ impl VfsFile for TmpFile {
         })
     }
 
+    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+        todo!()
+    }
+
     fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
         dyn_future(async move {
             let content = self.content.lock(here!());
@@ -140,6 +144,10 @@ impl VfsFile for TmpDir {
                 create_time: 0,
             })
         })
+    }
+
+    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+        todo!()
     }
 
     fn create<'a>(&'a self, name: &'a str, kind: VfsFileKind) -> ASysResult<VfsFileRef> {
