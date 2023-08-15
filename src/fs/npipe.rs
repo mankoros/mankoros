@@ -125,6 +125,10 @@ impl VfsFile for PipeReadEnd {
     impl_vfs_default_non_dir!(PipeReadEnd);
     impl_vfs_default_pipe!(PipeReadEnd);
 
+    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+        todo!()
+    }
+
     fn poll_ready(&self, _offset: usize, _len: usize, kind: PollKind) -> ASysResult<usize> {
         dyn_future(async move {
             match kind {
@@ -214,6 +218,10 @@ struct PipeWriteEnd {
 impl VfsFile for PipeWriteEnd {
     impl_vfs_default_non_dir!(PipeWriteEnd);
     impl_vfs_default_pipe!(PipeWriteEnd);
+
+    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+        todo!()
+    }
 
     fn poll_ready(&self, _offset: usize, _len: usize, kind: PollKind) -> ASysResult<usize> {
         dyn_future(async move {

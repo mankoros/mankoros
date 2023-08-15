@@ -55,6 +55,10 @@ impl VfsFile for VfsPathFile {
         self.file().attr()
     }
 
+    fn set_time(&self, time: [usize; 3]) -> crate::tools::errors::ASysResult {
+        self.file().set_time(time)
+    }
+
     fn as_any(&self) -> &dyn core::any::Any {
         self
     }

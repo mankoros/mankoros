@@ -50,6 +50,10 @@ impl<F: ConcreteFile> VfsFile for PageCacheFile<F> {
         })
     }
 
+    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+        dyn_future(async move { self.file.set_time(time).await })
+    }
+
     fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
         dyn_future(async move {
             log::debug!(

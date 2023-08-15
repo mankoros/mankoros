@@ -14,6 +14,7 @@ use crate::{
     },
     memory::{UserReadPtr, UserWritePtr},
     process::lproc::NewFdRequirement,
+    timer,
     tools::errors::{SysError, SysResult},
 };
 
@@ -239,8 +240,13 @@ impl<'a> Syscall<'a> {
 
     pub async fn sys_utimensat(&self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (dir_fd, path, _times, _flags) =
-            (args[0], UserReadPtr::<u8>::from(args[1]), args[2], args[3]);
+        let (dir_fd, path, atime, mtime, _flags) = (
+            args[0],
+            UserReadPtr::<u8>::from(args[1]),
+            UserReadPtr::<timer::TimeSpec>::from(args[2]),
+            UserReadPtr::<timer::TimeSpec>::from(args[3]),
+            args[4],
+        );
 
         let path = path.read_cstr(&self.lproc)?;
 
@@ -249,10 +255,16 @@ impl<'a> Syscall<'a> {
             return Err(SysError::ENOTDIR);
         }
 
+        let times: [usize; 3] = [
+            atime.read(&self.lproc)?.time_in_ms() * 1000,
+            mtime.read(&self.lproc)?.time_in_ms() * 1000,
+            consts::time::UTIME_OMIT,
+        ];
+
         log::warn!("utimensat: do NOT update the time, just check the file exists");
         let _file = self.lookup_helper(dir.clone(), &file_name).await?;
         // update time
-        // file.set_time(_times)
+        _file.set_time(times).await?;
         Ok(0)
     }
 

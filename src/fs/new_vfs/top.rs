@@ -94,6 +94,9 @@ pub trait VfsFile: Send + Sync {
     /// 例如文件类型, 文件大小, 文件创建时间等等
     fn attr(&self) -> ASysResult<VfsFileAttr>;
 
+    /// set time
+    fn set_time(&self, time: [usize; 3]) -> ASysResult;
+
     // 文件操作
     /// 读取文件内容
     fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize>;

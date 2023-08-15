@@ -123,6 +123,10 @@ impl<F: ConcreteFile> VfsFile for PathCacheDir<F> {
         dyn_future(async move { Ok(self.file.attr().await) })
     }
 
+    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+        dyn_future(async move { self.file.set_time(time).await })
+    }
+
     impl_vfs_default_non_file!(PathCacheDir);
 
     fn list(&self) -> ASysResult<alloc::vec::Vec<(String, VfsFileRef)>> {

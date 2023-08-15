@@ -27,6 +27,10 @@ impl VfsFile for ZeroDev {
         })
     }
 
+    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+        todo!()
+    }
+
     fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
         dyn_future(async move { Ok(self.poll_read(offset, buf)) })
     }
