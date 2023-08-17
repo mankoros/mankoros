@@ -1,7 +1,7 @@
 use bitflags::bitflags;
 
 use super::range_map::RangeMap;
-use crate::memory::address::{iter_vpn, VirtAddr, VirtAddrRange};
+use crate::memory::address::{iter_vpn, VirtAddr, VirtAddr4K, VirtAddrRange};
 
 use crate::memory::{
     address::VirtPageNum,
@@ -21,6 +21,7 @@ use crate::arch::{flush_tlb, get_curr_page_table_addr};
 
 use super::shm_mgr::{Shm, ShmId};
 use crate::executor::block_on;
+
 use crate::fs::new_vfs::top::{MmapKind, VfsFileRef};
 use crate::tools::errors::{SysError, SysResult};
 use alloc::sync::Arc;
@@ -679,5 +680,44 @@ impl UserAreaManager {
         }
         log::warn!("==== print all done ====");
         unsafe { set_kernel_trap() };
+    }
+
+    /// only for debug
+    pub fn print_page(&self, page_table: &PageTable, vaddr: VirtAddr4K) {
+        use crate::consts::PAGE_SIZE;
+        use crate::executor::hart_local::AutoSUM;
+        use alloc::format;
+
+        let paddr = page_table.get_paddr_from_vaddr(vaddr.into()).assert_4k();
+        log::warn!(
+            "==== print page: {:x?} (in pgt {:x?}, phy: {:x?}) ====",
+            vaddr,
+            page_table.root_paddr(),
+            paddr,
+        );
+
+        // print it 16 byte pre line
+        //       0  1  2 ... f
+        // 00   AC EE 12 ... 34
+        // ...
+
+        let _sum = AutoSUM::new();
+        let slice = unsafe { paddr.as_page_slice() };
+
+        // we can only print a whole line using log::debug,
+        // so we manually write it for 16 times
+
+        log::info!("      0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f");
+        for i in 0..256 {
+            let mut line = format!("{:03x}   ", i * 16);
+            for j in 0..16 {
+                line.push_str(&format!("{:02x} ", slice[i * 16 + j]));
+            }
+            log::info!("{}", line);
+        }
+
+        debug_assert!(16 * 256 == PAGE_SIZE);
+
+        log::warn!("==== print page done ====");
     }
 }
