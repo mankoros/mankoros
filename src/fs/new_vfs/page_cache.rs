@@ -2,6 +2,7 @@ use super::{
     sync_attr_file::SyncAttrFile,
     top::{MmapKind, VfsFile},
     underlying::ConcreteFile,
+    VfsFileKind,
 };
 use crate::{
     consts::PAGE_SIZE,
@@ -35,23 +36,35 @@ impl<F: ConcreteFile> PageCacheFile<F> {
 }
 
 impl<F: ConcreteFile> VfsFile for PageCacheFile<F> {
-    fn attr(&self) -> ASysResult<super::VfsFileAttr> {
-        dyn_future(async {
-            let mut attr = self.file.attr().await;
+    fn attr_kind(&self) -> VfsFileKind {
+        self.file.attr_kind()
+    }
+    fn attr_device(&self) -> super::top::DeviceInfo {
+        self.file.attr_device()
+    }
+    fn attr_size(&self) -> ASysResult<super::top::SizeInfo> {
+        dyn_future(self.file.attr_size())
+    }
+    fn attr_time(&self) -> ASysResult<super::top::TimeInfo> {
+        dyn_future(self.file.attr_time())
+    }
+
+    fn attr_set_size(&self, info: super::top::SizeInfo) -> ASysResult {
+        dyn_future(async move {
+            let mut info = info;
             let mgr = self.mgr.lock().await;
             let last = mgr.cached_pages.last_key_value();
 
             if let Some((begin_offset, page_cache)) = last {
                 let end_offset = begin_offset + page_cache.len();
-                attr.byte_size = attr.byte_size.max(end_offset);
+                info.bytes = info.bytes.max(end_offset);
             }
 
-            Ok(attr)
+            self.file.attr_set_size(info).await
         })
     }
-
-    fn set_time(&self, time: [usize; 3]) -> ASysResult {
-        dyn_future(async move { self.file.set_time(time).await })
+    fn attr_set_time(&self, info: super::top::TimeInfo) -> ASysResult {
+        dyn_future(async move { self.file.attr_set_time(info).await })
     }
 
     fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
@@ -92,10 +105,6 @@ impl<F: ConcreteFile> VfsFile for PageCacheFile<F> {
             unsafe { new_page.as_mut_page_slice().copy_from_slice(addr.as_page_slice()) };
             Ok(new_page)
         })
-    }
-
-    fn truncate(&self, length: usize) -> ASysResult {
-        dyn_future(async move { self.file.truncate(length).await })
     }
 
     fn poll_ready(
