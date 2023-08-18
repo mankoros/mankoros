@@ -4,6 +4,7 @@ pub mod handler_pool;
 pub mod hash;
 pub mod pointers;
 pub mod sync_ptr;
+pub mod with_dirty;
 
 #[macro_export]
 macro_rules! when_debug {

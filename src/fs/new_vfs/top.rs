@@ -1,4 +1,4 @@
-use super::{path::Path, VfsFileAttr, VfsFileKind};
+use super::{path::Path, DeviceID, VfsFileKind};
 use crate::{
     memory::address::PhysAddr4K,
     tools::errors::{dyn_future, ASysResult, SysResult},
@@ -88,14 +88,32 @@ impl Into<usize> for IOCTLCmd {
     }
 }
 
+pub struct DeviceInfo {
+    pub device_id: DeviceID,
+    pub self_device_id: DeviceID,
+}
+
+pub struct SizeInfo {
+    pub bytes: usize,
+    pub blocks: usize,
+}
+
+pub struct TimeInfo {
+    pub access: usize,
+    pub modify: usize,
+    pub create: usize,
+}
+
 pub trait VfsFile: Send + Sync {
     // 通用操作
     /// 获取文件的各类属性,
     /// 例如文件类型, 文件大小, 文件创建时间等等
-    fn attr(&self) -> ASysResult<VfsFileAttr>;
-
-    /// set time
-    fn set_time(&self, time: [usize; 3]) -> ASysResult;
+    fn attr_kind(&self) -> VfsFileKind;
+    fn attr_device(&self) -> DeviceInfo;
+    fn attr_size(&self) -> ASysResult<SizeInfo>;
+    fn attr_time(&self) -> ASysResult<TimeInfo>;
+    fn attr_set_size(&self, info: SizeInfo) -> ASysResult;
+    fn attr_set_time(&self, info: TimeInfo) -> ASysResult;
 
     // 文件操作
     /// 读取文件内容
@@ -106,7 +124,16 @@ pub trait VfsFile: Send + Sync {
     /// offset 必须是 PAGE_SIZE 的倍数.
     fn get_page(&self, offset: usize, kind: MmapKind) -> ASysResult<PhysAddr4K>;
     /// 改变文件长度
-    fn truncate(&self, length: usize) -> ASysResult;
+    fn truncate(&self, length: usize) -> ASysResult {
+        dyn_future(async move {
+            let blocks = self.attr_size().await?.blocks;
+            self.attr_set_size(SizeInfo {
+                bytes: length,
+                blocks,
+            })
+            .await
+        })
+    }
 
     // 高级文件操作
     /// 要求文件准备好 [offset, offset + len) 范围内的内容以供读取或写入.
@@ -164,10 +191,10 @@ impl VfsFileRef {
     }
 
     pub async fn kind(&self) -> SysResult<VfsFileKind> {
-        self.attr().await.map(|attr| attr.kind)
+        Ok(self.0.attr_kind())
     }
     pub async fn size(&self) -> SysResult<usize> {
-        self.attr().await.map(|attr| attr.byte_size)
+        self.0.attr_size().await.map(|s| s.bytes)
     }
 
     pub async fn is_dir(&self) -> SysResult<bool> {
@@ -352,6 +379,36 @@ macro_rules! impl_vfs_forward_file {
         }
         fn poll_write(&self, offset: usize, buf: &[u8]) -> usize {
             self.$($e)+.poll_write(offset, buf)
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_vfs_forward_attr_getter {
+    ($($e:tt)+) => {
+        fn attr_kind(&self) -> $crate::fs::new_vfs::VfsFileKind {
+            self.$($e)+.attr_kind()
+        }
+        fn attr_device(&self) -> $crate::fs::new_vfs::top::DeviceInfo {
+            self.$($e)+.attr_device()
+        }
+        fn attr_size(&self) -> $crate::tools::errors::ASysResult<$crate::fs::new_vfs::top::SizeInfo> {
+            self.$($e)+.attr_size()
+        }
+        fn attr_time(&self) -> $crate::tools::errors::ASysResult<$crate::fs::new_vfs::top::TimeInfo> {
+            self.$($e)+.attr_time()
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_vfs_forward_attr_setter {
+    ($($e:tt)+) => {
+        fn attr_set_size(&self, info: $crate::fs::new_vfs::top::SizeInfo) -> $crate::tools::errors::ASysResult {
+            self.$($e)+.attr_set_size(info)
+        }
+        fn attr_set_time(&self, info: $crate::fs::new_vfs::top::TimeInfo) -> $crate::tools::errors::ASysResult {
+            self.$($e)+.attr_set_time(info)
         }
     };
 }

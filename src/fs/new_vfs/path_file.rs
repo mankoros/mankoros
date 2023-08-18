@@ -2,7 +2,10 @@ use super::{
     path::Path,
     top::{VfsFile, VfsFileRef},
 };
-use crate::{impl_vfs_forward_dir, impl_vfs_forward_file, tools::errors::SysResult};
+use crate::{
+    impl_vfs_forward_attr_getter, impl_vfs_forward_attr_setter, impl_vfs_forward_dir,
+    impl_vfs_forward_file, tools::errors::SysResult,
+};
 use alloc::{
     string::ToString,
     sync::{Arc, Weak},
@@ -51,18 +54,12 @@ impl VfsPathFile {
 }
 
 impl VfsFile for VfsPathFile {
-    fn attr(&self) -> crate::tools::errors::ASysResult<super::VfsFileAttr> {
-        self.file().attr()
-    }
-
-    fn set_time(&self, time: [usize; 3]) -> crate::tools::errors::ASysResult {
-        self.file().set_time(time)
-    }
-
     fn as_any(&self) -> &dyn core::any::Any {
         self
     }
 
+    impl_vfs_forward_attr_getter!(file());
+    impl_vfs_forward_attr_setter!(file());
     impl_vfs_forward_dir!(file());
     impl_vfs_forward_file!(file());
 }

@@ -77,7 +77,7 @@ impl<F: ConcreteFile> PathCacheDir<F> {
     }
 
     fn pack_concrete_file(&self, name: &str, file: F) -> VfsFileRef {
-        let kind = file.kind();
+        let kind = file.attr_kind();
         let file = SyncAttrFile::new(file);
         match kind {
             VfsFileKind::Directory => VfsFileRef::new(Self::new_sub(name, file)),
@@ -87,7 +87,7 @@ impl<F: ConcreteFile> PathCacheDir<F> {
     }
 
     async fn pack_file(&self, name: &str, file: SyncAttrFile<F>) -> VfsFileRef {
-        let kind = file.kind().await;
+        let kind = file.attr_kind();
         match kind {
             VfsFileKind::Directory => VfsFileRef::new(Self::new_sub(name, file)),
             VfsFileKind::RegularFile => VfsFileRef::new(PageCacheFile::new(file)),
@@ -96,10 +96,10 @@ impl<F: ConcreteFile> PathCacheDir<F> {
     }
 
     async fn extract_file<'a>(&self, file: &'a VfsFileRef) -> Option<&'a SyncAttrFile<F>> {
-        let file_dev_id = file.attr().await.ok()?.device_id;
-        let self_dev_id = self.file.device_id().await;
+        let file_dev_id = file.attr_device().device_id;
+        let self_dev_id = self.file.attr_device().self_device_id;
         if file_dev_id == self_dev_id {
-            let kind = file.attr().await.ok()?.kind;
+            let kind = file.attr_kind();
             match kind {
                 VfsFileKind::Directory => {
                     log::debug!("file_dev_id, self_dev_id: {}, {}", file_dev_id, self_dev_id);
@@ -119,15 +119,32 @@ impl<F: ConcreteFile> PathCacheDir<F> {
 }
 
 impl<F: ConcreteFile> VfsFile for PathCacheDir<F> {
-    fn attr(&self) -> ASysResult<super::VfsFileAttr> {
-        dyn_future(async move { Ok(self.file.attr().await) })
-    }
-
-    fn set_time(&self, time: [usize; 3]) -> ASysResult {
-        dyn_future(async move { self.file.set_time(time).await })
-    }
-
     impl_vfs_default_non_file!(PathCacheDir);
+
+    fn attr_kind(&self) -> VfsFileKind {
+        VfsFileKind::Directory
+    }
+    fn attr_device(&self) -> super::top::DeviceInfo {
+        self.file.attr_device()
+    }
+    fn attr_size(&self) -> ASysResult<super::top::SizeInfo> {
+        dyn_future(async move { self.file.lock().await.attr_size().await })
+    }
+    fn attr_time(&self) -> ASysResult<super::top::TimeInfo> {
+        dyn_future(async move { self.file.lock().await.attr_time().await })
+    }
+    fn attr_set_size(&self, info: super::top::SizeInfo) -> ASysResult {
+        dyn_future(async move {
+            self.file.lock().await.attr_set_size(info);
+            Ok(())
+        })
+    }
+    fn attr_set_time(&self, info: super::top::TimeInfo) -> ASysResult {
+        dyn_future(async move {
+            self.file.lock().await.attr_set_time(info);
+            Ok(())
+        })
+    }
 
     fn list(&self) -> ASysResult<alloc::vec::Vec<(String, VfsFileRef)>> {
         dyn_future(async move {

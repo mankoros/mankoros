@@ -1,4 +1,8 @@
-use super::{underlying::ConcreteFile, VfsFileAttr, VfsFileKind};
+use super::{
+    top::{DeviceInfo, SizeInfo, TimeInfo},
+    underlying::ConcreteFile,
+    VfsFileKind,
+};
 use crate::{
     executor::block_on,
     sync::{SleepLock, SleepLockFuture},
@@ -7,9 +11,18 @@ use crate::{
 use alloc::{string::String, vec::Vec};
 use core::sync::atomic::AtomicBool;
 
+struct AttrInfo {
+    kind: VfsFileKind,
+    device: DeviceInfo,
+    size: SizeInfo,
+    time: TimeInfo,
+}
+
 pub struct SyncAttrFile<F: ConcreteFile> {
     is_deleted: AtomicBool,
     file: SleepLock<F>,
+    kind: VfsFileKind,
+    device: DeviceInfo,
 }
 
 impl<F: ConcreteFile> SyncAttrFile<F> {
@@ -17,26 +30,13 @@ impl<F: ConcreteFile> SyncAttrFile<F> {
         Self {
             is_deleted: AtomicBool::new(false),
             file: SleepLock::new(file),
+            kind: file.attr_kind(),
+            device: file.attr_device(),
         }
     }
 
     pub fn lock(&self) -> SleepLockFuture<F> {
         self.file.lock()
-    }
-
-    pub async fn attr(&self) -> VfsFileAttr {
-        let file = self.file.lock().await;
-        let f_time = file.get_time();
-        VfsFileAttr {
-            kind: file.kind(),
-            device_id: file.device_id(),
-            self_device_id: 0,
-            byte_size: file.size(),
-            block_count: file.block_count(),
-            access_time: f_time[0],
-            modify_time: f_time[1],
-            create_time: f_time[2],
-        }
     }
 
     pub fn mark_deleted(&self) {
@@ -49,27 +49,27 @@ impl<F: ConcreteFile> SyncAttrFile<F> {
 
 impl<F: ConcreteFile> SyncAttrFile<F> {
     // 通用操作
-    pub async fn kind(&self) -> VfsFileKind {
-        self.lock().await.kind()
+    pub fn attr_kind(&self) -> VfsFileKind {
+        self.kind
     }
-    pub async fn size(&self) -> usize {
-        self.lock().await.size()
+    pub fn attr_device(&self) -> DeviceInfo {
+        self.device
     }
-    pub async fn block_count(&self) -> usize {
-        self.lock().await.block_count()
+    pub async fn attr_size(&self) -> SysResult<SizeInfo> {
+        self.lock().await.attr_size().await
     }
-    pub async fn device_id(&self) -> usize {
-        self.lock().await.device_id()
+    pub async fn attr_time(&self) -> SysResult<TimeInfo> {
+        self.lock().await.attr_time().await
     }
-    pub async fn delete(&self) -> SysResult {
-        self.lock().await.delete().await
+    pub async fn attr_set_size(&self, info: SizeInfo) -> SysResult {
+        self.lock().await.attr_set_size(info).await
     }
-    pub async fn get_time(&self) -> [usize; 3] {
-        self.lock().await.get_time()
+    pub async fn attr_set_time(&self, info: TimeInfo) -> SysResult {
+        self.lock().await.attr_set_time(info).await
     }
 
-    pub async fn set_time(&self, time: [usize; 3]) -> SysResult {
-        self.lock().await.set_time(time).await
+    pub async fn delete(&self) -> SysResult {
+        self.lock().await.delete().await
     }
 
     // 文件操作
@@ -78,9 +78,6 @@ impl<F: ConcreteFile> SyncAttrFile<F> {
     }
     pub async fn write_page_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> SysResult<usize> {
         self.lock().await.write_page_at(offset, buf).await
-    }
-    pub async fn truncate<'a>(&'a self, new_size: usize) -> SysResult {
-        self.lock().await.truncate(new_size).await
     }
 
     // 文件夹操作
@@ -111,7 +108,7 @@ impl<F: ConcreteFile> SyncAttrFile<F> {
 impl<F: ConcreteFile> Drop for SyncAttrFile<F> {
     fn drop(&mut self) {
         if self.is_deleted() {
-            block_on(self.delete()).unwrap();
+            block_on(async { self.lock().await.delete().await }).unwrap();
         }
     }
 }

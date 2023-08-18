@@ -1,17 +1,22 @@
 use super::{
     dir::{Fat32DEntryAttr, GroupDEPos, GroupDEntryIter, Standard8p3EntryRepr},
-    tools::{ClusterChain, WithDirty},
+    tools::ClusterChain,
     ClusterID, Fat32FS, FatDEntryData, SectorID,
 };
 use crate::{
-    consts,
     executor::block_on,
     fs::{
         disk::{BLOCK_SIZE, LOG2_BLOCK_SIZE},
-        new_vfs::{underlying::ConcreteFile, VfsFileKind},
+        new_vfs::{
+            top::{DeviceInfo, SizeInfo, TimeInfo},
+            underlying::ConcreteFile,
+            VfsFileKind,
+        },
     },
-    timer,
-    tools::errors::{dyn_future, ASysResult, SysError, SysResult},
+    tools::{
+        errors::{dyn_future, ASysResult, SysError, SysResult},
+        with_dirty::WithDirty,
+    },
 };
 use alloc::vec::Vec;
 use core::cell::SyncUnsafeCell;
@@ -111,7 +116,7 @@ impl FATFile {
     fn delete_recursive(&self) -> ASysResult {
         // 递归的 async 函数必须 Box
         dyn_future(async {
-            match self.kind() {
+            match self.attr_kind() {
                 VfsFileKind::RegularFile => self.delete_self(),
                 VfsFileKind::Directory => {
                     let mut it = self.gde_iter();
@@ -192,10 +197,14 @@ impl FATFile {
     async fn sync_metadata(&self) {
         self.editor.sync(self.fs).await.unwrap();
     }
+
+    fn size(&self) -> usize {
+        self.editor.std().size as usize
+    }
 }
 
 impl ConcreteFile for FATFile {
-    fn kind(&self) -> VfsFileKind {
+    fn attr_kind(&self) -> VfsFileKind {
         let kind = self.editor.std().attr();
         if kind.contains(Fat32DEntryAttr::DIRECTORY) {
             VfsFileKind::Directory
@@ -203,53 +212,68 @@ impl ConcreteFile for FATFile {
             VfsFileKind::RegularFile
         }
     }
-    fn size(&self) -> usize {
-        self.editor.std().size as usize
+    fn attr_device(&self) -> DeviceInfo {
+        DeviceInfo {
+            device_id: self.fs.device_id(),
+            self_device_id: 0,
+        }
     }
-    fn block_count(&self) -> usize {
-        self.chain.len() * (self.fs.cluster_size_sct as usize)
-    }
-    fn device_id(&self) -> usize {
-        self.fs.device_id()
-    }
-    fn delete(&self) -> ASysResult {
+    fn attr_size(&self) -> ASysResult<SizeInfo> {
         dyn_future(async move {
-            self.delete_self()?;
+            Ok(SizeInfo {
+                bytes: self.size(),
+                blocks: self.chain.len() * (self.fs.cluster_size_sct as usize),
+            })
+        })
+    }
+    fn attr_time(&self) -> ASysResult<TimeInfo> {
+        dyn_future(async move {
+            Ok(TimeInfo {
+                // TODO: 这里是不是有问题????????????
+                access: self.editor.std().adate as usize,
+                modify: self.editor.std().mdate as usize,
+                create: self.editor.std().cdate as usize,
+            })
+        })
+    }
+    fn attr_set_time(&self, info: TimeInfo) -> ASysResult {
+        dyn_future(async move {
+            let std = self.editor.std_mut();
+            std.adate = info.access as u16;
+            std.mdate = info.modify as u16;
+            std.cdate = info.create as u16;
             Ok(())
         })
     }
-    fn get_time(&self) -> [usize; 3] {
-        let std = self.editor.std();
-        [std.adate as usize, std.mdate as usize, std.cdate as usize]
+    fn attr_set_size(&self, info: SizeInfo) -> ASysResult {
+        // 如果是文件夹，不允许 truncate
+        // 如果是文件, 那么根据 new_size 是大是小决定
+        // 如果小, 则调整 chain, 把多出来的块还给 fs
+        // 如果大, 则向 fs 要新的块并更新 chain
+        dyn_future(async move {
+            let new_size = info.bytes;
+            let new_size_cls = new_size >> (self.fs.log_cls_size_sct as usize + LOG2_BLOCK_SIZE);
+            let old_size_cls = self.chain.len();
+
+            // alloc/free cluster
+            if new_size_cls > old_size_cls {
+                self.chain.alloc_push(new_size_cls - old_size_cls, self.fs);
+            } else if new_size_cls < self.chain.len() {
+                self.chain.free_pop(old_size_cls - new_size_cls, self.fs);
+            } else {
+                debug_assert!(new_size_cls == self.chain.len());
+                // do nothing
+            }
+
+            // update the size in DEntry
+            self.editor.std_mut().size = new_size as u32;
+            Ok(())
+        })
     }
 
-    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+    fn delete(&self) -> ASysResult {
         dyn_future(async move {
-            let std = self.editor.std_mut();
-            if time[0] == consts::time::UTIME_NOW {
-                std.adate = timer::get_time_us() as u16 * 1000;
-            } else if time[0] == consts::time::UTIME_OMIT {
-                // do nothing
-            } else {
-                std.adate = time[0] as u16;
-            }
-
-            if time[1] == consts::time::UTIME_NOW {
-                std.mdate = timer::get_time_us() as u16 * 1000;
-            } else if time[1] == consts::time::UTIME_OMIT {
-                // do nothing
-            } else {
-                std.mdate = time[1] as u16;
-            }
-
-            if time[2] == consts::time::UTIME_NOW {
-                std.cdate = timer::get_time_us() as u16 * 1000;
-            } else if time[2] == consts::time::UTIME_OMIT {
-                // do nothing
-            } else {
-                std.cdate = time[2] as u16;
-            }
-
+            self.delete_self()?;
             Ok(())
         })
     }
@@ -327,31 +351,6 @@ impl ConcreteFile for FATFile {
             }
 
             Ok(write_len)
-        })
-    }
-
-    fn truncate(&self, new_size: usize) -> ASysResult {
-        // 如果是文件夹，不允许 truncate
-        // 如果是文件, 那么根据 new_size 是大是小决定
-        // 如果小, 则调整 chain, 把多出来的块还给 fs
-        // 如果大, 则向 fs 要新的块并更新 chain
-        dyn_future(async move {
-            let new_size_cls = new_size >> (self.fs.log_cls_size_sct as usize + LOG2_BLOCK_SIZE);
-            let old_size_cls = self.chain.len();
-
-            // alloc/free cluster
-            if new_size_cls > old_size_cls {
-                self.chain.alloc_push(new_size_cls - old_size_cls, self.fs);
-            } else if new_size_cls < self.chain.len() {
-                self.chain.free_pop(old_size_cls - new_size_cls, self.fs);
-            } else {
-                debug_assert!(new_size_cls == self.chain.len());
-                // do nothing
-            }
-
-            // update the size in DEntry
-            self.editor.std_mut().size = new_size as u32;
-            Ok(())
         })
     }
 

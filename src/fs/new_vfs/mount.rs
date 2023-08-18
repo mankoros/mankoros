@@ -3,7 +3,10 @@ use super::{
     top::{VfsFSRef, VfsFile, VfsFileRef},
     DeviceID,
 };
-use crate::{here, impl_vfs_default_non_file, impl_vfs_forward_dir, sync::SpinNoIrqLock};
+use crate::{
+    here, impl_vfs_default_non_file, impl_vfs_forward_attr_getter, impl_vfs_forward_attr_setter,
+    impl_vfs_forward_dir, sync::SpinNoIrqLock,
+};
 use alloc::{collections::BTreeMap, vec::Vec};
 
 pub struct MountPoint {
@@ -22,13 +25,8 @@ impl MountPoint {
 }
 
 impl VfsFile for MountPoint {
-    fn attr(&self) -> crate::tools::errors::ASysResult<'_, super::VfsFileAttr> {
-        self.root.attr()
-    }
-
-    fn set_time(&self, time: [usize; 3]) -> crate::tools::errors::ASysResult {
-        self.root.set_time(time)
-    }
+    impl_vfs_forward_attr_getter!(root);
+    impl_vfs_forward_attr_setter!(root);
 
     fn as_any(&self) -> &dyn core::any::Any {
         self
