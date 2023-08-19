@@ -1,6 +1,9 @@
 use super::new_vfs::{
     mount::GlobalMountManager,
-    top::{MmapKind, PollKind, VfsFS, VfsFSAttr, VfsFSKind, VfsFile, VfsFileRef},
+    top::{
+        DeviceInfo, MmapKind, PollKind, SizeInfo, TimeInfo, TimeInfoChange, VfsFS, VfsFSAttr,
+        VfsFSKind, VfsFile, VfsFileRef,
+    },
     DeviceIDCollection, VfsFileAttr, VfsFileKind,
 };
 use crate::{
@@ -37,9 +40,30 @@ macro_rules! impl_proc_dir_default {
         fn as_any(&self) -> &dyn core::any::Any {
             self
         }
-        fn attr(&self) -> ASysResult<VfsFileAttr> {
-            dyn_future(async { Ok(VfsFileAttr::new_mem_dir()) })
+        fn attr_kind(&self) -> VfsFileKind {
+            VfsFileKind::Directory
         }
+        fn attr_device(&self) -> DeviceInfo {
+            DeviceInfo {
+                device_id: DeviceIDCollection::PROC_FS_ID,
+                self_device_id: 0,
+            }
+        }
+        fn attr_size(&self) -> ASysResult<SizeInfo> {
+            dyn_future(async {
+                Ok(SizeInfo {
+                    bytes: 0,
+                    blocks: 0,
+                })
+            })
+        }
+        fn attr_time(&self) -> ASysResult<TimeInfo> {
+            dyn_future(async { Ok(TimeInfo::new_zero()) })
+        }
+        fn update_time(&self, _info: TimeInfoChange) -> ASysResult {
+            todo!()
+        }
+
         fn create<'a>(&'a self, _name: &'a str, _kind: VfsFileKind) -> ASysResult<VfsFileRef> {
             dyn_future(async { Err(SysError::EPERM) })
         }
@@ -161,10 +185,6 @@ impl VfsFile for ProcFSRootDir {
             Ok(VfsFileRef::new(ProcFSProcDir::new(lproc)))
         })
     }
-
-    fn set_time(&self, time: [usize; 3]) -> ASysResult {
-        todo!()
-    }
 }
 
 pub struct ProcFSProcDir {
@@ -191,10 +211,6 @@ impl ProcFSProcDir {
 impl VfsFile for ProcFSProcDir {
     impl_vfs_default_non_file!(ProcFSProcDir);
     impl_proc_dir_default!();
-
-    fn set_time(&self, time: [usize; 3]) -> ASysResult {
-        todo!()
-    }
 
     fn list(&self) -> ASysResult<Vec<(String, VfsFileRef)>> {
         dyn_future(async {
@@ -226,22 +242,34 @@ pub struct ProcFSNormalFile {
 impl VfsFile for ProcFSNormalFile {
     impl_vfs_default_non_dir!(ProcFSFile);
 
-    fn attr(&self) -> ASysResult<VfsFileAttr> {
+    fn attr_kind(&self) -> VfsFileKind {
+        self.kind
+    }
+    fn attr_device(&self) -> DeviceInfo {
+        DeviceInfo {
+            device_id: DeviceIDCollection::PROC_FS_ID,
+            self_device_id: 0,
+        }
+    }
+    fn attr_size(&self) -> ASysResult<SizeInfo> {
         dyn_future(async {
-            Ok(VfsFileAttr {
-                kind: self.kind,
-                device_id: 0,
-                self_device_id: 0,
-                byte_size: (self.f)(&self.lproc).len(),
-                block_count: 0,
-                access_time: 0,
-                modify_time: 0,
-                create_time: 0,
+            Ok(SizeInfo {
+                bytes: (self.f)(&self.lproc).len(),
+                blocks: 0,
+            })
+        })
+    }
+    fn attr_time(&self) -> ASysResult<TimeInfo> {
+        dyn_future(async {
+            Ok(TimeInfo {
+                access: 0,
+                modify: 0,
+                change: 0,
             })
         })
     }
 
-    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+    fn update_time(&self, _info: TimeInfoChange) -> ASysResult {
         todo!()
     }
 
@@ -288,19 +316,35 @@ pub struct ProcFSStandaloneFile {
 impl VfsFile for ProcFSStandaloneFile {
     impl_vfs_default_non_dir!(ProcFSStandaloneFile);
 
-    fn attr(&self) -> ASysResult<VfsFileAttr> {
+    fn attr_kind(&self) -> VfsFileKind {
+        self.kind
+    }
+    fn attr_device(&self) -> DeviceInfo {
+        DeviceInfo {
+            device_id: DeviceIDCollection::PROC_FS_ID,
+            self_device_id: 0,
+        }
+    }
+    fn attr_size(&self) -> ASysResult<SizeInfo> {
         dyn_future(async {
-            Ok(VfsFileAttr {
-                kind: self.kind,
-                device_id: 0,
-                self_device_id: 0,
-                byte_size: (self.f)().len(),
-                block_count: 0,
-                access_time: 0,
-                modify_time: 0,
-                create_time: 0,
+            Ok(SizeInfo {
+                bytes: (self.f)().len(),
+                blocks: 0,
             })
         })
+    }
+    fn attr_time(&self) -> ASysResult<TimeInfo> {
+        dyn_future(async {
+            Ok(TimeInfo {
+                access: 0,
+                modify: 0,
+                change: 0,
+            })
+        })
+    }
+
+    fn update_time(&self, _info: TimeInfoChange) -> ASysResult {
+        todo!()
     }
 
     fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
@@ -310,10 +354,6 @@ impl VfsFile for ProcFSStandaloneFile {
             buf[..len].copy_from_slice(&data[offset..offset + len]);
             Ok(len)
         })
-    }
-
-    fn set_time(&self, time: [usize; 3]) -> ASysResult {
-        todo!()
     }
 
     fn write_at<'a>(&'a self, _offset: usize, _buf: &'a [u8]) -> ASysResult<usize> {

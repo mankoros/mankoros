@@ -1,5 +1,5 @@
 use super::{
-    top::{DeviceInfo, SizeInfo, TimeInfo},
+    top::{DeviceInfo, SizeInfo, TimeInfo, TimeInfoChange},
     underlying::ConcreteFile,
     VfsFileKind,
 };
@@ -27,11 +27,13 @@ pub struct SyncAttrFile<F: ConcreteFile> {
 
 impl<F: ConcreteFile> SyncAttrFile<F> {
     pub fn new(file: F) -> Self {
+        let kind = file.attr_kind();
+        let device = file.attr_device();
         Self {
             is_deleted: AtomicBool::new(false),
             file: SleepLock::new(file),
-            kind: file.attr_kind(),
-            device: file.attr_device(),
+            kind,
+            device,
         }
     }
 
@@ -53,7 +55,7 @@ impl<F: ConcreteFile> SyncAttrFile<F> {
         self.kind
     }
     pub fn attr_device(&self) -> DeviceInfo {
-        self.device
+        self.device.clone()
     }
     pub async fn attr_size(&self) -> SysResult<SizeInfo> {
         self.lock().await.attr_size().await
@@ -61,11 +63,8 @@ impl<F: ConcreteFile> SyncAttrFile<F> {
     pub async fn attr_time(&self) -> SysResult<TimeInfo> {
         self.lock().await.attr_time().await
     }
-    pub async fn attr_set_size(&self, info: SizeInfo) -> SysResult {
-        self.lock().await.attr_set_size(info).await
-    }
-    pub async fn attr_set_time(&self, info: TimeInfo) -> SysResult {
-        self.lock().await.attr_set_time(info).await
+    pub async fn update_time(&self, info: TimeInfoChange) -> SysResult {
+        self.lock().await.update_time(info).await
     }
 
     pub async fn delete(&self) -> SysResult {
@@ -78,6 +77,9 @@ impl<F: ConcreteFile> SyncAttrFile<F> {
     }
     pub async fn write_page_at<'a>(&'a self, offset: usize, buf: &'a [u8]) -> SysResult<usize> {
         self.lock().await.write_page_at(offset, buf).await
+    }
+    pub async fn truncate(&self, new_size: usize) -> SysResult {
+        self.lock().await.truncate(new_size).await
     }
 
     // 文件夹操作

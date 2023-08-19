@@ -1,6 +1,8 @@
 use super::{path::Path, DeviceID, VfsFileKind};
 use crate::{
+    consts,
     memory::address::PhysAddr4K,
+    timer::get_time_us,
     tools::errors::{dyn_future, ASysResult, SysResult},
 };
 use alloc::{string::String, sync::Arc, vec::Vec};
@@ -88,20 +90,97 @@ impl Into<usize> for IOCTLCmd {
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct DeviceInfo {
     pub device_id: DeviceID,
     pub self_device_id: DeviceID,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SizeInfo {
     pub bytes: usize,
     pub blocks: usize,
 }
+impl SizeInfo {
+    pub fn new_bytes_only(bytes: usize) -> Self {
+        Self { bytes, blocks: 0 }
+    }
+    pub fn new_zero() -> Self {
+        Self {
+            bytes: 0,
+            blocks: 0,
+        }
+    }
+}
 
+/// 所有时间的单位都是纳秒
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TimeInfo {
     pub access: usize,
     pub modify: usize,
-    pub create: usize,
+    pub change: usize,
+}
+impl TimeInfo {
+    pub fn new_zero() -> Self {
+        Self {
+            access: 0,
+            modify: 0,
+            change: 0,
+        }
+    }
+}
+
+pub struct TimeChange(usize);
+impl TimeChange {
+    pub fn new_omit() -> Self {
+        Self(consts::time::UTIME_OMIT)
+    }
+    pub fn new_now() -> Self {
+        Self(consts::time::UTIME_NOW)
+    }
+    pub fn new_time(time: usize) -> Self {
+        debug_assert!(time < consts::time::UTIME_NOW);
+        Self(time)
+    }
+}
+impl Into<usize> for TimeChange {
+    fn into(self) -> usize {
+        debug_assert!(self.0 < consts::time::UTIME_NOW);
+        self.0
+    }
+}
+
+pub struct TimeInfoChange {
+    pub access: TimeChange,
+    pub modify: TimeChange,
+}
+
+impl TimeInfoChange {
+    pub fn new(access: TimeChange, modify: TimeChange) -> Self {
+        Self { access, modify }
+    }
+}
+impl From<TimeInfo> for TimeInfoChange {
+    fn from(info: TimeInfo) -> Self {
+        Self {
+            access: TimeChange::new_time(info.access),
+            modify: TimeChange::new_time(info.modify),
+        }
+    }
+}
+impl TimeInfo {
+    pub fn apply_change(&mut self, change: TimeInfoChange) {
+        self.access = match change.access.0 {
+            consts::time::UTIME_OMIT => self.access,
+            consts::time::UTIME_NOW => get_time_us() * 1000,
+            time => time,
+        };
+        self.modify = match change.modify.0 {
+            consts::time::UTIME_OMIT => self.modify,
+            consts::time::UTIME_NOW => get_time_us() * 1000,
+            time => time,
+        };
+    }
 }
 
 pub trait VfsFile: Send + Sync {
@@ -112,8 +191,7 @@ pub trait VfsFile: Send + Sync {
     fn attr_device(&self) -> DeviceInfo;
     fn attr_size(&self) -> ASysResult<SizeInfo>;
     fn attr_time(&self) -> ASysResult<TimeInfo>;
-    fn attr_set_size(&self, info: SizeInfo) -> ASysResult;
-    fn attr_set_time(&self, info: TimeInfo) -> ASysResult;
+    fn update_time(&self, info: TimeInfoChange) -> ASysResult;
 
     // 文件操作
     /// 读取文件内容
@@ -124,16 +202,7 @@ pub trait VfsFile: Send + Sync {
     /// offset 必须是 PAGE_SIZE 的倍数.
     fn get_page(&self, offset: usize, kind: MmapKind) -> ASysResult<PhysAddr4K>;
     /// 改变文件长度
-    fn truncate(&self, length: usize) -> ASysResult {
-        dyn_future(async move {
-            let blocks = self.attr_size().await?.blocks;
-            self.attr_set_size(SizeInfo {
-                bytes: length,
-                blocks,
-            })
-            .await
-        })
-    }
+    fn truncate(&self, length: usize) -> ASysResult;
 
     // 高级文件操作
     /// 要求文件准备好 [offset, offset + len) 范围内的内容以供读取或写入.
@@ -404,11 +473,8 @@ macro_rules! impl_vfs_forward_attr_getter {
 #[macro_export]
 macro_rules! impl_vfs_forward_attr_setter {
     ($($e:tt)+) => {
-        fn attr_set_size(&self, info: $crate::fs::new_vfs::top::SizeInfo) -> $crate::tools::errors::ASysResult {
-            self.$($e)+.attr_set_size(info)
-        }
-        fn attr_set_time(&self, info: $crate::fs::new_vfs::top::TimeInfo) -> $crate::tools::errors::ASysResult {
-            self.$($e)+.attr_set_time(info)
+        fn update_time(&self, info: $crate::fs::new_vfs::top::TimeInfoChange) -> $crate::tools::errors::ASysResult {
+            self.$($e)+.update_time(info)
         }
     };
 }

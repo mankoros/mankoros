@@ -97,7 +97,7 @@ impl<F: ConcreteFile> PathCacheDir<F> {
 
     async fn extract_file<'a>(&self, file: &'a VfsFileRef) -> Option<&'a SyncAttrFile<F>> {
         let file_dev_id = file.attr_device().device_id;
-        let self_dev_id = self.file.attr_device().self_device_id;
+        let self_dev_id = self.file.attr_device().device_id;
         if file_dev_id == self_dev_id {
             let kind = file.attr_kind();
             match kind {
@@ -133,15 +133,9 @@ impl<F: ConcreteFile> VfsFile for PathCacheDir<F> {
     fn attr_time(&self) -> ASysResult<super::top::TimeInfo> {
         dyn_future(async move { self.file.lock().await.attr_time().await })
     }
-    fn attr_set_size(&self, info: super::top::SizeInfo) -> ASysResult {
+    fn update_time(&self, info: super::top::TimeInfoChange) -> ASysResult {
         dyn_future(async move {
-            self.file.lock().await.attr_set_size(info);
-            Ok(())
-        })
-    }
-    fn attr_set_time(&self, info: super::top::TimeInfo) -> ASysResult {
-        dyn_future(async move {
-            self.file.lock().await.attr_set_time(info);
+            self.file.lock().await.update_time(info);
             Ok(())
         })
     }

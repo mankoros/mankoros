@@ -10,7 +10,12 @@ use crate::{
         self,
         disk::BLOCK_SIZE,
         memfs::zero::ZeroDev,
-        new_vfs::{mount::GlobalMountManager, path::Path, top::VfsFileRef, VfsFileKind},
+        new_vfs::{
+            mount::GlobalMountManager,
+            path::Path,
+            top::{TimeChange, TimeInfoChange, VfsFileRef},
+            VfsFileKind,
+        },
     },
     memory::{UserReadPtr, UserWritePtr},
     process::lproc::NewFdRequirement,
@@ -76,6 +81,41 @@ bitflags::bitflags! {
     }
 }
 
+impl Kstat {
+    pub async fn from_vfs_file(file: &VfsFileRef) -> SysResult<Self> {
+        let kind = file.attr_kind();
+        let device = file.attr_device();
+        let size = file.attr_size().await?;
+        let time = file.attr_time().await?;
+        debug!(
+            "file info: {:?}, {:?}, {:?}, {:?}",
+            kind, device, size, time
+        );
+
+        Ok(Kstat {
+            st_dev: file.attr_device().device_id as u64,
+            st_ino: 1,
+            st_mode: u32::from(kind) | 0o777, // 0777 permission, we don't care about permission
+            // don't support hard link, just return 1
+            st_nlink: 1,
+            st_uid: 0,
+            st_gid: 0,
+            st_rdev: 0,
+            _pad0: 0,
+            st_size: size.bytes as i64,
+            st_blksize: BLOCK_SIZE as i32,
+            _pad1: 0,
+            st_blocks: size.blocks as i64,
+            st_atime_sec: (time.access / consts::time::NSEC_PER_SEC) as isize,
+            st_atime_nsec: (time.access % consts::time::NSEC_PER_SEC) as isize,
+            st_mtime_sec: (time.modify / consts::time::NSEC_PER_SEC) as isize,
+            st_mtime_nsec: (time.modify % consts::time::NSEC_PER_SEC) as isize,
+            st_ctime_sec: (time.change / consts::time::NSEC_PER_SEC) as isize,
+            st_ctime_nsec: (time.change % consts::time::NSEC_PER_SEC) as isize,
+        })
+    }
+}
+
 impl<'a> Syscall<'a> {
     pub async fn sys_fstat(&self) -> SyscallResult {
         let args = self.cx.syscall_args();
@@ -85,31 +125,7 @@ impl<'a> Syscall<'a> {
 
         if let Some(fd) = self.lproc.with_mut_fdtable(|f| f.get(fd)) {
             // TODO: check stat() returned error
-            let fstat = fd.file.attr().await?;
-            kstat.write(
-                &self.lproc,
-                Kstat {
-                    st_dev: fstat.device_id as u64,
-                    st_ino: 1,
-                    st_mode: u32::from(fstat.kind) | 0o777, // 0777 permission, we don't care about permission
-                    // don't support hard link, just return 1
-                    st_nlink: 1,
-                    st_uid: 0,
-                    st_gid: 0,
-                    st_rdev: 0,
-                    _pad0: 0,
-                    st_size: fstat.byte_size as i64,
-                    st_blksize: BLOCK_SIZE as i32,
-                    _pad1: 0,
-                    st_blocks: fstat.block_count as i64,
-                    st_atime_sec: (fstat.access_time / consts::time::NSEC_PER_SEC) as isize,
-                    st_atime_nsec: (fstat.access_time % consts::time::NSEC_PER_SEC) as isize,
-                    st_mtime_sec: (fstat.modify_time / consts::time::NSEC_PER_SEC) as isize,
-                    st_mtime_nsec: (fstat.modify_time % consts::time::NSEC_PER_SEC) as isize,
-                    st_ctime_sec: (fstat.create_time / consts::time::NSEC_PER_SEC) as isize,
-                    st_ctime_nsec: (fstat.create_time % consts::time::NSEC_PER_SEC) as isize,
-                },
-            )?;
+            kstat.write(&self.lproc, Kstat::from_vfs_file(&fd.file).await?)?;
             return Ok(0);
         }
         Err(SysError::EBADF)
@@ -133,34 +149,7 @@ impl<'a> Syscall<'a> {
 
         let (dir, file_name) = self.at_helper(dir_fd, path_name, flags).await?;
         let file = self.lookup_helper(dir, &file_name).await?;
-
-        let fstat = file.attr().await?;
-        debug!("Fstat: {:?}", fstat);
-
-        kstat.write(
-            &self.lproc,
-            Kstat {
-                st_dev: fstat.device_id as u64,
-                st_ino: 1,
-                st_mode: u32::from(fstat.kind) | 0o777, // 0777 permission, we don't care about permission
-                // don't support hard link, just return 1
-                st_nlink: 1,
-                st_uid: 0,
-                st_gid: 0,
-                st_rdev: 0,
-                _pad0: 0,
-                st_size: fstat.byte_size as i64,
-                st_blksize: BLOCK_SIZE as i32,
-                _pad1: 0,
-                st_blocks: fstat.block_count as i64,
-                st_atime_sec: (fstat.access_time / consts::time::NSEC_PER_SEC) as isize,
-                st_atime_nsec: (fstat.access_time % consts::time::NSEC_PER_SEC) as isize,
-                st_mtime_sec: (fstat.modify_time / consts::time::NSEC_PER_SEC) as isize,
-                st_mtime_nsec: (fstat.modify_time % consts::time::NSEC_PER_SEC) as isize,
-                st_ctime_sec: (fstat.create_time / consts::time::NSEC_PER_SEC) as isize,
-                st_ctime_nsec: (fstat.create_time % consts::time::NSEC_PER_SEC) as isize,
-            },
-        )?;
+        kstat.write(&self.lproc, Kstat::from_vfs_file(&file).await?)?;
 
         Ok(0)
     }
@@ -200,10 +189,10 @@ impl<'a> Syscall<'a> {
         let (old_dir, old_file_name) = self.at_helper(old_dir_fd, old_path, 0).await?;
         let (new_dir, new_file_name) = self.at_helper(new_dir_fd, new_path, 0).await?;
 
-        if old_dir.attr().await?.kind != VfsFileKind::Directory {
+        if old_dir.kind().await? != VfsFileKind::Directory {
             return Err(SysError::ENOTDIR);
         }
-        if new_dir.attr().await?.kind != VfsFileKind::Directory {
+        if new_dir.kind().await? != VfsFileKind::Directory {
             return Err(SysError::ENOTDIR);
         }
 
@@ -240,31 +229,44 @@ impl<'a> Syscall<'a> {
 
     pub async fn sys_utimensat(&self) -> SyscallResult {
         let args = self.cx.syscall_args();
-        let (dir_fd, path, atime, mtime, _flags) = (
+        let (dir_fd, path, times_ptr, _flags) = (
             args[0],
             UserReadPtr::<u8>::from(args[1]),
             UserReadPtr::<timer::TimeSpec>::from(args[2]),
-            UserReadPtr::<timer::TimeSpec>::from(args[3]),
-            args[4],
+            args[3],
         );
 
-        let path = path.read_cstr(&self.lproc)?;
+        let file = if path.not_null() {
+            let path = path.read_cstr(&self.lproc)?;
+            info!(
+                "Syscall: utimensat, dir_fd: {}, path: {:?}, times_ptr: {}",
+                dir_fd, path, times_ptr
+            );
 
-        let (dir, file_name) = self.at_helper(dir_fd, path, 0).await?;
-        if !dir.is_dir().await? {
-            return Err(SysError::ENOTDIR);
-        }
+            let (dir, file_name) = self.at_helper(dir_fd, path, 0).await?;
+            if !dir.is_dir().await? {
+                return Err(SysError::ENOTDIR);
+            }
+            self.lookup_helper(dir.clone(), &file_name).await?
+        } else {
+            info!("Syscall: ftimens, fd: {}, times_ptr: {}", dir_fd, times_ptr);
+            self.lproc.with_fdtable(|f| f.get(dir_fd)).ok_or(SysError::EBADF)?.file.clone()
+        };
 
-        let times: [usize; 3] = [
-            atime.read(&self.lproc)?.time_in_ms() * 1000,
-            mtime.read(&self.lproc)?.time_in_ms() * 1000,
-            consts::time::UTIME_OMIT,
-        ];
+        let times = times_ptr.read_array(2, &self.lproc)?;
+        let access_time_change = match times[0].tv_nsec {
+            consts::time::UTIME_NOW => TimeChange::new_now(),
+            consts::time::UTIME_OMIT => TimeChange::new_omit(),
+            _ => TimeChange::new_time(times[0].time_in_ns()),
+        };
+        let modify_time_change = match times[1].tv_nsec {
+            consts::time::UTIME_NOW => TimeChange::new_now(),
+            consts::time::UTIME_OMIT => TimeChange::new_omit(),
+            _ => TimeChange::new_time(times[1].time_in_ns()),
+        };
+        let time_info_change = TimeInfoChange::new(access_time_change, modify_time_change);
 
-        log::warn!("utimensat: do NOT update the time, just check the file exists");
-        let _file = self.lookup_helper(dir.clone(), &file_name).await?;
-        // update time
-        _file.set_time(times).await?;
+        file.update_time(time_info_change).await?;
         Ok(0)
     }
 
@@ -383,7 +385,7 @@ impl<'a> Syscall<'a> {
                 d_ino: 1,
                 d_off: this_entry_len as u64,
                 d_reclen: this_entry_len as u16,
-                d_type: DirentFront::as_dtype(vfs_entry.attr().await?.kind),
+                d_type: DirentFront::as_dtype(vfs_entry.kind().await?),
             };
 
             let dirent_beg = buf + wroten_len;
@@ -418,7 +420,7 @@ impl<'a> Syscall<'a> {
         let need_to_be_dir = (flags & AT_REMOVEDIR) != 0;
         let (dir, file_name) = self.at_helper(dir_fd, path_name, flags).await?;
 
-        let file_type = dir.lookup(&file_name).await?.attr().await?.kind;
+        let file_type = dir.lookup(&file_name).await?.kind().await?;
         if need_to_be_dir && file_type != VfsFileKind::Directory {
             return Err(SysError::ENOTDIR);
         }

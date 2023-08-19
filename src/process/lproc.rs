@@ -429,7 +429,7 @@ impl LightProcess {
             arch::flush_tlb_all();
             // TODO: avoid flushing global entries like kernel mappings
         }
-        let mut old_memory = self.memory.lock(here!());
+        let old_memory = self.memory.lock(here!());
 
         let new_stack_top;
         let new_sp;

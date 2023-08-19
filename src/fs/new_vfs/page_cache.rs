@@ -49,7 +49,7 @@ impl<F: ConcreteFile> VfsFile for PageCacheFile<F> {
         dyn_future(self.file.attr_time())
     }
 
-    fn attr_set_size(&self, info: super::top::SizeInfo) -> ASysResult {
+    fn truncate(&self, info: usize) -> ASysResult {
         dyn_future(async move {
             let mut info = info;
             let mgr = self.mgr.lock().await;
@@ -57,14 +57,14 @@ impl<F: ConcreteFile> VfsFile for PageCacheFile<F> {
 
             if let Some((begin_offset, page_cache)) = last {
                 let end_offset = begin_offset + page_cache.len();
-                info.bytes = info.bytes.max(end_offset);
+                info = info.max(end_offset);
             }
 
-            self.file.attr_set_size(info).await
+            self.file.truncate(info).await
         })
     }
-    fn attr_set_time(&self, info: super::top::TimeInfo) -> ASysResult {
-        dyn_future(async move { self.file.attr_set_time(info).await })
+    fn update_time(&self, info: super::top::TimeInfoChange) -> ASysResult {
+        dyn_future(async move { self.file.update_time(info).await })
     }
 
     fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {

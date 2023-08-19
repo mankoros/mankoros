@@ -36,9 +36,30 @@ fn pipe_attr() -> VfsFileAttr {
 
 macro_rules! impl_vfs_default_pipe {
     ($id:ident) => {
-        fn attr(&self) -> ASysResult<VfsFileAttr> {
-            dyn_future(async { Ok(pipe_attr()) })
+        fn attr_kind(&self) -> super::new_vfs::VfsFileKind {
+            super::new_vfs::VfsFileKind::Pipe
         }
+        fn attr_device(&self) -> super::new_vfs::top::DeviceInfo {
+            super::new_vfs::top::DeviceInfo {
+                device_id: DeviceIDCollection::PIPE_FS_ID,
+                self_device_id: 0,
+            }
+        }
+        fn attr_size(&self) -> ASysResult<super::new_vfs::top::SizeInfo> {
+            dyn_future(async {
+                Ok(super::new_vfs::top::SizeInfo {
+                    bytes: 0,
+                    blocks: 0,
+                })
+            })
+        }
+        fn attr_time(&self) -> ASysResult<super::new_vfs::top::TimeInfo> {
+            dyn_future(async { Ok(super::new_vfs::top::TimeInfo::new_zero()) })
+        }
+        fn update_time(&self, _info: super::new_vfs::top::TimeInfoChange) -> ASysResult {
+            todo!()
+        }
+
         fn as_any(&self) -> &dyn core::any::Any {
             self
         }
@@ -124,10 +145,6 @@ pub struct PipeReadEnd {
 impl VfsFile for PipeReadEnd {
     impl_vfs_default_non_dir!(PipeReadEnd);
     impl_vfs_default_pipe!(PipeReadEnd);
-
-    fn set_time(&self, time: [usize; 3]) -> ASysResult {
-        todo!()
-    }
 
     fn poll_ready(&self, _offset: usize, _len: usize, kind: PollKind) -> ASysResult<usize> {
         dyn_future(async move {
@@ -218,10 +235,6 @@ struct PipeWriteEnd {
 impl VfsFile for PipeWriteEnd {
     impl_vfs_default_non_dir!(PipeWriteEnd);
     impl_vfs_default_pipe!(PipeWriteEnd);
-
-    fn set_time(&self, time: [usize; 3]) -> ASysResult {
-        todo!()
-    }
 
     fn poll_ready(&self, _offset: usize, _len: usize, kind: PollKind) -> ASysResult<usize> {
         dyn_future(async move {

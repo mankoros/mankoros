@@ -221,31 +221,37 @@ impl ConcreteFile for Disk {
         dyn_future(async move { self.sync_write_at(offset as u64, buf) })
     }
 
-    fn kind(&self) -> super::new_vfs::VfsFileKind {
+    fn attr_kind(&self) -> super::new_vfs::VfsFileKind {
         super::new_vfs::VfsFileKind::BlockDevice
     }
-
-    fn size(&self) -> usize {
-        self.size() as usize
+    fn attr_device(&self) -> super::new_vfs::top::DeviceInfo {
+        super::new_vfs::top::DeviceInfo {
+            device_id: DeviceIDCollection::DEV_FS_ID,
+            self_device_id: 0,
+        }
     }
-
-    fn block_count(&self) -> usize {
-        self.dev.num_blocks() as usize
+    fn attr_size(&self) -> ASysResult<super::new_vfs::top::SizeInfo> {
+        dyn_future(async {
+            Ok(super::new_vfs::top::SizeInfo {
+                bytes: self.size() as _,
+                blocks: self.dev.block_size(),
+            })
+        })
     }
-
-    fn device_id(&self) -> usize {
+    fn attr_time(&self) -> ASysResult<super::new_vfs::top::TimeInfo> {
+        dyn_future(async {
+            Ok(super::new_vfs::top::TimeInfo {
+                access: 0,
+                modify: 0,
+                change: 0,
+            })
+        })
+    }
+    fn update_time(&self, _info: super::new_vfs::top::TimeInfoChange) -> ASysResult {
         todo!()
     }
 
     fn delete(&self) -> ASysResult {
-        todo!()
-    }
-
-    fn get_time(&self) -> [usize; 3] {
-        todo!()
-    }
-
-    fn set_time(&self, time: [usize; 3]) -> ASysResult {
         todo!()
     }
 
