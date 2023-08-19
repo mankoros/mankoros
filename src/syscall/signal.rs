@@ -108,6 +108,25 @@ impl<'a> Syscall<'a> {
         Ok(0)
     }
 
+    pub fn sys_tkill(&self) -> SyscallResult {
+        info!("Syscall: tkill");
+        let args = self.cx.syscall_args();
+        let pid = args[0] as usize;
+        let signum = args[1] as usize;
+        log::debug!("tkill: pid: {}, signum: {}", pid, signum);
+
+        if pid > 0 {
+            let proc = GlobalLProcManager::get(pid.into()).ok_or(LinuxError::ESRCH)?;
+            if signum != 0 {
+                proc.send_signal(signum);
+            }
+        } else {
+            todo!("kill: pid <= 0")
+        }
+
+        Ok(0)
+    }
+
     pub fn sys_sigreturn(&self) -> SyscallResult {
         info!("Syscall: sigreturn");
         *self.lproc.context() = self

@@ -2,7 +2,7 @@ use bitflags::bitflags;
 
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-    pub struct SignalSet: u32 {
+    pub struct SignalSet: u64 {
         const SIGHUP    = 1 << (     0);   // 用户终端连接结束
         const SIGINT    = 1 << ( 2 - 1);   // 程序终止 可能是 Ctrl+C
         const SIGQUIT   = 1 << ( 3 - 1);   // 类似 SIGINT Ctrl+\
@@ -35,6 +35,9 @@ bitflags! {
         const SIGPWR    = 1 << (30 - 1);   // Power failure
         const SIGSYS    = 1 << (31 - 1);   // 非法的系统调用
         const SIGTIMER  = 1 << (32 - 1);   // 非法的系统调用
+        const SIGRT1    = 1 << (33 - 1);   // real time signal min
+        const SIGRT2    = 1 << (34 - 1);
+        const SIGRT3    = 1 << (34 - 1);
     }
 }
 

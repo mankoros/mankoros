@@ -93,12 +93,14 @@ impl<'a> Syscall<'a> {
             SYSCALL_EXIT_GROUP => self.sys_exitgroup(),
             SYSCALL_GETPGID => self.sys_getpgid(),
             SYSCALL_SETPGID => self.sys_setpgid(),
+            SYSCALL_FUTEX => self.sys_do_nothing("futex"),
 
             // Signal system
             SYSCALL_RT_SIGTIMEDWAIT => self.sys_sigwait().await,
             SYSCALL_RT_SIGACTION => self.sys_sigaction(),
             SYSCALL_RT_SIGRETURN => self.sys_sigreturn(),
             SYSCALL_KILL => self.sys_kill(),
+            SYSCALL_TKILL => self.sys_tkill(),
 
             // Memory related
             SYSCALL_BRK => self.sys_brk(),
