@@ -1,10 +1,11 @@
 use crate::{
     fs::new_vfs::{
-        top::{VfsFile, VfsFileRef},
-        DeviceIDCollection, VfsFileAttr, VfsFileKind,
+        top::{DeviceInfo, SizeInfo, TimeInfo, VfsFile, VfsFileRef},
+        DeviceIDCollection, VfsFileKind,
     },
     here, impl_vfs_default_non_dir, impl_vfs_default_non_file,
     sync::SpinNoIrqLock,
+    timer::get_time_us,
     tools::errors::{dyn_future, ASysResult, SysError},
 };
 use alloc::{
@@ -14,35 +15,49 @@ use alloc::{
 };
 
 pub struct TmpFile {
+    time: SpinNoIrqLock<TimeInfo>,
     content: SpinNoIrqLock<Vec<u8>>,
 }
 
 impl TmpFile {
     pub fn new() -> Self {
         Self {
+            time: SpinNoIrqLock::new(TimeInfo {
+                access: 0,
+                modify: 0,
+                change: get_time_us() * 1000,
+            }),
             content: SpinNoIrqLock::new(Vec::new()),
         }
     }
 }
 
 impl VfsFile for TmpFile {
-    fn attr(&self) -> ASysResult<VfsFileAttr> {
+    fn attr_kind(&self) -> VfsFileKind {
+        VfsFileKind::RegularFile
+    }
+    fn attr_device(&self) -> DeviceInfo {
+        DeviceInfo {
+            device_id: DeviceIDCollection::TMP_FS_ID,
+            self_device_id: 0,
+        }
+    }
+    fn attr_size(&self) -> ASysResult<SizeInfo> {
         dyn_future(async {
-            Ok(VfsFileAttr {
-                kind: VfsFileKind::RegularFile,
-                device_id: DeviceIDCollection::TMP_FS_ID,
-                self_device_id: 0,
-                byte_size: self.content.lock(here!()).len(),
-                block_count: 0,
-                access_time: 0,
-                modify_time: 0,
-                create_time: 0,
+            Ok(SizeInfo {
+                bytes: self.content.lock(here!()).len(),
+                blocks: 0,
             })
         })
     }
-
-    fn set_time(&self, time: [usize; 3]) -> ASysResult {
-        todo!()
+    fn attr_time(&self) -> ASysResult<TimeInfo> {
+        dyn_future(async { Ok(self.time.lock(here!()).clone()) })
+    }
+    fn update_time(&self, info_change: crate::fs::new_vfs::top::TimeInfoChange) -> ASysResult {
+        dyn_future(async move {
+            self.time.lock(here!()).apply_change(info_change);
+            Ok(())
+        })
     }
 
     fn read_at<'a>(&'a self, offset: usize, buf: &'a mut [u8]) -> ASysResult<usize> {
@@ -131,22 +146,22 @@ impl TmpDir {
 impl VfsFile for TmpDir {
     impl_vfs_default_non_file!(TmpDir);
 
-    fn attr(&self) -> ASysResult<VfsFileAttr> {
-        dyn_future(async {
-            Ok(VfsFileAttr {
-                kind: VfsFileKind::Directory,
-                device_id: DeviceIDCollection::TMP_FS_ID,
-                self_device_id: 0,
-                byte_size: 0,
-                block_count: 0,
-                access_time: 0,
-                modify_time: 0,
-                create_time: 0,
-            })
-        })
+    fn attr_kind(&self) -> VfsFileKind {
+        VfsFileKind::Directory
     }
-
-    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+    fn attr_device(&self) -> DeviceInfo {
+        DeviceInfo {
+            device_id: DeviceIDCollection::TMP_FS_ID,
+            self_device_id: 0,
+        }
+    }
+    fn attr_size(&self) -> ASysResult<SizeInfo> {
+        dyn_future(async { Ok(SizeInfo::new_zero()) })
+    }
+    fn attr_time(&self) -> ASysResult<TimeInfo> {
+        dyn_future(async { Ok(TimeInfo::new_zero()) })
+    }
+    fn update_time(&self, _info: crate::fs::new_vfs::top::TimeInfoChange) -> ASysResult {
         todo!()
     }
 

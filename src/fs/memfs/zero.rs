@@ -1,7 +1,7 @@
 use crate::{
     fs::new_vfs::{
-        top::{MmapKind, PollKind, VfsFile},
-        DeviceIDCollection, VfsFileAttr, VfsFileKind,
+        top::{DeviceInfo, MmapKind, PollKind, SizeInfo, TimeInfo, VfsFile},
+        DeviceIDCollection, VfsFileKind,
     },
     impl_vfs_default_non_dir,
     memory::{address::PhysAddr4K, frame::alloc_frame},
@@ -12,22 +12,33 @@ pub struct ZeroDev;
 impl VfsFile for ZeroDev {
     impl_vfs_default_non_dir!(ZeroDev);
 
-    fn attr(&self) -> ASysResult<VfsFileAttr> {
+    fn attr_kind(&self) -> VfsFileKind {
+        VfsFileKind::CharDevice
+    }
+    fn attr_device(&self) -> DeviceInfo {
+        DeviceInfo {
+            device_id: DeviceIDCollection::DEV_FS_ID,
+            self_device_id: 0,
+        }
+    }
+    fn attr_size(&self) -> ASysResult<SizeInfo> {
         dyn_future(async {
-            Ok(VfsFileAttr {
-                kind: VfsFileKind::CharDevice,
-                device_id: DeviceIDCollection::DEV_FS_ID,
-                self_device_id: 0,
-                byte_size: 0,
-                block_count: 0,
-                access_time: 0,
-                modify_time: 0,
-                create_time: 0, // TODO: create time
+            Ok(SizeInfo {
+                bytes: 0,
+                blocks: 0,
             })
         })
     }
-
-    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+    fn attr_time(&self) -> ASysResult<TimeInfo> {
+        dyn_future(async {
+            Ok(TimeInfo {
+                access: 0,
+                modify: 0,
+                change: 0,
+            })
+        })
+    }
+    fn update_time(&self, _info: crate::fs::new_vfs::top::TimeInfoChange) -> ASysResult {
         todo!()
     }
 

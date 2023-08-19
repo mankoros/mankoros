@@ -8,7 +8,7 @@ use crate::{
     fs::{
         disk::{BLOCK_SIZE, LOG2_BLOCK_SIZE},
         new_vfs::{
-            top::{DeviceInfo, SizeInfo, TimeInfo},
+            top::{DeviceInfo, SizeInfo, TimeInfo, TimeInfoChange},
             underlying::ConcreteFile,
             VfsFileKind,
         },
@@ -229,29 +229,22 @@ impl ConcreteFile for FATFile {
     fn attr_time(&self) -> ASysResult<TimeInfo> {
         dyn_future(async move {
             Ok(TimeInfo {
-                // TODO: 这里是不是有问题????????????
-                access: self.editor.std().adate as usize,
-                modify: self.editor.std().mdate as usize,
-                create: self.editor.std().cdate as usize,
+                // TODO: real time
+                access: 0,
+                modify: 0,
+                change: 0,
             })
         })
     }
-    fn attr_set_time(&self, info: TimeInfo) -> ASysResult {
-        dyn_future(async move {
-            let std = self.editor.std_mut();
-            std.adate = info.access as u16;
-            std.mdate = info.modify as u16;
-            std.cdate = info.create as u16;
-            Ok(())
-        })
+    fn update_time(&self, _info: TimeInfoChange) -> ASysResult {
+        todo!()
     }
-    fn attr_set_size(&self, info: SizeInfo) -> ASysResult {
+    fn truncate(&self, new_size: usize) -> ASysResult {
         // 如果是文件夹，不允许 truncate
         // 如果是文件, 那么根据 new_size 是大是小决定
         // 如果小, 则调整 chain, 把多出来的块还给 fs
         // 如果大, 则向 fs 要新的块并更新 chain
         dyn_future(async move {
-            let new_size = info.bytes;
             let new_size_cls = new_size >> (self.fs.log_cls_size_sct as usize + LOG2_BLOCK_SIZE);
             let old_size_cls = self.chain.len();
 

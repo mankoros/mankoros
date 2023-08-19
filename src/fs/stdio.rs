@@ -6,7 +6,7 @@
 
 use core::pin::Pin;
 
-use super::new_vfs::{top::VfsFile, DeviceIDCollection, VfsFileAttr};
+use super::new_vfs::{top::VfsFile, DeviceIDCollection};
 use crate::{
     drivers, impl_vfs_default_non_dir,
     tools::errors::{dyn_future, ASysResult, LinuxError, SysError},
@@ -25,7 +25,22 @@ pub struct Stderr;
 impl VfsFile for Stdin {
     impl_vfs_default_non_dir!(Stdin);
 
-    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+    fn attr_kind(&self) -> super::new_vfs::VfsFileKind {
+        super::new_vfs::VfsFileKind::CharDevice
+    }
+    fn attr_device(&self) -> super::new_vfs::top::DeviceInfo {
+        super::new_vfs::top::DeviceInfo {
+            device_id: DeviceIDCollection::DEV_FS_ID,
+            self_device_id: DeviceIDCollection::STDIN_FS_ID,
+        }
+    }
+    fn attr_size(&self) -> ASysResult<super::new_vfs::top::SizeInfo> {
+        dyn_future(async { Ok(super::new_vfs::top::SizeInfo::new_zero()) })
+    }
+    fn attr_time(&self) -> ASysResult<super::new_vfs::top::TimeInfo> {
+        dyn_future(async { Ok(super::new_vfs::top::TimeInfo::new_zero()) })
+    }
+    fn update_time(&self, _info: super::new_vfs::top::TimeInfoChange) -> ASysResult {
         todo!()
     }
 
@@ -82,21 +97,6 @@ impl VfsFile for Stdin {
         panic!("Stdin::poll_write")
     }
 
-    fn attr(&self) -> ASysResult<VfsFileAttr> {
-        dyn_future(async {
-            Ok(VfsFileAttr {
-                kind: super::new_vfs::VfsFileKind::CharDevice,
-                device_id: DeviceIDCollection::DEV_FS_ID,
-                self_device_id: DeviceIDCollection::STDIN_FS_ID,
-                byte_size: 0,
-                block_count: 0,
-                access_time: 0,
-                modify_time: 0,
-                create_time: 0, // TODO: create time
-            })
-        })
-    }
-
     fn as_any(&self) -> &dyn core::any::Any {
         self
     }
@@ -105,7 +105,22 @@ impl VfsFile for Stdin {
 impl VfsFile for Stdout {
     impl_vfs_default_non_dir!(Stdout);
 
-    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+    fn attr_kind(&self) -> super::new_vfs::VfsFileKind {
+        super::new_vfs::VfsFileKind::CharDevice
+    }
+    fn attr_device(&self) -> super::new_vfs::top::DeviceInfo {
+        super::new_vfs::top::DeviceInfo {
+            device_id: DeviceIDCollection::DEV_FS_ID,
+            self_device_id: DeviceIDCollection::STDOUT_FS_ID,
+        }
+    }
+    fn attr_size(&self) -> ASysResult<super::new_vfs::top::SizeInfo> {
+        dyn_future(async { Ok(super::new_vfs::top::SizeInfo::new_zero()) })
+    }
+    fn attr_time(&self) -> ASysResult<super::new_vfs::top::TimeInfo> {
+        dyn_future(async { Ok(super::new_vfs::top::TimeInfo::new_zero()) })
+    }
+    fn update_time(&self, _info: super::new_vfs::top::TimeInfoChange) -> ASysResult {
         todo!()
     }
 
@@ -165,21 +180,6 @@ impl VfsFile for Stdout {
         buf.len()
     }
 
-    fn attr(&self) -> ASysResult<VfsFileAttr> {
-        dyn_future(async {
-            Ok(VfsFileAttr {
-                kind: super::new_vfs::VfsFileKind::CharDevice,
-                device_id: DeviceIDCollection::DEV_FS_ID,
-                self_device_id: DeviceIDCollection::STDOUT_FS_ID,
-                byte_size: 0,
-                block_count: 0,
-                access_time: 0,
-                modify_time: 0,
-                create_time: 0, // TODO: create time
-            })
-        })
-    }
-
     fn as_any(&self) -> &dyn core::any::Any {
         self
     }
@@ -188,7 +188,22 @@ impl VfsFile for Stdout {
 impl VfsFile for Stderr {
     impl_vfs_default_non_dir!(Stdout);
 
-    fn set_time(&self, time: [usize; 3]) -> ASysResult {
+    fn attr_kind(&self) -> super::new_vfs::VfsFileKind {
+        super::new_vfs::VfsFileKind::CharDevice
+    }
+    fn attr_device(&self) -> super::new_vfs::top::DeviceInfo {
+        super::new_vfs::top::DeviceInfo {
+            device_id: DeviceIDCollection::DEV_FS_ID,
+            self_device_id: DeviceIDCollection::STDERR_FS_ID,
+        }
+    }
+    fn attr_size(&self) -> ASysResult<super::new_vfs::top::SizeInfo> {
+        dyn_future(async { Ok(super::new_vfs::top::SizeInfo::new_zero()) })
+    }
+    fn attr_time(&self) -> ASysResult<super::new_vfs::top::TimeInfo> {
+        dyn_future(async { Ok(super::new_vfs::top::TimeInfo::new_zero()) })
+    }
+    fn update_time(&self, _info: super::new_vfs::top::TimeInfoChange) -> ASysResult {
         todo!()
     }
 
@@ -246,21 +261,6 @@ impl VfsFile for Stderr {
             }
         }
         buf.len()
-    }
-
-    fn attr(&self) -> ASysResult<VfsFileAttr> {
-        dyn_future(async {
-            Ok(VfsFileAttr {
-                kind: super::new_vfs::VfsFileKind::CharDevice,
-                device_id: DeviceIDCollection::DEV_FS_ID,
-                self_device_id: DeviceIDCollection::STDOUT_FS_ID,
-                byte_size: 0,
-                block_count: 0,
-                access_time: 0,
-                modify_time: 0,
-                create_time: 0, // TODO: create time
-            })
-        })
     }
 
     fn as_any(&self) -> &dyn core::any::Any {

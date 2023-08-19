@@ -609,7 +609,7 @@ impl UserAreaManager {
 
     pub fn remap_range(
         &mut self,
-        page_table: &mut PageTable,
+        _page_table: &mut PageTable,
         range: VirtAddrRange,
         new_perm: UserAreaPerm,
     ) {

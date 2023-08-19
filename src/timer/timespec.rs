@@ -39,6 +39,10 @@ impl TimeSpec {
     pub fn time_in_ms(&self) -> usize {
         self.tv_sec * E3 + self.tv_nsec / E6
     }
+
+    pub fn time_in_ns(&self) -> usize {
+        self.tv_sec * E9 + self.tv_nsec
+    }
 }
 
 impl Add for TimeSpec {

@@ -113,7 +113,7 @@ impl Syscall<'_> {
             let mut curr_path = Path::from_string(path)?;
             loop {
                 // 递归跟随符号链接
-                if file.attr().await?.kind == VfsFileKind::SymbolLink {
+                if file.kind().await? == VfsFileKind::SymbolLink {
                     let mut buf = Box::new([0u8; 512]);
                     let read_len = file.read_at(0, &mut *buf).await?;
                     if read_len == 512 {
@@ -154,7 +154,7 @@ impl Syscall<'_> {
         let (dir, file_name) = self.at_helper(dir_fd, path, 0).await?;
 
         let file = dir.lookup(&file_name).await?;
-        if file.attr().await?.kind != VfsFileKind::SymbolLink {
+        if file.kind().await? != VfsFileKind::SymbolLink {
             Err(SysError::EINVAL)
         } else {
             let buf = unsafe { VirtAddr::from(buf).as_mut_slice(buf_len) };
@@ -227,7 +227,7 @@ impl Syscall<'_> {
                 fd.set_curr(result as usize);
             }
             SEEK_END => {
-                let size = fd.file.attr().await?.byte_size;
+                let size = fd.file.size().await?;
                 let offset = (size as isize) + (offset as isize);
                 log::info!("SEEK_END: {offset}");
                 fd.set_curr(offset as usize);
