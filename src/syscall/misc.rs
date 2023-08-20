@@ -147,6 +147,43 @@ impl<'a> Syscall<'a> {
         Ok(0)
     }
 
+    pub async fn sys_clock_nanosleep(&self) -> SyscallResult {
+        const TIMER_ABSTIME: usize = 1;
+
+        let args = self.cx.syscall_args();
+        let (_clock_id, flags, req, rem) = (
+            args[0],
+            args[1],
+            UserReadPtr::<TimeSpec>::from(args[2]),
+            UserWritePtr::<TimeSpec>::from(args[3]),
+        );
+
+        info!("Syscall: clock_nanosleep");
+
+        let time_spec = req.read(&self.lproc)?;
+        let req_ms = time_spec.time_in_ms();
+        let sleep_time_ms = if flags == TIMER_ABSTIME {
+            let now = get_time_ms();
+            if req_ms > now {
+                req_ms - now
+            } else {
+                0
+            }
+        } else {
+            req_ms
+        };
+
+        if sleep_time_ms != 0 {
+            wake_after(sleep_time_ms).await;
+        }
+
+        if rem.not_null() {
+            rem.write(&self.lproc, TimeSpec::new(0, 0))?;
+        }
+
+        Ok(0)
+    }
+
     pub async fn sys_sched_yield(&mut self) -> SyscallResult {
         yield_now().await;
         Ok(0)

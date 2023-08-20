@@ -133,6 +133,8 @@ impl<'a> Syscall<'a> {
             SYSCALL_CLOCKGETTIME => self.sys_clockgettime(),
             SYSCALL_CLOCK_GETRES => self.sys_clock_getres(),
             SYSCALL_NANOSLEEP => self.sys_nanosleep().await,
+            SYSCALL_CLOCK_NANOSLEEP => self.sys_clock_nanosleep().await,
+
             SYSCALL_GETUID => self.sys_getuid(),
             SYSCALL_GETRUSAGE => self.sys_getrusage(),
             SYSCALL_SYSLOG => self.sys_do_nothing("syslog"),
@@ -226,6 +228,7 @@ pub const SYSCALL_NANOSLEEP: usize = 101;
 pub const SYSCALL_SETITIMER: usize = 103;
 pub const SYSCALL_CLOCKGETTIME: usize = 113;
 pub const SYSCALL_CLOCK_GETRES: usize = 114;
+pub const SYSCALL_CLOCK_NANOSLEEP: usize = 115;
 pub const SYSCALL_SYSLOG: usize = 116;
 pub const SYSCALL_SCHED_SETSCHEDULER: usize = 119;
 pub const SYSCALL_SCHED_GETSCHEDULER: usize = 120;
