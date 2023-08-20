@@ -77,7 +77,7 @@ impl FatDEntryData<'_> {
 const DENTRY_SIZE: ClsOffsetT = 32;
 
 #[repr(C, packed)]
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub(super) struct Standard8p3EntryRepr {
     pub name: [u8; 8],
     pub ext: [u8; 3],
@@ -107,7 +107,7 @@ impl Standard8p3EntryRepr {
 }
 
 #[repr(C, packed)]
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub(super) struct LongFileNameEntryRepr {
     pub order: u8,
     pub name1: [u16; 5],

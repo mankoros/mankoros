@@ -667,7 +667,7 @@ impl UserAreaManager {
                     // log::debug!("{:<8x}: unmapped", vpn);
                 } else {
                     let hash = exam_hash(unsafe { vaddr.as_page_slice() });
-                    log::trace!(
+                    log::info!(
                         "0x{: >8x}: {:0>4x} {:0>4x} {:0>4x} {:0>4x}",
                         vpn.bits(),
                         (hash & 0xffff_0000_0000_0000) >> 48,

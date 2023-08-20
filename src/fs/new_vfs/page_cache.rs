@@ -43,7 +43,18 @@ impl<F: ConcreteFile> VfsFile for PageCacheFile<F> {
         self.file.attr_device()
     }
     fn attr_size(&self) -> ASysResult<super::top::SizeInfo> {
-        dyn_future(self.file.attr_size())
+        dyn_future(async move {
+            let mut info = self.file.attr_size().await?;
+            let mgr = self.mgr.lock().await;
+            let last = mgr.cached_pages.last_key_value();
+
+            if let Some((begin_offset, page_cache)) = last {
+                let end_offset = begin_offset + page_cache.len();
+                info.bytes = info.bytes.max(end_offset);
+            }
+
+            Ok(info)
+        })
     }
     fn attr_time(&self) -> ASysResult<super::top::TimeInfo> {
         dyn_future(self.file.attr_time())
