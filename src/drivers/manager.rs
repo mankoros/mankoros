@@ -6,6 +6,7 @@ use log::{info, warn};
 
 use crate::{
     arch, boot,
+    fs::procfs::interrupts::PROC_FS_IRQ_CNT,
     memory::{self, address::VirtAddr, kernel_phys_dev_to_virt, pagetable::pte::PTEFlags},
 };
 
@@ -67,6 +68,13 @@ impl DeviceManager {
         info!("Handling interrupt");
         // First clain interrupt from PLIC
         if let Some(irq_number) = self.plic.claim_irq(self.irq_context()) {
+            // Increase cnt in global interrupt counter
+            if let Some(cnt) = unsafe { PROC_FS_IRQ_CNT.get_mut(&irq_number) } {
+                *cnt += 1;
+            } else {
+                unsafe { PROC_FS_IRQ_CNT.insert(irq_number, 1) };
+            }
+
             if let Some(dev) = self.interrupt_map.get(&irq_number) {
                 info!(
                     "Handling interrupt from device: {:?}, irq: {}",
