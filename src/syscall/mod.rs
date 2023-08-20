@@ -3,6 +3,7 @@ mod io;
 mod memory;
 mod misc;
 mod process;
+mod resource;
 mod signal;
 
 use crate::tools::errors::SysResult;
@@ -117,6 +118,13 @@ impl<'a> Syscall<'a> {
             SYSCALL_SHMDT => self.sys_shmdt(),
             SYSCALL_MADVISE => self.sys_do_nothing("madvise"),
 
+            // Resource related
+            SYSCALL_SCHED_SETSCHEDULER => self.sys_sched_setscheduler(),
+            SYSCALL_SCHED_GETSCHEDULER => self.sys_sched_getscheduler(),
+            SYSCALL_SCHED_GETPARAM => self.sys_sched_getparam(),
+            SYSCALL_SCHED_SETAFFINITY => self.sys_sched_setaffinity(),
+            SYSCALL_SCHED_GETAFFINITY => self.sys_sched_getaffinity(),
+
             // Misc
             SYSCALL_TIMES => self.sys_times(),
             SYSCALL_UNAME => self.sys_uname(),
@@ -217,6 +225,11 @@ pub const SYSCALL_NANOSLEEP: usize = 101;
 pub const SYSCALL_SETITIMER: usize = 103;
 pub const SYSCALL_CLOCKGETTIME: usize = 113;
 pub const SYSCALL_SYSLOG: usize = 116;
+pub const SYSCALL_SCHED_SETSCHEDULER: usize = 119;
+pub const SYSCALL_SCHED_GETSCHEDULER: usize = 120;
+pub const SYSCALL_SCHED_GETPARAM: usize = 121;
+pub const SYSCALL_SCHED_SETAFFINITY: usize = 122;
+pub const SYSCALL_SCHED_GETAFFINITY: usize = 123;
 pub const SYSCALL_SCHED_YIELD: usize = 124;
 pub const SYSCALL_KILL: usize = 129;
 pub const SYSCALL_TKILL: usize = 130;
