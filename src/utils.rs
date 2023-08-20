@@ -4,6 +4,7 @@ use core::sync::atomic::Ordering;
 use alloc::sync::Arc;
 
 use crate::{here, DEVICE_REMAPPED};
+use core::arch::global_asm;
 
 #[macro_export]
 macro_rules! print {
@@ -82,19 +83,15 @@ pub unsafe fn raw_ptr_to_ref_str(start: *const u8) -> &'static str {
     }
 }
 
-static mut MCOUNT: usize = 0;
-#[no_mangle]
-unsafe extern "C" fn mcount() {
-    unsafe {
-        let sp = crate::arch::sp();
-        if sp > 0xffff_ffc0_0000_0000 {
-            MCOUNT += 1;
-        }
-    }
-}
+global_asm!(include_str!("mcount.asm"));
 
 pub fn print_mcount() {
+    extern "C" {
+        #[allow(improper_ctypes)]
+        fn MCOUNT_CNT();
+    }
     unsafe {
-        log::error!("mcount: {}", MCOUNT);
+        let mcount_ptr = MCOUNT_CNT as *const usize;
+        log::error!("mcount: {}", *mcount_ptr);
     }
 }
