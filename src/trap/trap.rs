@@ -4,15 +4,14 @@ use core::arch::global_asm;
 use riscv::register::sstatus;
 use riscv::register::{stvec, utvec::TrapMode};
 
-use log::trace;
 use crate::trap::fp_ctx::{fp_ctx_kernel_to_user, fp_ctx_user_to_kernel};
+use log::trace;
 
 global_asm!(include_str!("trap.asm"));
 
 pub fn init() {
     unsafe {
         set_kernel_trap();
-        enable_irq();
     }
 }
 

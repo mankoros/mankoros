@@ -198,6 +198,8 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
 
     fs::init_filesystems(manager.disks()[0].clone());
 
+    unsafe { riscv::register::sstatus::set_sie() };
+
     // Probe prelimiary tests
     run_preliminary_test();
 
