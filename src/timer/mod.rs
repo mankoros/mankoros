@@ -10,6 +10,7 @@ pub use self::timespec::TimeSpec;
 pub use self::timestat::TimeStat;
 pub use self::timeval::TimeVal;
 pub use self::tms::Tms;
+use crate::fs::procfs::interrupts::PROC_FS_IRQ_CNT;
 use crate::{arch, consts};
 pub use async_sleep::call_after;
 pub use async_sleep::wake_after;
@@ -72,6 +73,12 @@ pub fn timer_handler() {
         if TIMER_TICK >= consts::time::INTERRUPT_PER_SEC {
             TIMER_TICK = 0;
             info!("Hart {}: +1s", arch::get_hart_id());
+        }
+        // Increase cnt in global interrupt counter
+        if let Some(cnt) = unsafe { PROC_FS_IRQ_CNT.get_mut(&3) } {
+            *cnt += 1;
+        } else {
+            unsafe { PROC_FS_IRQ_CNT.insert(3, 1) };
         }
         async_sleep::at_tick();
     }
