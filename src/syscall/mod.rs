@@ -57,6 +57,7 @@ impl<'a> Syscall<'a> {
             SYSCALL_PREADV => self.sys_preadv().await,
             SYSCALL_PWRITEV => self.sys_pwritev().await,
             SYSCALL_IOCTL => self.sys_ioctl().await,
+            SYSCALL_COPY_FILE_RANGE => self.sys_copy_file_range().await,
 
             // FS related
             SYSCALL_NEWFSTAT => self.sys_fstat().await,
@@ -261,5 +262,6 @@ pub const SYSCALL_WAIT: usize = 260;
 pub const SYSCALL_PRLIMIT: usize = 261;
 pub const SYSCALL_RENAMEAT2: usize = 276;
 pub const SYSCALL_MEMBARRIER: usize = 283;
+pub const SYSCALL_COPY_FILE_RANGE: usize = 285;
 pub const SYSCALL_STOP: usize = 998;
 pub const SYSCALL_SHUTDOWN: usize = 999;

@@ -656,6 +656,55 @@ impl Syscall<'_> {
         let fd = self.lproc.with_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
         fd.file.ioctl(cmd.into(), arg).await
     }
+
+    pub async fn sys_copy_file_range(&mut self) -> SyscallResult {
+        let args = self.cx.syscall_args();
+        let (fd_in, off_in_ptr, fd_out, off_out_ptr, len, flags) = (
+            args[0],
+            UserInOutPtr::<usize>::from(args[1]),
+            args[2],
+            UserInOutPtr::<usize>::from(args[3]),
+            args[4],
+            args[5],
+        );
+
+        log::info!("Syscall: copy_file_range, fd_in: {}, fd_out: {}, off_in: {}, off_out: {}, len: {}, flags: {}", fd_in, fd_out, off_in_ptr, off_out_ptr, len, flags);
+        debug_assert!(flags == 0);
+        debug_assert_ne!(fd_in, fd_out);
+
+        let fd_in = self.lproc.with_fdtable(|f| f.get(fd_in)).ok_or(SysError::EBADF)?;
+        let fd_out = self.lproc.with_fdtable(|f| f.get(fd_out)).ok_or(SysError::EBADF)?;
+
+        let off_in = if off_in_ptr.is_null() {
+            fd_in.curr()
+        } else {
+            off_in_ptr.read(&self.lproc)?
+        };
+        let off_out = if off_out_ptr.is_null() {
+            fd_out.curr()
+        } else {
+            off_out_ptr.read(&self.lproc)?
+        };
+
+        let mut buf = Vec::<u8>::with_capacity(len);
+        let read_len = fd_in.file.read_at(off_in, &mut buf[..len]).await?;
+        buf.truncate(read_len);
+        let write_len = fd_out.file.write_at(off_out, &buf[..read_len]).await?;
+
+        if off_in_ptr.is_null() {
+            fd_in.set_curr(off_in + read_len);
+        } else {
+            off_in_ptr.write(&self.lproc, off_in + read_len)?;
+        }
+
+        if off_out_ptr.is_null() {
+            fd_out.set_curr(off_out + write_len);
+        } else {
+            off_out_ptr.write(&self.lproc, off_out + write_len)?;
+        }
+
+        Ok(write_len)
+    }
 }
 
 #[repr(C)]
