@@ -4,7 +4,7 @@ use alloc::{
 };
 
 use crate::{
-    executor::block_on,
+    executor::{self, block_on},
     fs::{self, new_vfs::path::Path},
     process::{lproc::LightProcess, spawn_proc},
 };
@@ -41,7 +41,9 @@ pub fn run_iozone() {
 
 pub fn run_interrupts() {
     run_binary("interrupts-test-1", Vec::new());
+    executor::run_until_idle();
     run_binary("interrupts-test-2", Vec::new());
+    executor::run_until_idle();
 }
 
 fn run_script(name: &str) {
