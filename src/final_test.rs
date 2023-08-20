@@ -39,6 +39,11 @@ pub fn run_iozone() {
     run_script("iozone_testcode.sh");
 }
 
+pub fn run_interrupts() {
+    run_binary("interrupts-test-1", Vec::new());
+    run_binary("interrupts-test-2", Vec::new());
+}
+
 fn run_script(name: &str) {
     let root_dir = fs::get_root_dir();
     let busybox = block_on(root_dir.lookup("busybox")).expect("Read busybox failed");
