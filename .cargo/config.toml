@@ -6,8 +6,8 @@ rustflags = [
     "-Clink-arg=-Tlinker.ld",
     "-Cforce-frame-pointers=yes",
     "-Cforce-unwind-tables",
-    "-Zinstrument-mcount",
-    "-Cpasses=ee-instrument<post-inline>",
-    "-Clinker-plugin-lto=off",
-    "-Clto=off",
+    # "-Zinstrument-mcount",
+    # "-Cpasses=ee-instrument<post-inline>",
+    # "-Clinker-plugin-lto=off",
+    # "-Clto=off",
 ]
