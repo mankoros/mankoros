@@ -108,6 +108,14 @@ impl<'a> Syscall<'a> {
         Ok(0)
     }
 
+    pub fn sys_clock_getres(&mut self) -> SyscallResult {
+        info!("Syscall: clock_getres");
+        let args = self.cx.syscall_args();
+        let (_clock_id, time_spec) = (args[0], UserWritePtr::<TimeSpec>::from(args[1]));
+        time_spec.write(&self.lproc, TimeSpec::new(0, 1000000))?;
+        Ok(0)
+    }
+
     pub async fn sys_nanosleep(&mut self) -> SyscallResult {
         let args = self.cx.syscall_args();
         let (req, rem) = (
