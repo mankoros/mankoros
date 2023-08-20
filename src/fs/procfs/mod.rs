@@ -20,6 +20,8 @@ use alloc::{
     vec::Vec,
 };
 
+pub mod interrupts;
+
 impl VfsFileAttr {
     pub fn new_mem_dir() -> Self {
         Self {
@@ -135,6 +137,24 @@ impl ProcFSRootDir {
             },
         })
     }
+
+    fn create_interrupts(&self) -> VfsFileRef {
+        VfsFileRef::new(ProcFSStandaloneFile {
+            kind: VfsFileKind::RegularFile,
+            f: || {
+                let mut content = String::with_capacity(1024);
+                for (irq, cnt) in unsafe { interrupts::PROC_FS_IRQ_CNT.iter() } {
+                    content.push_str(irq.to_string().as_str());
+                    content.push_str(": ");
+
+                    content.push_str(cnt.to_string().as_str());
+                    content.push_str("\n");
+                }
+                log::warn!("proc: {content}");
+                content.as_bytes().into()
+            },
+        })
+    }
 }
 
 impl VfsFile for ProcFSRootDir {
@@ -164,6 +184,11 @@ impl VfsFile for ProcFSRootDir {
                 let file = self.create_mounts();
                 ret.push(("mounts".into(), file));
             }
+            {
+                // add interrupts
+                let file = self.create_interrupts();
+                ret.push(("interrupts".into(), file));
+            }
 
             Ok(ret)
         })
@@ -173,6 +198,8 @@ impl VfsFile for ProcFSRootDir {
         dyn_future(async move {
             if name == "mounts" {
                 return Ok(self.create_mounts());
+            } else if name == "interrupts" {
+                return Ok(self.create_interrupts());
             }
 
             let lproc = if name == "self" {
