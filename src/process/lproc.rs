@@ -431,21 +431,24 @@ impl LightProcess {
         }
         let old_memory = self.memory.lock(here!());
 
+        let mut new_memory = memory.lock(here!());
+
         let new_stack_top;
         let new_sp;
         let old_sp = self.context().get_user_sp();
         let (old_stack_range, _) = old_memory.areas().get(old_sp.into()).unwrap();
         let old_stack_top: usize = (old_stack_range.end - 1).bits() & !0xF;
-        drop(old_memory); // Unlock old_memory
-
-        let mut new_memory = memory.lock(here!());
         // 如果用户指定了栈，那么就用用户指定的栈，否则在新的地址空间里分配一个
         if let Some(sp) = user_stack_begin {
-            new_stack_top = 0.into(); // should not be used
-            new_sp = sp;
+            new_stack_top = sp;
+            new_sp = new_stack_top - (old_stack_top - old_sp);
         } else if flags.contains(CloneFlags::VM) {
             new_stack_top = new_memory.areas_mut().alloc_stack(THREAD_STACK_SIZE);
             new_memory.force_map_area(new_stack_top);
+            // We should in old pagetable now
+            debug_assert!(
+                arch::get_curr_page_table_addr() == old_memory.page_table.root_paddr().bits()
+            );
 
             let stack_length = old_stack_top - old_sp;
             new_sp = new_stack_top - stack_length;
@@ -473,6 +476,7 @@ impl LightProcess {
         );
 
         context.get_mut().set_user_sp(new_sp.bits());
+        drop(old_memory);
         drop(new_memory);
 
         let fsinfo;
