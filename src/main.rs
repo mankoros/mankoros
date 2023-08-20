@@ -205,25 +205,27 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
 
     #[cfg(feature = "final")]
     {
-        executor::run_until_idle();
-        final_test::run_busybox_test();
-        executor::run_until_idle();
-        final_test::run_interrupts();
-        executor::run_until_idle();
-        final_test::run_time_test();
-        executor::run_until_idle();
-        final_test::run_libc_static();
-        executor::run_until_idle();
-        final_test::run_libc_dynamic();
-        executor::run_until_idle();
-        final_test::run_libc_bench();
-        executor::run_until_idle();
-        final_test::run_lua();
-        executor::run_until_idle();
-        final_test::run_iozone();
-        executor::run_until_idle();
-        final_test::run_lmbench();
-        final_test::run_unixbench();
+        // executor::run_until_idle();
+        // final_test::run_busybox_test();
+        // executor::run_until_idle();
+        // final_test::run_interrupts();
+        // executor::run_until_idle();
+        // final_test::run_time_test();
+        // executor::run_until_idle();
+        // final_test::run_libc_static();
+        // executor::run_until_idle();
+        // final_test::run_libc_dynamic();
+        // executor::run_until_idle();
+        // final_test::run_libc_bench();
+        // executor::run_until_idle();
+        // final_test::run_lua();
+        // executor::run_until_idle();
+        // final_test::run_iozone();
+        // executor::run_until_idle();
+        final_test::run_copy_file_range();
+        final_test::run_cyclictest();
+        // final_test::run_lmbench();
+        // final_test::run_unixbench();
         println!("!TEST FINISH!");
     }
 

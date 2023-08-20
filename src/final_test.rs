@@ -47,6 +47,22 @@ pub fn run_interrupts() {
     executor::run_until_idle();
 }
 
+pub fn run_copy_file_range() {
+    run_binary("copy-file-range-test-1", Vec::new());
+    executor::run_until_idle();
+    run_binary("copy-file-range-test-2", Vec::new());
+    executor::run_until_idle();
+    run_binary("copy-file-range-test-3", Vec::new());
+    executor::run_until_idle();
+    run_binary("copy-file-range-test-4", Vec::new());
+    executor::run_until_idle();
+}
+
+pub fn run_cyclictest() {
+    run_script("cyclictest_testcode.sh");
+    executor::run_until_idle();
+}
+
 pub fn run_lmbench() {
     println!("latency measurements");
     run_binary(
