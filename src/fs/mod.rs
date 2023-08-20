@@ -1,10 +1,13 @@
 use alloc::sync::Arc;
 use log::info;
 
-use self::new_vfs::{
-    mount::GlobalMountManager,
-    top::{VfsFS, VfsFSAttr, VfsFSKind, VfsFSRef},
-    DeviceIDCollection,
+use self::{
+    memfs::tmpdir,
+    new_vfs::{
+        mount::GlobalMountManager,
+        top::{VfsFS, VfsFSAttr, VfsFSKind, VfsFSRef},
+        DeviceIDCollection,
+    },
 };
 use crate::{
     drivers::{AsyncBlockDevice, BlockDevice},
@@ -20,6 +23,7 @@ use crate::{
 pub mod disk;
 pub mod partition;
 
+pub mod debugfs;
 pub mod memfs;
 pub mod new_vfs;
 pub mod nfat32;
@@ -97,6 +101,17 @@ async fn mount_all_fs() -> SysResult<()> {
     let tmp_fs = VfsFSRef::new(TmpFS(VfsFileRef::new(TmpDir::new())));
     let tmp_mp = GlobalMountManager::register_as_file("/tmp", tmp_fs);
     root_dir.attach("tmp", tmp_mp).await?;
+
+    // Mount debugfs
+    let debug_mp =
+        GlobalMountManager::register_as_file("/sys/kernel/debug", VfsFSRef::new(debugfs::DebugFS));
+
+    let sys_dir = VfsFileRef::new(TmpDir::new());
+    let kernel_dir = VfsFileRef::new(TmpDir::new());
+
+    kernel_dir.attach("debug", debug_mp).await?;
+    sys_dir.attach("kernel", kernel_dir).await?;
+    root_dir.attach("sys", sys_dir).await?;
 
     Ok(())
 }

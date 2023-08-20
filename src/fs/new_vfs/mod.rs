@@ -67,6 +67,7 @@ impl DeviceIDCollection {
     pub const STDOUT_FS_ID: DeviceID = 4;
     pub const STDERR_FS_ID: DeviceID = 5;
     pub const PROC_FS_ID: DeviceID = 6;
+    pub const DEBUG_FS_ID: DeviceID = 7;
 
     pub const CONCERTE_FS_ID_BEG: DeviceID = 256;
 }

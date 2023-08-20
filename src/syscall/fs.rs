@@ -5,9 +5,11 @@ use alloc::string::String;
 use log::{debug, info, warn};
 
 use crate::{
+    arch::sp,
     consts::{self, MAX_OPEN_FILES},
     fs::{
         self,
+        debugfs::add_func_call,
         disk::BLOCK_SIZE,
         memfs::zero::ZeroDev,
         new_vfs::{
@@ -132,6 +134,7 @@ impl<'a> Syscall<'a> {
     }
 
     pub async fn sys_fstatat(&self) -> SyscallResult {
+        add_func_call(sp());
         info!("Syscall: fstatat");
         let args = self.cx.syscall_args();
         let (dir_fd, path_name, kstat, flags) = (

@@ -1,10 +1,12 @@
 use log::{debug, info};
 
 use crate::{
+    arch::sp,
     consts::MAX_OPEN_FILES,
     executor::util_futures::AnyFuture,
     fs::{
         self,
+        debugfs::add_func_call,
         new_vfs::{path::Path, top::PollKind, VfsFileKind},
         npipe::Pipe,
     },
@@ -19,6 +21,8 @@ use alloc::{boxed::Box, collections::BTreeMap, vec::Vec};
 
 impl Syscall<'_> {
     pub async fn sys_write(&mut self) -> SyscallResult {
+        add_func_call(sp());
+
         let args = self.cx.syscall_args();
         let (fd, buf, len) = (args[0], UserReadPtr::<u8>::from(args[1]), args[2]);
 
@@ -39,6 +43,8 @@ impl Syscall<'_> {
         }
     }
     pub async fn sys_read(&mut self) -> SyscallResult {
+        add_func_call(sp());
+
         let args = self.cx.syscall_args();
         let (fd, buf, len) = (args[0], UserWritePtr::from_usize(args[1]), args[2]);
 
@@ -70,6 +76,8 @@ impl Syscall<'_> {
     }
 
     pub async fn sys_openat(&mut self) -> SyscallResult {
+        add_func_call(sp());
+
         // TODO: refactor using `at_helper`
         let args = self.cx.syscall_args();
         let (dir_fd, path, raw_flags, _user_mode) = (
@@ -142,6 +150,7 @@ impl Syscall<'_> {
     }
 
     pub async fn sys_readlinkat(&self) -> SyscallResult {
+        add_func_call(sp());
         let args = self.cx.syscall_args();
         let (dir_fd, path, buf, buf_len) =
             (args[0], UserReadPtr::<u8>::from(args[1]), args[2], args[3]);
@@ -166,6 +175,7 @@ impl Syscall<'_> {
     /// 创建管道，在 *pipe 记录读管道的 fd，在 *(pipe+1) 记录写管道的 fd。
     /// 成功时返回 0，失败则返回 -1
     pub fn sys_pipe(&mut self) -> SyscallResult {
+        add_func_call(sp());
         let args = self.cx.syscall_args();
         let pipe = UserWritePtr::<[u32; 2]>::from(args[0]);
 
@@ -184,6 +194,7 @@ impl Syscall<'_> {
     }
 
     pub fn sys_close(&mut self) -> SyscallResult {
+        add_func_call(sp());
         let args = self.cx.syscall_args();
         let fd = args[0];
         info!("Syscall: close: fd: {}", fd);
@@ -199,6 +210,7 @@ impl Syscall<'_> {
     }
 
     pub async fn sys_lseek(&mut self) -> SyscallResult {
+        add_func_call(sp());
         const SEEK_SET: usize = 0; /* Seek from beginning of file.  */
         const SEEK_CUR: usize = 1; /* Seek from current position.  */
         const SEEK_END: usize = 2; /* Seek from end of file.  */
@@ -242,6 +254,7 @@ impl Syscall<'_> {
     }
 
     pub async fn sys_ppoll(&mut self) -> SyscallResult {
+        add_func_call(sp());
         #[repr(C)]
         #[derive(Debug, Copy, Clone)]
         struct PollFd {
@@ -336,6 +349,7 @@ impl Syscall<'_> {
     }
 
     pub async fn sys_pselect(&mut self) -> SyscallResult {
+        add_func_call(sp());
         #[repr(C)]
         #[derive(Debug, Copy, Clone)]
         struct FdSet {
@@ -479,6 +493,7 @@ impl Syscall<'_> {
     }
 
     pub async fn sys_writev(&mut self) -> SyscallResult {
+        add_func_call(sp());
         let args = self.cx.syscall_args();
         let (fd, iov, iovcnt) = (args[0], UserReadPtr::<IoVec>::from(args[1]), args[2]);
 
@@ -513,6 +528,7 @@ impl Syscall<'_> {
     }
 
     pub async fn sys_readv(&mut self) -> SyscallResult {
+        add_func_call(sp());
         let args = self.cx.syscall_args();
         let (fd, iov, iovcnt) = (args[0], UserReadPtr::<IoVec>::from(args[1]), args[2]);
 
@@ -561,6 +577,7 @@ impl Syscall<'_> {
     }
 
     pub async fn sys_pwrite(&mut self) -> SyscallResult {
+        add_func_call(sp());
         let args = self.cx.syscall_args();
         let (fd, buf, count, offset) =
             (args[0], UserReadPtr::<u8>::from(args[1]), args[2], args[3]);
@@ -578,6 +595,7 @@ impl Syscall<'_> {
     }
 
     pub async fn sys_preadv(&mut self) -> SyscallResult {
+        add_func_call(sp());
         let args = self.cx.syscall_args();
         let (fd, iov, iovcnt, offset) = (
             args[0],
@@ -612,6 +630,7 @@ impl Syscall<'_> {
     }
 
     pub async fn sys_pwritev(&mut self) -> SyscallResult {
+        add_func_call(sp());
         let args = self.cx.syscall_args();
         let (fd, iov, iovcnt, offset) = (
             args[0],
@@ -646,6 +665,7 @@ impl Syscall<'_> {
     }
 
     pub async fn sys_ioctl(&self) -> SyscallResult {
+        add_func_call(sp());
         let args = self.cx.syscall_args();
         let (fd, cmd, arg) = (args[0], args[1], args[2]);
 
@@ -659,6 +679,7 @@ impl Syscall<'_> {
     }
 
     pub async fn sys_copy_file_range(&mut self) -> SyscallResult {
+        add_func_call(sp());
         let args = self.cx.syscall_args();
         let (fd_in, off_in_ptr, fd_out, off_out_ptr, len, flags) = (
             args[0],
