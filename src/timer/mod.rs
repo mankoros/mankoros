@@ -75,10 +75,10 @@ pub fn timer_handler() {
             info!("Hart {}: +1s", arch::get_hart_id());
         }
         // Increase cnt in global interrupt counter
-        if let Some(cnt) = unsafe { PROC_FS_IRQ_CNT.get_mut(&3) } {
+        if let Some(cnt) = PROC_FS_IRQ_CNT.get_mut(&3) {
             *cnt += 1;
         } else {
-            unsafe { PROC_FS_IRQ_CNT.insert(3, 1) };
+            PROC_FS_IRQ_CNT.insert(3, 1);
         }
         async_sleep::at_tick();
     }
