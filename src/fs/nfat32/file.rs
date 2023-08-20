@@ -201,6 +201,48 @@ impl FATFile {
     fn size(&self) -> usize {
         self.editor.std().size as usize
     }
+
+    const EMPTY_BLOCK: [u8; BLOCK_SIZE] = [0u8; BLOCK_SIZE];
+    async fn fill_with_zero(&self, offset: usize, len: usize) -> SysResult {
+        // find the first sector, write the latter part
+        // then fill the middle sectors
+        // then the last scector, only write the first part
+
+        let (sct_id, sct_off) = self.chain.offset_sct(self.fs, offset);
+        // first sector
+        let first_sid_opt = if sct_off != 0 {
+            let sct_off = sct_off as usize;
+            let mut buf: [u8; BLOCK_SIZE] = [0; BLOCK_SIZE];
+            self.fs.read_sector(sct_id, &mut buf).await?;
+            buf[sct_off..].fill(0);
+            self.fs.write_sector(sct_id, &buf).await?;
+            self.fs.next_sector(sct_id)
+        } else {
+            Some(sct_id)
+        };
+
+        // middle sectors
+        let mut writable_len = len;
+        let mut sid_opt = first_sid_opt;
+        while let Some(sid) = sid_opt && writable_len >= BLOCK_SIZE {
+            use core::cmp::min;
+            let len = min(writable_len, BLOCK_SIZE);
+            self.fs.write_sector(sid, &Self::EMPTY_BLOCK).await?;
+
+            writable_len -= len;
+            sid_opt = self.fs.next_sector(sid);
+        }
+
+        // last sector
+        if let Some(sid) = sid_opt && writable_len != 0 {
+            let mut buf: [u8; BLOCK_SIZE] = [0; BLOCK_SIZE];
+            self.fs.read_sector(sid, &mut buf).await?;
+            buf[..writable_len].fill(0);
+            self.fs.write_sector(sid_opt.unwrap(), &buf).await?;
+        }
+
+        Ok(())
+    }
 }
 
 impl ConcreteFile for FATFile {
@@ -251,6 +293,7 @@ impl ConcreteFile for FATFile {
             // alloc/free cluster
             if new_size_cls > old_size_cls {
                 self.chain.alloc_push(new_size_cls - old_size_cls, self.fs);
+                self.fill_with_zero(self.size(), new_size).await?;
             } else if new_size_cls < self.chain.len() {
                 self.chain.free_pop(old_size_cls - new_size_cls, self.fs);
             } else {

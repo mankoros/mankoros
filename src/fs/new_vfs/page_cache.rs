@@ -214,9 +214,7 @@ impl<F: ConcreteFile> PageManager<F> {
         let page_addr = PhysAddr::from(offset).floor().bits();
         self.perpare_range(file, page_addr, 1).await?;
         let page = self.cached_pages.get(&page_addr).unwrap();
-        let new_page = alloc_frame().ok_or(SysError::ENOMEM)?;
-        unsafe { new_page.as_mut_page_slice().copy_from_slice(page.as_slice()) }
-        Ok(new_page)
+        Ok(page.addr())
     }
 
     /// 从缓存中读取数据, 返回读取的长度.
@@ -285,45 +283,33 @@ impl<F: ConcreteFile> PageManager<F> {
 
     /// 写入数据到缓存中, 必定能全部写入
     /// 要求文件 offset 所在的页范围中的内容必须已经在缓存中或本来就不存在, 以避免使用 async 读
-    pub fn cached_write(&mut self, offset: usize, buf: &[u8]) {
-        let mut total_offset = offset; // 写入的总偏移
-        let mut target_buf = buf; // 目标区域, 会随着写入逐渐向后取
-        let mut page_buf;
-        let mut page_addr = PhysAddr::from(offset).floor().bits();
+    pub fn cached_write(&mut self, offset: usize, mut buf: &[u8]) {
+        let begin_page_addr = PhysAddr::from(offset).floor().bits();
+        let begin_page_offset = offset - begin_page_addr;
 
-        log::warn!("cached_write: offset={}, buf.len={}", offset, buf.len());
+        // the first
+        let first_page = self.get_or_alloc(begin_page_addr);
+        let len = buf.len().min(PAGE_SIZE - begin_page_offset);
+        first_page.try_update_len(begin_page_offset + len);
+        first_page.as_mut_slice()[begin_page_offset..(begin_page_offset + len)]
+            .copy_from_slice(&buf[..len]);
+        buf = &buf[len..];
 
-        // 不用管什么有效长度了, 写入的话写就是了
-        page_buf = self.cached_pages.get(&page_addr).unwrap();
-        page_addr += PAGE_SIZE;
+        // the middle
+        let mut page_addr = begin_page_addr + PAGE_SIZE;
+        while buf.len() >= PAGE_SIZE {
+            let page = self.get_or_alloc(page_addr);
+            page.try_update_len(PAGE_SIZE);
+            page.as_mut_slice().copy_from_slice(&buf[..PAGE_SIZE]);
+            buf = &buf[PAGE_SIZE..];
+            page_addr += PAGE_SIZE;
+        }
 
-        loop {
-            let target_len = target_buf.len();
-            if target_len > PAGE_SIZE {
-                page_buf.set_len(PAGE_SIZE);
-                page_buf.as_mut_slice().copy_from_slice(&target_buf[..PAGE_SIZE]);
-
-                total_offset += PAGE_SIZE;
-                target_buf = &target_buf[PAGE_SIZE..];
-                page_buf = self.cached_pages.get(&page_addr).unwrap();
-                page_addr += PAGE_SIZE;
-            } else {
-                let curr_buf_addr = page_addr - PAGE_SIZE;
-                let curr_buf_offset = total_offset - curr_buf_addr;
-                let curr_buf_new_len = curr_buf_offset + target_len;
-                log::warn!(
-                    "page_buf len: {}, curr_buf_new_len: {}",
-                    page_buf.len(),
-                    curr_buf_new_len
-                );
-                if page_buf.len() < curr_buf_new_len {
-                    // TODO: 找一个更靠谱的方式更新文件长度
-                    page_buf.set_len(curr_buf_new_len);
-                }
-                page_buf.as_mut_slice()[curr_buf_offset..curr_buf_new_len]
-                    .copy_from_slice(target_buf);
-                return;
-            }
+        // the last
+        if !buf.is_empty() {
+            let last_page = self.get_or_alloc(page_addr);
+            last_page.try_update_len(buf.len());
+            last_page.as_mut_slice()[..buf.len()].copy_from_slice(buf);
         }
     }
 }
@@ -340,13 +326,14 @@ struct CachedPage {
 impl CachedPage {
     pub fn alloc() -> SysResult<Self> {
         let phys_addr = alloc_frame().ok_or(SysError::ENOMEM)?;
+        unsafe { phys_addr.as_mut_page_slice().fill(0) };
         Ok(Self::new(phys_addr))
     }
 
     pub fn new(phys_addr: PhysAddr4K) -> Self {
         Self {
             is_dirty: AtomicBool::new(false),
-            effective_len: AtomicU32::new(PAGE_SIZE as u32),
+            effective_len: AtomicU32::new(0 as u32),
             phys_addr,
         }
     }
@@ -362,6 +349,13 @@ impl CachedPage {
     pub fn set_len(&self, len: usize) {
         self.effective_len.store(len as u32, core::sync::atomic::Ordering::Relaxed);
     }
+    pub fn try_update_len(&self, maybe_new_len: usize) {
+        let old_len = self.len();
+        if maybe_new_len > old_len {
+            self.set_len(maybe_new_len);
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.effective_len.load(core::sync::atomic::Ordering::Relaxed) as usize
     }
