@@ -81,3 +81,20 @@ pub unsafe fn raw_ptr_to_ref_str(start: *const u8) -> &'static str {
         "p"
     }
 }
+
+static mut MCOUNT: usize = 0;
+#[no_mangle]
+unsafe extern "C" fn mcount() {
+    unsafe {
+        let sp = crate::arch::sp();
+        if sp > 0xffff_ffc0_0000_0000 {
+            MCOUNT += 1;
+        }
+    }
+}
+
+pub fn print_mcount() {
+    unsafe {
+        log::error!("mcount: {}", MCOUNT);
+    }
+}

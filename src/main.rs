@@ -165,6 +165,8 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     let serial = SerialWrapper::new(serial0);
     unsafe { *UART0.lock(here!()) = Some(Box::new(serial)) };
 
+    utils::print_mcount();
+
     info!("Console switching...");
     DEVICE_REMAPPED.store(true, Ordering::SeqCst);
     info!("Console switched to UART0");
@@ -199,6 +201,8 @@ pub extern "C" fn boot_rust_main(boot_hart_id: usize, boot_pc: usize) -> ! {
     fs::init_filesystems(manager.disks()[0].clone());
 
     unsafe { riscv::register::sstatus::set_sie() };
+
+    utils::print_mcount();
 
     // Probe prelimiary tests
     run_preliminary_test();

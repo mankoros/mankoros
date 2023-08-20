@@ -3,7 +3,11 @@ target = "riscv64gc-unknown-none-elf"
 
 [target.riscv64gc-unknown-none-elf]
 rustflags = [
-    "-Clink-arg=-Tlinker.ld", 
+    "-Clink-arg=-Tlinker.ld",
     "-Cforce-frame-pointers=yes",
     "-Cforce-unwind-tables",
+    "-Zinstrument-mcount",
+    "-Cpasses=ee-instrument<post-inline>",
+    "-Clinker-plugin-lto=off",
+    "-Clto=off",
 ]
