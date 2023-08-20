@@ -157,6 +157,7 @@ impl<'a> Syscall<'a> {
     pub async fn sys_fturncate(&self) -> SyscallResult {
         let args = self.cx.syscall_args();
         let (fd, length) = (args[0], args[1]);
+        info!("Syscall: ftruncate, fd: {}, length: {}", fd, length);
         let file = self.lproc.with_mut_fdtable(|f| f.get(fd)).ok_or(SysError::EBADF)?;
         file.file.truncate(length).await?;
         Ok(0)

@@ -60,18 +60,16 @@ impl<F: ConcreteFile> VfsFile for PageCacheFile<F> {
         dyn_future(self.file.attr_time())
     }
 
-    fn truncate(&self, info: usize) -> ASysResult {
+    fn truncate(&self, new_size: usize) -> ASysResult {
         dyn_future(async move {
-            let mut info = info;
-            let mgr = self.mgr.lock().await;
-            let last = mgr.cached_pages.last_key_value();
-
-            if let Some((begin_offset, page_cache)) = last {
-                let end_offset = begin_offset + page_cache.len();
-                info = info.max(end_offset);
+            if new_size == 0 {
+                // drop all pages in cache
+                let mut mgr = self.mgr.lock().await;
+                mgr.cached_pages.clear();
+            } else {
+                log::warn!("TODO: truncate to non-zero size");
             }
-
-            self.file.truncate(info).await
+            self.file.truncate(new_size).await
         })
     }
     fn update_time(&self, info: super::top::TimeInfoChange) -> ASysResult {
@@ -179,6 +177,7 @@ impl<F: ConcreteFile> PageManager<F> {
         let end = VirtAddr::from(offset + len).ceil().bits();
 
         let file_size = file.attr_size().await?.bytes;
+        log::warn!("file_size: {}", file_size);
 
         let mut total_len = 0;
         for page_begin in (begin..end).step_by(PAGE_SIZE) {

@@ -101,6 +101,7 @@ impl Syscall<'_> {
                     return Err(SysError::ENOENT);
                 }
                 // Create file
+                log::debug!("openat: creating new file");
                 dir.create(&file_name, VfsFileKind::RegularFile).await?
             }
             Err(e) => {
