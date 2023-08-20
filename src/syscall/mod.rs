@@ -94,7 +94,10 @@ impl<'a> Syscall<'a> {
             SYSCALL_EXIT_GROUP => self.sys_exitgroup(),
             SYSCALL_GETPGID => self.sys_getpgid(),
             SYSCALL_SETPGID => self.sys_setpgid(),
-            SYSCALL_FUTEX => self.sys_do_nothing("futex"),
+            SYSCALL_FUTEX => {
+                self.cx.set_user_a0(0);
+                self.sys_exit()
+            }
 
             // Signal system
             SYSCALL_RT_SIGTIMEDWAIT => self.sys_sigwait().await,
