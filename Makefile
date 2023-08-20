@@ -10,8 +10,8 @@ ADDR2LINE 	:= llvm-addr2line
 TARGET_CC	:= clang
 TARGET_CXX	:= clang++
 
-CPUS		:= 4
-MEM_SIZE	:= 4G
+CPUS		:= 2
+MEM_SIZE	:= 128M
 
 MAX_BUILD_JOBS	:= 8
 

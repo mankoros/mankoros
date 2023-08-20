@@ -4,4 +4,4 @@
 
 .balign 2097152
 __embed_dtb:
-    .incbin "jh7110.dtb"
+    # .incbin "qemu.dtb"

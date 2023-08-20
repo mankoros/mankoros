@@ -98,7 +98,7 @@ struct KernelStack([u8; 1024 * 1024]); // 1MiB stack
 
 /// 所有核的启动栈
 #[link_section = ".bss.stack"]
-static mut KERNEL_STACK: core::mem::MaybeUninit<[KernelStack; 8]> =
+static mut KERNEL_STACK: core::mem::MaybeUninit<[KernelStack; 3]> =
     core::mem::MaybeUninit::uninit(); // 8 core at max
 
 /// Assembly entry point for boot hart
@@ -142,7 +142,7 @@ unsafe extern "C" fn entry(hartid: usize) -> ! {
 #[naked]
 pub unsafe extern "C" fn set_dtb_addr(hartid: usize, boot_pgtbl: usize) {
     cfg_if::cfg_if! {
-        if #[cfg(feature = "final")] {
+        if #[cfg(feature = "dummy")] {
             core::arch::asm!(
                 "   la    s1, __embed_dtb", // Use embedded dtb
                 "   ret                  ",

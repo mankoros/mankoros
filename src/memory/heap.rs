@@ -15,7 +15,7 @@ use super::{
 
 /// 2 MiB kernel init heap
 /// Auto expand when needed
-const KERNEL_HEAP_SIZE: usize = 2 * 1024 * 1024;
+const KERNEL_HEAP_SIZE: usize = 64 * 1024;
 
 #[global_allocator]
 static HEAP_ALLOCATOR: LockedHeapWithRescue<32> =
@@ -28,6 +28,10 @@ static mut KERNEL_HEAP_TOP: usize = K_SEG_HEAP_BEG;
 pub fn init() {
     unsafe {
         HEAP_ALLOCATOR.lock().init(HEAP_SPACE.as_ptr() as usize, KERNEL_HEAP_SIZE);
+        log::warn!(
+            "Heap allocator initialized: {:x}",
+            HEAP_SPACE.as_ptr() as usize
+        );
     }
 }
 

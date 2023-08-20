@@ -18,7 +18,7 @@ use super::address::{kernel_virt_text_to_phys, PhysAddr4K};
 use crate::memory::frame_ref_cnt::is_frame_ref_cnt_inited;
 
 // Support 64GiB (?)
-pub type FrameAllocator = bitmap_allocator::BitAlloc16M;
+pub type FrameAllocator = bitmap_allocator::BitAlloc1M;
 
 pub static FRAME_ALLOCATOR: SpinNoIrqLock<FrameAllocator> =
     SpinNoIrqLock::new(FrameAllocator::DEFAULT);

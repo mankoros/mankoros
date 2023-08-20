@@ -22,7 +22,7 @@ use self::{
 };
 use log::{debug, trace};
 
-pub const THREAD_STACK_SIZE: usize = 1024 * 1024;
+pub const THREAD_STACK_SIZE: usize = 16 * 1024;
 
 // TODO-PERF: 拆锁
 /// 一个线程的地址空间的相关信息，在 AliveProcessInfo 里受到进程大锁保护，不需要加锁

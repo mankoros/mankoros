@@ -1,5 +1,8 @@
 use crate::{
-    consts::{platform::max_physical_memory, PAGE_SIZE},
+    consts::{
+        platform::{max_physical_memory, phymem_start},
+        PAGE_SIZE,
+    },
     memory::{address::PhysPageNum, frame::dealloc_frame},
     when_debug,
 };
@@ -13,6 +16,7 @@ static mut FRAME_REF_CNT_PTR: *mut u32 = 0 as _;
 pub fn init_frame_ref_cnt() {
     let physis_memory_size = max_physical_memory();
     let frame_ref_cnt_size = physis_memory_size / PAGE_SIZE;
+    log::warn!("physical memory: {:x}", physis_memory_size);
 
     let frame_ref_cnt_memory = unsafe {
         let layout = Layout::array::<u32>(frame_ref_cnt_size).unwrap();
@@ -47,7 +51,8 @@ impl PhysPageNum {
             }
             assert!(self.addr().is_valid());
         });
-        unsafe { FRAME_REF_CNT_PTR.add(self.bits()) }
+        let min_ppm = phymem_start() / PAGE_SIZE;
+        unsafe { FRAME_REF_CNT_PTR.add(self.bits() - min_ppm) }
     }
 
     pub fn get_ref_cnt(self) -> u32 {
