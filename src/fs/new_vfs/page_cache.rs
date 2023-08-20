@@ -85,6 +85,10 @@ impl<F: ConcreteFile> VfsFile for PageCacheFile<F> {
                 offset,
                 buf.len()
             );
+            if buf.len() == 0 {
+                // avoid touch the range manager when zero length
+                return Ok(0);
+            }
             let mut mgr = self.mgr.lock().await;
             mgr.perpare_range(&self.file, offset, buf.len()).await?;
             Ok(mgr.cached_read(offset, buf))
@@ -98,9 +102,13 @@ impl<F: ConcreteFile> VfsFile for PageCacheFile<F> {
                 offset,
                 buf.len()
             );
+            if buf.len() == 0 {
+                // avoid touch the range manager when zero length
+                return Ok(0);
+            }
             let page_addr = PhysAddr::from(offset).floor().bits();
             let mut mgr = self.mgr.lock().await;
-            mgr.perpare_range(&self.file, page_addr, 1).await?;
+            mgr.perpare_range(&self.file, page_addr, buf.len()).await?;
             mgr.cached_write(offset, buf);
             Ok(buf.len())
         })
@@ -170,11 +178,20 @@ impl<F: ConcreteFile> PageManager<F> {
         let begin = VirtAddr::from(offset).floor().bits();
         let end = VirtAddr::from(offset + len).ceil().bits();
 
+        let file_size = file.attr_size().await?.bytes;
+
         let mut total_len = 0;
         for page_begin in (begin..end).step_by(PAGE_SIZE) {
             if !self.cached_pages.contains_key(&{ page_begin }) {
                 let page = CachedPage::alloc()?;
-                let len = file.lock().await.read_page_at(page_begin, page.for_read()).await?;
+
+                // 如果超过文件长度, 就不用读了
+                let len = if page_begin < file_size {
+                    file.lock().await.read_page_at(page_begin, page.for_read()).await?
+                } else {
+                    0
+                };
+
                 page.set_len(len);
                 total_len += len;
                 self.cached_pages.insert(page_begin, page);
@@ -274,8 +291,10 @@ impl<F: ConcreteFile> PageManager<F> {
         let mut page_buf;
         let mut page_addr = PhysAddr::from(offset).floor().bits();
 
+        log::warn!("cached_write: offset={}, buf.len={}", offset, buf.len());
+
         // 不用管什么有效长度了, 写入的话写就是了
-        page_buf = self.get_or_alloc(page_addr);
+        page_buf = self.cached_pages.get(&page_addr).unwrap();
         page_addr += PAGE_SIZE;
 
         loop {
@@ -286,12 +305,17 @@ impl<F: ConcreteFile> PageManager<F> {
 
                 total_offset += PAGE_SIZE;
                 target_buf = &target_buf[PAGE_SIZE..];
-                page_buf = self.get_or_alloc(page_addr);
+                page_buf = self.cached_pages.get(&page_addr).unwrap();
                 page_addr += PAGE_SIZE;
             } else {
                 let curr_buf_addr = page_addr - PAGE_SIZE;
                 let curr_buf_offset = total_offset - curr_buf_addr;
                 let curr_buf_new_len = curr_buf_offset + target_len;
+                log::warn!(
+                    "page_buf len: {}, curr_buf_new_len: {}",
+                    page_buf.len(),
+                    curr_buf_new_len
+                );
                 if page_buf.len() < curr_buf_new_len {
                     // TODO: 找一个更靠谱的方式更新文件长度
                     page_buf.set_len(curr_buf_new_len);
