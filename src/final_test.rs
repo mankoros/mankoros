@@ -6,6 +6,7 @@ use alloc::{
 use crate::{
     executor::{self, block_on},
     fs::{self, new_vfs::path::Path},
+    println,
     process::{lproc::LightProcess, spawn_proc},
 };
 
@@ -47,6 +48,7 @@ pub fn run_interrupts() {
 }
 
 pub fn run_lmbench() {
+    println!("latency measurements");
     run_binary(
         "/lmbench_all",
         "lmbench_all lat_syscall -P 1 null".split(" ").map(|s| s.to_string()).collect(),
@@ -129,6 +131,7 @@ pub fn run_lmbench() {
         "lmbench_all lat_proc -P 1 shell".split(" ").map(|s| s.to_string()).collect(),
     );
     executor::run_until_idle();
+    println!("context switch overhead");
     run_binary(
         "/lmbench_all",
         "lmbench_all lat_ctx -P 1 -s 32 2 4 8 16 24 32 64 96"
