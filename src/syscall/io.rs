@@ -687,6 +687,7 @@ impl Syscall<'_> {
         };
 
         let mut buf = Vec::<u8>::with_capacity(len);
+        buf.resize(len, 0);
         let read_len = fd_in.file.read_at(off_in, &mut buf[..len]).await?;
         buf.truncate(read_len);
         let write_len = fd_out.file.write_at(off_out, &buf[..read_len]).await?;
